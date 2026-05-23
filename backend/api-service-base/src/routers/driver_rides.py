@@ -43,17 +43,32 @@ def _driver_to_dict(driver: Driver) -> dict:
 
 
 def _trip_to_dict(trip: Trip) -> dict:
+    distance = float(trip.distance_km or 0)
     return {
-        "ride_id":       trip.trip_id,
-        "status":        trip.status.value if trip.status else "requested",
-        "customer_name": trip.customer_name,
-        "customer_phone": trip.customer_phone,
-        "origin":  {"address": trip.origin_address,      "lat": float(trip.origin_lat or 0),      "lng": float(trip.origin_lng or 0)},
-        "destination": {"address": trip.destination_address, "lat": float(trip.destination_lat or 0), "lng": float(trip.destination_lng or 0)},
-        "fare":         float(trip.fare or 0),
-        "distance_km":  float(trip.distance_km or 0),
-        "payment_method": trip.payment_method,
-        "created_at":   trip.created_at.isoformat() if trip.created_at else None,
+        "ride_id": trip.trip_id,
+        "status":  trip.status.value if trip.status else "requested",
+        # estructura anidada que espera el frontend
+        "customer": {
+            "name":  trip.customer_name or "Pasajero",
+            "phone": trip.customer_phone or "",
+        },
+        "origin": {
+            "address": trip.origin_address or "",
+            "lat": float(trip.origin_lat or 0),
+            "lng": float(trip.origin_lng or 0),
+        },
+        "destination": {
+            "address": trip.destination_address or "",
+            "lat": float(trip.destination_lat or 0),
+            "lng": float(trip.destination_lng or 0),
+        },
+        "fare":             float(trip.fare or 0),
+        "total_fare":       float(trip.fare or 0),        # alias para el frontend
+        "distance_km":      distance,
+        "duration_minutes": max(1, round(distance / 0.5)), # ~30 km/h en ciudad
+        "expires_in":       30,                            # segundos para aceptar
+        "payment_method":   trip.payment_method,
+        "created_at":       trip.created_at.isoformat() if trip.created_at else None,
     }
 
 
