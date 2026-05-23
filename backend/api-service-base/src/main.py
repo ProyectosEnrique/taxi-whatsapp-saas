@@ -25,6 +25,7 @@ from .routers.payments import router as payments_router, cleanup_expired_pending
 from .routers.customer_rides import router as customer_router
 from .routers.driver_rides import router as driver_router
 from .routers.landing import router as landing_router
+from .routers.locations import router as locations_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -243,6 +244,7 @@ app.include_router(payments_router)
 app.include_router(customer_router)
 app.include_router(driver_router)
 app.include_router(landing_router)
+app.include_router(locations_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas
