@@ -132,6 +132,10 @@ services:
       ENVIRONMENT: demo
       DEBUG: "false"
       CORS_ORIGINS: '["https://taxi.nexoai.lat"]'
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      PUBLIC_URL: https://taxi.nexoai.lat
+      BUSINESS_NAME: ${BUSINESS_NAME:-Taxi App}
+      WHATSAPP_GATEWAY_URL: http://taxi-whatsapp:8000
     volumes:
       - taxi_db_data:/data
     networks:

@@ -7,6 +7,7 @@ Versión: 1.0.0
 ================================================================================
 """
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -20,6 +21,7 @@ from starlette.responses import Response
 
 # Importar routers
 from .routers import products, categories, agent, promotions, aliases, upload
+from .routers.payments import router as payments_router, cleanup_expired_pending_payments
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -68,11 +70,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
     logger.info("================================================================================")
 
-    # Crear tablas si no existen (solo en desarrollo)
-    if settings.ENVIRONMENT == "development":
-        logger.info("Creating database tables (development mode)...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully")
+    # Crear tablas si no existen
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables verified/created")
+
+    # Background tasks
+    asyncio.create_task(cleanup_expired_pending_payments())
 
     yield
 
@@ -232,6 +235,8 @@ app.include_router(
     prefix="/api/v1/upload",
     tags=["Upload"]
 )
+
+app.include_router(payments_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

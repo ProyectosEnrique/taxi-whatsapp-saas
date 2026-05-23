@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # ==============================================================================
+    # MERCADOPAGO
+    # ==============================================================================
+
+    MERCADOPAGO_ACCESS_TOKEN: str = ""
+    PUBLIC_URL: str = "https://taxi.nexoai.lat"
+    BUSINESS_NAME: str = "Taxi App"
+    WHATSAPP_GATEWAY_URL: str = "http://taxi-whatsapp:8000"
+
+    # ==============================================================================
     # CONFIG FROM ENV FILE
     # ==============================================================================
 

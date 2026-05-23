@@ -6,10 +6,11 @@ Modelos SQLAlchemy para categorias y productos
 ================================================================================
 """
 
-from sqlalchemy import Column, Integer, String, Text, Numeric, Boolean, DateTime, ForeignKey, Time, Table
+from sqlalchemy import Column, Integer, String, Text, Numeric, Boolean, DateTime, ForeignKey, Time, Table, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
+import enum
 import uuid
 
 from .database import Base
@@ -224,3 +225,63 @@ class ProductAlias(Base):
 
     def __repr__(self):
         return f"<ProductAlias(alias='{self.alias}', product_id={self.product_id})>"
+
+
+# ==============================================================================
+# TRIP MODEL — Viajes de taxi con soporte de pago MercadoPago
+# ==============================================================================
+
+class TripStatus(str, enum.Enum):
+    REQUESTED   = "requested"
+    CONFIRMED   = "confirmed"
+    IN_PROGRESS = "in_progress"
+    COMPLETED   = "completed"
+    CANCELLED   = "cancelled"
+
+
+class Trip(Base):
+    __tablename__ = "trips"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    trip_id    = Column(String(50), unique=True, nullable=False, index=True,
+                        default=lambda: f"TRIP-{uuid.uuid4().hex[:8].upper()}")
+
+    # Pasajero
+    customer_phone = Column(String(30), nullable=False, index=True)
+    customer_name  = Column(String(150))
+
+    # Ruta
+    origin_address      = Column(String(500))
+    destination_address = Column(String(500))
+    origin_lat          = Column(Numeric(10, 7))
+    origin_lng          = Column(Numeric(10, 7))
+    destination_lat     = Column(Numeric(10, 7))
+    destination_lng     = Column(Numeric(10, 7))
+
+    # Tarifa
+    fare        = Column(Numeric(10, 2), nullable=False, default=0)
+    distance_km = Column(Numeric(8, 2))
+
+    # Pago
+    payment_method   = Column(String(20), default="cash")   # cash | card
+    payment_status   = Column(String(30), default="pending") # pending | pending_payment | paid | failed
+    mp_preference_id = Column(String(255))
+    mp_payment_id    = Column(String(100))
+
+    # Estado del viaje
+    status             = Column(SAEnum(TripStatus), default=TripStatus.REQUESTED, index=True)
+    cancellation_reason = Column(Text)
+    cancelled_at       = Column(DateTime(timezone=True))
+
+    # Conductor asignado (opcional — puede ser None hasta asignación)
+    driver_id   = Column(Integer)
+    driver_name = Column(String(150))
+    driver_phone = Column(String(30))
+
+    # Timestamps
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at   = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        return f"<Trip(trip_id='{self.trip_id}', status='{self.status}', fare={self.fare})>"
