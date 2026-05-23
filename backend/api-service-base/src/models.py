@@ -285,3 +285,75 @@ class Trip(Base):
 
     def __repr__(self):
         return f"<Trip(trip_id='{self.trip_id}', status='{self.status}', fare={self.fare})>"
+
+
+# ==============================================================================
+# CUSTOMER MODEL
+# ==============================================================================
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    phone        = Column(String(30), unique=True, nullable=False, index=True)
+    name         = Column(String(150))
+    email        = Column(String(150))
+    password_hash = Column(String(255), nullable=False)
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<Customer(phone='{self.phone}', name='{self.name}')>"
+
+
+# ==============================================================================
+# DRIVER MODEL
+# ==============================================================================
+
+class Driver(Base):
+    __tablename__ = "drivers"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    phone        = Column(String(30), unique=True, nullable=False, index=True)
+    name         = Column(String(150), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    is_active    = Column(Boolean, default=True)
+    is_online    = Column(Boolean, default=False, index=True)
+
+    # Ubicación en tiempo real
+    current_lat  = Column(Numeric(10, 7))
+    current_lng  = Column(Numeric(10, 7))
+
+    # Vehículo
+    vehicle_brand  = Column(String(100))
+    vehicle_model  = Column(String(100))
+    vehicle_plates = Column(String(20))
+    vehicle_color  = Column(String(50))
+    vehicle_year   = Column(Integer)
+
+    # Estadísticas
+    rating         = Column(Numeric(3, 2), default=5.00)
+    total_trips    = Column(Integer, default=0)
+    total_earnings = Column(Numeric(10, 2), default=0)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<Driver(phone='{self.phone}', name='{self.name}', online={self.is_online})>"
+
+
+# ==============================================================================
+# TRIP RATING MODEL
+# ==============================================================================
+
+class TripRating(Base):
+    __tablename__ = "trip_ratings"
+
+    id        = Column(Integer, primary_key=True, index=True)
+    trip_id   = Column(String(50), ForeignKey("trips.trip_id"), unique=True, nullable=False)
+    stars     = Column(Integer, nullable=False)  # 1-5
+    comment   = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<TripRating(trip_id='{self.trip_id}', stars={self.stars})>"
