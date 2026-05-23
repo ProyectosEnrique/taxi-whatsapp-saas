@@ -1,11 +1,12 @@
 """JWT helpers — tokens para clientes y conductores."""
+import hashlib
 import os
+import secrets
 from datetime import datetime, timezone, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from .database import get_db
@@ -15,16 +16,22 @@ SECRET_KEY = os.getenv("JWT_SECRET", "changeme")
 ALGORITHM  = "HS256"
 TOKEN_TTL_HOURS = 72
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-bearer      = HTTPBearer(auto_error=False)
+bearer = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+    return f"{salt}:{h.hex()}"
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        salt, stored = hashed.split(":", 1)
+        h = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), 260_000)
+        return secrets.compare_digest(h.hex(), stored)
+    except Exception:
+        return False
 
 
 def create_token(subject: str, role: str) -> str:
