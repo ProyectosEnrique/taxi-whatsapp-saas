@@ -131,7 +131,7 @@ services:
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-taxi_session_secret}
       ENVIRONMENT: demo
       DEBUG: "false"
-      CORS_ORIGINS: "https://taxi.nexoai.lat"
+      CORS_ORIGINS: '["https://taxi.nexoai.lat"]'
     volumes:
       - taxi_db_data:/data
     networks:
