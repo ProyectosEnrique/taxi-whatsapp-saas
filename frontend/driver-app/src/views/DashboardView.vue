@@ -338,6 +338,11 @@ const handleLogout = async () => {
 }
 
 onMounted(() => {
+  // Sincronizar estado online del driver guardado en auth
+  if (authStore.driver?.is_online && !driverStore.isAvailable) {
+    driverStore.status = 'available'
+  }
+
   // Iniciar polling si está disponible
   if (driverStore.isAvailable) {
     rideStore.startPolling()

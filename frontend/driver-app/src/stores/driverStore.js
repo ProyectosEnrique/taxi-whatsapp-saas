@@ -45,17 +45,20 @@ export const useDriverStore = defineStore('driver', () => {
     loading.value = true
     error.value = null
 
-    try {
-      const response = await driverApi.updateStatus(newStatus)
-      status.value = response.status
+    // frontend usa 'available'/'offline', backend espera 'online'/'offline'
+    const apiStatus = newStatus === 'available' ? 'online' : 'offline'
 
-      // Actualizar en authStore también
+    try {
+      const response = await driverApi.updateStatus(apiStatus)
+      // backend devuelve {is_online: true/false}
+      status.value = response.is_online ? 'available' : 'offline'
+
       const authStore = useAuthStore()
-      authStore.updateDriverData({ status: response.status })
+      authStore.updateDriverData({ is_online: response.is_online })
 
       return { success: true }
     } catch (err) {
-      error.value = err.response?.data?.message || 'Error al actualizar estado'
+      error.value = err.response?.data?.detail || err.response?.data?.message || 'Error al actualizar estado'
       return { success: false, error: error.value }
     } finally {
       loading.value = false
@@ -74,7 +77,15 @@ export const useDriverStore = defineStore('driver', () => {
   const fetchStats = async () => {
     try {
       const response = await driverApi.getStats()
-      stats.value = response.stats
+      // backend devuelve {total_trips, total_earnings, rating, completed_today}
+      stats.value = {
+        total_rides:      response.total_trips     ?? 0,
+        completed_today:  response.completed_today ?? 0,
+        rating:           response.rating          ?? 5.0,
+        acceptance_rate:  1.0,
+        earnings_today:   response.total_earnings  ?? 0,
+        earnings_week:    response.total_earnings  ?? 0,
+      }
     } catch (err) {
       console.error('Error al obtener estadísticas:', err)
     }

@@ -30,10 +30,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expirado o inválido
       localStorage.removeItem('driver_token')
       localStorage.removeItem('driver_data')
-      window.location.href = '/login'
+      window.location.href = import.meta.env.BASE_URL + 'login'
     }
     return Promise.reject(error)
   }
