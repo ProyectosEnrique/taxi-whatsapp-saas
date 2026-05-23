@@ -191,6 +191,14 @@ def get_active_ride(current: Driver = Depends(get_current_driver), db: Session =
     return {"ride": _trip_to_dict(trip) if trip else None}
 
 
+@router.get("/rides/{ride_id}")
+def get_ride_detail(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    return {"ride": _trip_to_dict(trip)}
+
+
 @router.post("/rides/{ride_id}/accept")
 def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()

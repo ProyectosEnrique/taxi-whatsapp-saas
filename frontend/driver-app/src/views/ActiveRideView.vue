@@ -272,7 +272,12 @@ const timerInterval = ref(null)
 const startTime = ref(null)
 
 const rideId = computed(() => route.params.rideId)
-const rideStatus = computed(() => ride.value?.status || null)
+// backend usa 'confirmed' para viaje aceptado, el template espera 'assigned'
+const rideStatus = computed(() => {
+  const s = ride.value?.status || null
+  if (s === 'confirmed') return 'assigned'
+  return s
+})
 
 const getStatusLabel = (status) => {
   const labels = {
