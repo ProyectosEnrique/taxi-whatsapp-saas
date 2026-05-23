@@ -1,0 +1,144 @@
+# ==============================================================================
+# TAXI WHATSAPP SAAS — Docker Compose VPS
+# ==============================================================================
+# Traefik (vps-deploy) maneja SSL y enruta tráfico externo.
+# nginx sirve los 3 frontends y hace reverse proxy de las APIs.
+#
+# Subdominio: taxi.nexoai.lat
+#
+# Recursos compartidos con mandaya:
+#   - mandaya_redis  (DB 3 para taxi)
+#
+# Uso:
+#   docker compose -f docker-compose.vps.yml --env-file .env up -d --build
+#   docker compose -f docker-compose.vps.yml --env-file .env stop    # pausar
+#   docker compose -f docker-compose.vps.yml --env-file .env start   # reanudar
+# ==============================================================================
+
+name: taxi_prod
+
+volumes:
+  taxi_db_data:
+
+networks:
+  taxi_net:
+    name: taxi_net
+    driver: bridge
+  mandaya_net:
+    external: true
+    name: mandaya_net
+  traefik-public:
+    external: true
+    name: traefik-public
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # NGINX — Sirve los 3 frontends + reverse proxy de APIs
+  # ─────────────────────────────────────────────────────────────────────────
+  taxi-nginx:
+    build:
+      context: .
+      dockerfile: vps/nginx/Dockerfile
+    container_name: taxi-nginx
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.taxi.rule=Host(`taxi.nexoai.lat`)"
+      - "traefik.http.routers.taxi.entrypoints=websecure"
+      - "traefik.http.routers.taxi.tls.certresolver=letsencrypt"
+      - "traefik.http.services.taxi.loadbalancer.server.port=80"
+    depends_on:
+      - taxi-whatsapp
+      - taxi-agent
+      - taxi-api
+    networks:
+      - taxi_net
+      - traefik-public
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # WHATSAPP GATEWAY — Recibe y envía mensajes de WhatsApp
+  # ─────────────────────────────────────────────────────────────────────────
+  taxi-whatsapp:
+    build: ./backend/whatsapp-gateway
+    container_name: taxi-whatsapp
+    restart: unless-stopped
+    environment:
+      PORT: "8000"
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-twilio}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_NUMBER: ${TWILIO_WHATSAPP_NUMBER:-}
+      META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-taxi_verify}
+      VOICE_ASSISTANT_URL: http://taxi-agent:5000
+      SALES_AGENT_URL: http://taxi-agent:5000
+      CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
+      REDIS_URL: redis://mandaya_redis:6379/3
+      LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      ENVIRONMENT: production
+    networks:
+      - taxi_net
+      - mandaya_net      # para alcanzar mandaya_redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SALES AGENT — Motor de conversación FSM + LLM
+  # ─────────────────────────────────────────────────────────────────────────
+  taxi-agent:
+    build: ./backend/sales-agent-base
+    container_name: taxi-agent
+    restart: unless-stopped
+    environment:
+      PORT: "5000"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      MENU_SERVICE_URL: http://taxi-api:5011
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}
+      ENVIRONMENT: production
+    networks:
+      - taxi_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # API SERVICE — Datos: conductores, viajes, tarifas, usuarios
+  # Usa SQLite para demo — cambiar DATABASE_URL a PostgreSQL en producción
+  # ─────────────────────────────────────────────────────────────────────────
+  taxi-api:
+    build: ./backend/api-service-base
+    container_name: taxi-api
+    restart: unless-stopped
+    environment:
+      PORT: "5011"
+      DATABASE_URL: sqlite:////data/taxi_demo.db
+      JWT_SECRET: ${JWT_SECRET:-taxi_jwt_secret_cambiar_en_prod}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-taxi_session_secret}
+      ENVIRONMENT: demo
+      DEBUG: "false"
+      CORS_ORIGINS: "https://taxi.nexoai.lat"
+    volumes:
+      - taxi_db_data:/data
+    networks:
+      - taxi_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

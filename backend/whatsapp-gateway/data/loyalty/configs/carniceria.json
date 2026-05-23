@@ -1,0 +1,48 @@
+{
+  "restaurant_id": "carniceria",
+  "enabled": true,
+  "points_per_currency": 0.1,
+  "currency_per_point": 0.5,
+  "min_points_to_redeem": 100,
+  "max_redeem_percentage": 50.0,
+  "points_expire_days": 365,
+  "tiers_enabled": true,
+  "tier_thresholds": {
+    "bronce": 0,
+    "plata": 1000,
+    "oro": 2500,
+    "platino": 5000
+  },
+  "tier_multipliers": {
+    "bronce": 1.0,
+    "plata": 1.5,
+    "oro": 2.0,
+    "platino": 3.0
+  },
+  "tier_benefits": {
+    "bronce": {
+      "discount": 0,
+      "free_shipping": false
+    },
+    "plata": {
+      "discount": 0,
+      "free_shipping": true
+    },
+    "oro": {
+      "discount": 5,
+      "free_shipping": true
+    },
+    "platino": {
+      "discount": 10,
+      "free_shipping": true
+    }
+  },
+  "birthday_bonus": 150,
+  "referral_bonus": 75,
+  "first_purchase_bonus": 50,
+  "notify_points_earned": true,
+  "notify_tier_upgrade": true,
+  "notify_points_expiring": true,
+  "created_at": "2026-01-07 23:54:58.005092",
+  "updated_at": "2026-01-07 23:54:59.049922"
+}

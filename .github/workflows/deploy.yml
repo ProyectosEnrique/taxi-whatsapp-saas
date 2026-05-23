@@ -1,0 +1,254 @@
+# ================================================================================
+# GITHUB ACTIONS - DEPLOYMENT PIPELINE
+# ================================================================================
+# Deployment automático a Google Cloud Run + Firebase Hosting
+# Se ejecuta cuando se hace push a la rama main
+# ================================================================================
+
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: whatsapp-saas-prod
+  GCP_REGION: us-central1
+
+jobs:
+  # ===========================================================================
+  # JOB 1: Deploy Backend Services to Cloud Run
+  # ===========================================================================
+  deploy-backend:
+    name: Deploy Backend to Cloud Run
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # -------------------------
+      # Deploy whatsapp-gateway
+      # -------------------------
+      - name: Deploy whatsapp-gateway
+        run: |
+          gcloud run deploy whatsapp-gateway \
+            --source ./backend/whatsapp-gateway \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-secrets="DEEPGRAM_API_KEY=deepgram-api-key:latest,META_ACCESS_TOKEN=meta-access-token:latest,META_PHONE_NUMBER_ID=meta-phone-number-id:latest,META_VERIFY_TOKEN=meta-verify-token:latest" \
+            --set-env-vars="WHATSAPP_PROVIDER=meta,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-instances 10 \
+            --min-instances 0 \
+            --timeout 60s
+
+      # -------------------------
+      # Deploy sales-agent
+      # -------------------------
+      - name: Deploy sales-agent
+        run: |
+          gcloud run deploy sales-agent \
+            --source ./backend/sales-agent-base \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --set-secrets="CEREBRAS_API_KEY=cerebras-api-key:latest,GOOGLE_API_KEY=google-api-key:latest,GROQ_API_KEY=groq-api-key:latest,CARTESIA_API_KEY=cartesia-api-key:latest,OPENAI_API_KEY=openai-api-key:latest" \
+            --set-env-vars="LLM_PROVIDER=cerebras,TTS_PROVIDER=cartesia,ASSISTANT_LANGUAGE=es,GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --memory 1Gi \
+            --cpu 2 \
+            --max-instances 20 \
+            --min-instances 0 \
+            --timeout 300s
+
+      # -------------------------
+      # Deploy api-service
+      # -------------------------
+      - name: Deploy api-service
+        run: |
+          gcloud run deploy api-service \
+            --source ./backend/api-service-base \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --set-secrets="JWT_SECRET_KEY=jwt-secret-key:latest" \
+            --set-env-vars="FIRESTORE_PROJECT=${{ env.GCP_PROJECT_ID }},GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }}" \
+            --memory 512Mi \
+            --cpu 1 \
+            --max-instances 10 \
+            --min-instances 0 \
+            --timeout 60s
+
+      # -------------------------
+      # Output Service URLs
+      # -------------------------
+      - name: Get Service URLs
+        id: get-urls
+        run: |
+          GATEWAY_URL=$(gcloud run services describe whatsapp-gateway --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          AGENT_URL=$(gcloud run services describe sales-agent --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          API_URL=$(gcloud run services describe api-service --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+
+          echo "whatsapp-gateway: $GATEWAY_URL"
+          echo "sales-agent: $AGENT_URL"
+          echo "api-service: $API_URL"
+
+          echo "gateway_url=$GATEWAY_URL" >> $GITHUB_OUTPUT
+          echo "agent_url=$AGENT_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+
+      - name: Post Deployment Summary
+        run: |
+          echo "### Backend Deployment Successful! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service URLs:**" >> $GITHUB_STEP_SUMMARY
+          echo "- WhatsApp Gateway: ${{ steps.get-urls.outputs.gateway_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Sales Agent: ${{ steps.get-urls.outputs.agent_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- API Service: ${{ steps.get-urls.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Configure WhatsApp webhook with Gateway URL" >> $GITHUB_STEP_SUMMARY
+          echo "2. Update frontend environment with API URLs" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # JOB 2: Deploy Frontend to Firebase Hosting
+  # ===========================================================================
+  deploy-frontend:
+    name: Deploy Frontend to Firebase
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/admin-panel/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/admin-panel
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend/admin-panel
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ env.GCP_PROJECT_ID }}
+          channelId: live
+          entryPoint: ./frontend/admin-panel
+
+      - name: Post Frontend Deployment Summary
+        run: |
+          echo "### Frontend Deployment Successful! :sparkles:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Hosting URL:** https://${{ env.GCP_PROJECT_ID }}.web.app" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # JOB 3: Deploy Firestore Rules & Indexes
+  # ===========================================================================
+  deploy-firestore:
+    name: Deploy Firestore Configuration
+    runs-on: ubuntu-latest
+    needs: deploy-frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy Firestore Rules
+        run: |
+          firebase deploy \
+            --only firestore:rules \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --token ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deploy Firestore Indexes
+        run: |
+          firebase deploy \
+            --only firestore:indexes \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --token ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deploy Storage Rules
+        run: |
+          firebase deploy \
+            --only storage \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --token ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Post Firestore Deployment Summary
+        run: |
+          echo "### Firestore Configuration Deployed! :file_folder:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Security rules deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- Indexes deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- Storage rules deployed" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # JOB 4: Post-Deployment Health Checks
+  # ===========================================================================
+  health-check:
+    name: Run Health Checks
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend, deploy-firestore]
+
+    steps:
+      - name: Check whatsapp-gateway health
+        run: |
+          GATEWAY_URL=$(gcloud run services describe whatsapp-gateway \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)' \
+            --project ${{ env.GCP_PROJECT_ID }})
+
+          echo "Checking $GATEWAY_URL/health"
+          curl -f "$GATEWAY_URL/health" || exit 1
+
+      - name: Check Frontend availability
+        run: |
+          echo "Checking https://${{ env.GCP_PROJECT_ID }}.web.app"
+          curl -f "https://${{ env.GCP_PROJECT_ID }}.web.app" || exit 1
+
+      - name: Deployment Complete
+        run: |
+          echo "### All Health Checks Passed! :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Application URLs:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Admin Panel: https://${{ env.GCP_PROJECT_ID }}.web.app" >> $GITHUB_STEP_SUMMARY
+          echo "- WhatsApp Webhook: Check backend job output" >> $GITHUB_STEP_SUMMARY

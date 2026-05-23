@@ -1,0 +1,17 @@
+{
+  "transaction_id": "e1d37b5f-9d56-441e-a03c-9c0cf0b920f3",
+  "customer_phone": "5215512345678",
+  "restaurant_id": "carniceria",
+  "transaction_type": "earn",
+  "points_change": 80,
+  "points_balance_after": 80,
+  "order_id": "TEST-100",
+  "order_total": 800.0,
+  "description": "Compra de $800.00",
+  "metadata": {
+    "points_base": 80,
+    "multiplier": 1.0,
+    "first_purchase_bonus": 0
+  },
+  "created_at": "2026-01-07 23:54:59.313278"
+}

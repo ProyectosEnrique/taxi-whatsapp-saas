@@ -1,0 +1,31 @@
+# ================================================================================
+# CLOUD RUN ENV VARS - API SERVICE
+# ================================================================================
+
+# Database (Cloud SQL)
+DATABASE_URL: "postgresql://restaurant:kf4PVKV3cw5kLRHdD0AV9e3x3RzIM7oZnNf7rr2u4bM=@/restaurant_db?host=/cloudsql/restaurant-voice-system:us-central1:restaurant-db"
+CLOUD_SQL_CONNECTION_NAME: "restaurant-voice-system:us-central1:restaurant-db"
+
+# Environment
+ENVIRONMENT: "production"
+LOG_LEVEL: "INFO"
+PYTHONUNBUFFERED: "1"
+
+# GCP
+GCP_PROJECT_ID: "restaurant-voice-system"
+GCP_REGION: "us-central1"
+
+# Security
+JWT_SECRET_KEY: "b9984d3c294c10cda2d1617d5450423495d99449d8fe2c3182a9f469d07455d6"
+JWT_ALGORITHM: "HS256"
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
+SESSION_SECRET_KEY: "c497676dbfdb84857fd47c5ec1a37112b59d1539979b2d1d1b86c95b071d91f8"
+SESSION_EXPIRE_MINUTES: "120"
+
+# CORS (actualizar con URLs reales después del deploy)
+CORS_ORIGINS: '["http://localhost:8080","http://localhost:3000","*"]'
+
+# Service URLs (actualizar después del deploy)
+WHATSAPP_GATEWAY_URL: "http://whatsapp-gateway:8000"
+SALES_AGENT_URL: "http://sales-agent-service:5000"

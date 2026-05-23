@@ -1,0 +1,410 @@
+{
+  "menu": {
+    "version": "3.0.0",
+    "last_updated": "2026-01-20",
+    "restaurant_name": "Rico Mar Salvatierra",
+    "specialty": "Mariscos Gourmet",
+    "total_products": 184,
+    "categories": [
+      {
+        "id": "entradas",
+        "name": "ENTRADAS",
+        "description": "Platillos para comenzar",
+        "products": [
+          {
+            "id": "ceviche_camaron",
+            "name": "Ceviche de Camarón",
+            "description": "Camarón curtido al limón, jitomate, cebolla, cilantro, aguacate y el toque especial de la casa",
+            "price": 95.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 15,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Limón", "Jitomate", "Cebolla", "Cilantro", "Aguacate"],
+            "allergens": ["mariscos"],
+            "tags": ["más vendido", "fresco", "cítrico"]
+          },
+          {
+            "id": "aguachile_clasico",
+            "name": "Aguachile Clásico",
+            "description": "Camarones frescos curtidos en salsa verde picante con pepino y cebolla morada",
+            "price": 230.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 10,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Chile", "Limón", "Pepino", "Cebolla morada"],
+            "allergens": ["mariscos"],
+            "tags": ["popular", "picante", "fresco"]
+          }
+        ]
+      },
+      {
+        "id": "tostadas",
+        "name": "TOSTADAS",
+        "description": "Tostadas de mariscos frescos",
+        "products": [
+          {
+            "id": "tostada_ceviche_camaron",
+            "name": "Tostada de Ceviche de Camarón",
+            "description": "Camarón curtido al limón, jitomate, cebolla, cilantro y aguacate sobre tostada dorada",
+            "price": 95.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 12,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Limón", "Jitomate", "Cebolla", "Cilantro", "Aguacate", "Tostada"],
+            "allergens": ["mariscos", "gluten"],
+            "tags": ["más vendido", "fresco"]
+          },
+          {
+            "id": "tostada_mazatleca",
+            "name": "Tostada Mazatleca",
+            "description": "Camarón cocido, pulpo, carne de jaiba, callo de almeja, pepino, cebolla y aguacate en salsa especial",
+            "price": 120.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 15,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Pulpo", "Jaiba", "Callo de almeja", "Pepino", "Cebolla", "Aguacate"],
+            "allergens": ["mariscos", "gluten"],
+            "tags": ["popular", "mixto"]
+          },
+          {
+            "id": "tostada_sinaloense",
+            "name": "Tostada Sinaloense",
+            "description": "Torre de mariscos en tostada: camarón, pulpo, pescado y salsa sinaloense",
+            "price": 120.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 15,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Pulpo", "Pescado", "Salsa sinaloense"],
+            "allergens": ["mariscos", "gluten"],
+            "tags": ["especialidad", "torre"]
+          }
+        ]
+      },
+      {
+        "id": "aguachiles",
+        "name": "AGUACHILES",
+        "description": "Camarones frescos en salsas especiales",
+        "products": [
+          {
+            "id": "aguachile_verde",
+            "name": "Aguachile Verde",
+            "description": "Camarones frescos en salsa verde con pepino y cebolla morada",
+            "price": 230.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 10,
+            "is_vegetarian": false,
+            "spice_level": 2,
+            "ingredients": ["Camarón", "Chile verde", "Limón", "Pepino", "Cebolla morada"],
+            "allergens": ["mariscos"],
+            "tags": ["picante", "fresco"]
+          },
+          {
+            "id": "aguachile_negro",
+            "name": "Aguachile Negro",
+            "description": "Camarones en salsa negra preparada con chiles secos y especias",
+            "price": 230.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 10,
+            "is_vegetarian": false,
+            "spice_level": 3,
+            "ingredients": ["Camarón", "Chile seco", "Limón", "Pepino", "Cebolla morada"],
+            "allergens": ["mariscos"],
+            "tags": ["muy picante", "especialidad"]
+          },
+          {
+            "id": "aguachile_mango_habanero",
+            "name": "Aguachile Mango Habanero",
+            "description": "Camarones en salsa de mango con toque de habanero, balance perfecto dulce-picante",
+            "price": 250.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 12,
+            "is_vegetarian": false,
+            "spice_level": 2,
+            "ingredients": ["Camarón", "Mango", "Chile habanero", "Limón", "Pepino"],
+            "allergens": ["mariscos"],
+            "tags": ["dulce-picante", "gourmet"]
+          }
+        ]
+      },
+      {
+        "id": "sushi",
+        "name": "BARRA DE SUSHI",
+        "description": "Rolls especiales",
+        "products": [
+          {
+            "id": "california_roll",
+            "name": "California Roll",
+            "description": "Rollo relleno de camarón con alga, pepino, aguacate, envuelto en queso crema y cubierto con ajonjolí negro",
+            "price": 120.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 15,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Alga nori", "Pepino", "Aguacate", "Queso crema", "Ajonjolí"],
+            "allergens": ["mariscos", "lácteos"],
+            "tags": ["roll", "popular"]
+          },
+          {
+            "id": "rico_mar_roll_camaron",
+            "name": "Rico Mar Roll - Camarón",
+            "description": "Rollo empanizado, alga, queso crema, aguacate y pepino",
+            "price": 140.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 18,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Alga nori", "Queso crema", "Aguacate", "Pepino"],
+            "allergens": ["mariscos", "lácteos", "gluten"],
+            "tags": ["roll", "empanizado", "especialidad"]
+          },
+          {
+            "id": "rico_mar_roll_atun",
+            "name": "Rico Mar Roll - Atún",
+            "description": "Rollo empanizado, alga, queso crema, aguacate y pepino",
+            "price": 140.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 18,
+            "is_vegetarian": false,
+            "ingredients": ["Atún", "Alga nori", "Queso crema", "Aguacate", "Pepino"],
+            "allergens": ["mariscos", "lácteos", "gluten"],
+            "tags": ["roll", "empanizado", "atún"]
+          }
+        ]
+      },
+      {
+        "id": "caldos",
+        "name": "CALDOS",
+        "description": "Caldos calientes de mariscos",
+        "products": [
+          {
+            "id": "caldo_pescado",
+            "name": "Caldo de Pescado",
+            "description": "Caldo tradicional con pescado fresco, verduras y especias de la casa",
+            "price": 180.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 25,
+            "is_vegetarian": false,
+            "ingredients": ["Pescado", "Zanahoria", "Papa", "Cebolla", "Jitomate", "Especias"],
+            "allergens": ["mariscos"],
+            "tags": ["caliente", "reconfortante"]
+          },
+          {
+            "id": "caldo_camaron",
+            "name": "Caldo de Camarón",
+            "description": "Caldo con camarones grandes, verduras frescas y chile de árbol",
+            "price": 200.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 25,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Zanahoria", "Papa", "Cebolla", "Chile de árbol"],
+            "allergens": ["mariscos"],
+            "tags": ["caliente", "picante"]
+          }
+        ]
+      },
+      {
+        "id": "barra_caliente",
+        "name": "BARRA CALIENTE",
+        "description": "Platillos calientes servidos con guarnición de ensalada, papas y arroz",
+        "products": [
+          {
+            "id": "camarones_empanizados",
+            "name": "Camarones Empanizados",
+            "description": "Camarones grandes capeados en pan molido, servidos con arroz, papas y ensalada",
+            "price": 220.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 20,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Pan molido", "Arroz", "Papas", "Ensalada"],
+            "allergens": ["mariscos", "gluten"],
+            "tags": ["empanizado", "completo"]
+          },
+          {
+            "id": "filete_pescado_zarandeado",
+            "name": "Filete de Pescado Zarandeado",
+            "description": "Filete de pescado marinado al estilo Nayarit, a la parrilla con guarniciones",
+            "price": 240.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 25,
+            "is_vegetarian": false,
+            "ingredients": ["Pescado", "Marinado especial", "Arroz", "Papas", "Ensalada"],
+            "allergens": ["mariscos"],
+            "tags": ["a la parrilla", "zarandeado"]
+          }
+        ]
+      },
+      {
+        "id": "grill",
+        "name": "AL GRILL",
+        "description": "Platillos a la parrilla",
+        "products": [
+          {
+            "id": "brochetas_camaron",
+            "name": "Brochetas de Camarón",
+            "description": "Brochetas de camarón con pimientos y cebolla, a la parrilla",
+            "price": 260.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 20,
+            "is_vegetarian": false,
+            "ingredients": ["Camarón", "Pimiento", "Cebolla", "Arroz", "Ensalada"],
+            "allergens": ["mariscos"],
+            "tags": ["a la parrilla", "brochetas"]
+          }
+        ]
+      },
+      {
+        "id": "bebidas_sin_alcohol",
+        "name": "SIN ALCOHOL",
+        "description": "Bebidas refrescantes",
+        "products": [
+          {
+            "id": "agua_natural",
+            "name": "Agua Natural",
+            "description": "Agua purificada embotellada",
+            "price": 20.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 1,
+            "is_vegetarian": true,
+            "ingredients": ["Agua"],
+            "allergens": [],
+            "tags": ["bebida", "natural"]
+          },
+          {
+            "id": "refresco",
+            "name": "Refresco",
+            "description": "Refrescos embotellados variados (Coca-Cola, Sprite, etc.)",
+            "price": 30.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 1,
+            "is_vegetarian": true,
+            "ingredients": ["Refresco"],
+            "allergens": [],
+            "tags": ["bebida", "refresco"]
+          },
+          {
+            "id": "jugo_natural",
+            "name": "Jugo Natural",
+            "description": "Jugos naturales de naranja, toronja o zanahoria",
+            "price": 40.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 5,
+            "is_vegetarian": true,
+            "ingredients": ["Fruta fresca"],
+            "allergens": [],
+            "tags": ["bebida", "natural", "fresco"]
+          }
+        ]
+      },
+      {
+        "id": "cervezas",
+        "name": "CERVEZA",
+        "description": "Cervezas nacionales e importadas",
+        "products": [
+          {
+            "id": "cerveza_nacional",
+            "name": "Cerveza Nacional",
+            "description": "Corona, Victoria, Modelo, Pacifico",
+            "price": 40.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 1,
+            "is_vegetarian": true,
+            "ingredients": ["Cerveza"],
+            "allergens": ["gluten"],
+            "tags": ["bebida", "alcohol", "cerveza"],
+            "age_restricted": true
+          },
+          {
+            "id": "cerveza_premium",
+            "name": "Cerveza Premium",
+            "description": "Heineken, Stella Artois, Corona Extra",
+            "price": 55.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 1,
+            "is_vegetarian": true,
+            "ingredients": ["Cerveza"],
+            "allergens": ["gluten"],
+            "tags": ["bebida", "alcohol", "premium"],
+            "age_restricted": true
+          }
+        ]
+      },
+      {
+        "id": "desayunos",
+        "name": "DESAYUNOS",
+        "description": "Incluye jugo de temporada y café americano",
+        "products": [
+          {
+            "id": "chilaquiles_camaron",
+            "name": "Chilaquiles con Camarón",
+            "description": "Chilaquiles verdes o rojos con camarones salteados, crema y queso",
+            "price": 120.00,
+            "currency": "MXN",
+            "available": true,
+            "popular": true,
+            "preparation_time": 15,
+            "is_vegetarian": false,
+            "ingredients": ["Tortilla", "Salsa", "Camarón", "Crema", "Queso", "Jugo", "Café"],
+            "allergens": ["mariscos", "lácteos", "gluten"],
+            "tags": ["desayuno", "mexicano"]
+          }
+        ]
+      }
+    ]
+  },
+  "popular_combinations": [
+    {
+      "name": "Combo Cevichero",
+      "description": "3 tostadas de ceviche + 1 refresco",
+      "price": 275.00,
+      "items": ["tostada_ceviche_camaron", "refresco"],
+      "discount": 10.00
+    },
+    {
+      "name": "Combo Aguachilero",
+      "description": "Aguachile + cerveza + tostadas de cortesía",
+      "price": 260.00,
+      "items": ["aguachile_verde", "cerveza_nacional"],
+      "discount": 10.00
+    }
+  ]
+}

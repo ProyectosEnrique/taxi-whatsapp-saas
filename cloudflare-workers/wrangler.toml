@@ -1,0 +1,56 @@
+# ================================================================================
+# WRANGLER CONFIGURATION - Cloudflare Workers
+# ================================================================================
+# Configuración para deployment del WhatsApp webhook proxy
+# ================================================================================
+
+name = "whatsapp-webhook-proxy"
+main = "whatsapp-proxy.js"
+compatibility_date = "2024-01-01"
+
+# Account ID - Obtener de: https://dash.cloudflare.com/
+# account_id = "TU_ACCOUNT_ID_AQUI"
+
+# Workers Paid plan requerido para:
+# - KV storage (rate limiting)
+# - Custom domains
+# - Analytics avanzado
+
+# ============================================================================
+# ROUTES (Después de configurar custom domain)
+# ============================================================================
+# Descomentar y actualizar después de configurar dominio en Cloudflare
+# routes = [
+#   { pattern = "webhook.tu-dominio.com/*", zone_name = "tu-dominio.com" }
+# ]
+
+# ============================================================================
+# KV NAMESPACES (Para Rate Limiting)
+# ============================================================================
+# Crear KV namespace con:
+# wrangler kv:namespace create "RATE_LIMITER"
+# Luego descomentar y actualizar con el ID generado:
+# kv_namespaces = [
+#   { binding = "RATE_LIMITER", id = "TU_KV_NAMESPACE_ID" }
+# ]
+
+# ============================================================================
+# ENVIRONMENT VARIABLES (Opcional)
+# ============================================================================
+# [env.production.vars]
+# BACKEND_URL = "https://whatsapp-gateway-xxx-uc.a.run.app"
+# RATE_LIMIT_ENABLED = "true"
+
+# ============================================================================
+# DEPLOYMENT COMMANDS
+# ============================================================================
+# Development:
+#   wrangler dev
+#
+# Deploy to production:
+#   wrangler deploy
+#
+# View logs:
+#   wrangler tail
+#
+# ============================================================================

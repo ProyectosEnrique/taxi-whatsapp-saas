@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  whatsapp-gateway:
+    build: ./backend/whatsapp-gateway
+    ports:
+      - "8080:8080"  # Cambiar a 8080
+    environment:
+      # Twilio (REQUERIDO para demo)
+      - WHATSAPP_PROVIDER=twilio
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+
+      # Base URL para links (Cloudflare Tunnel)
+      - BASE_URL=${BASE_URL:-https://demo.tudominio.com}
+
+      # URLs internas
+      - CUSTOMER_APP_URL=http://customer-app:80
+      - MENU_SERVICE_URL=http://api-service:5011
+
+      # Opcional: Pagos (dejar vacío para solo efectivo)
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - MERCADOPAGO_ACCESS_TOKEN=${MERCADOPAGO_ACCESS_TOKEN:-}
+
+      # Opcional: STT para notas de voz
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+    volumes:
+      - ./backend/whatsapp-gateway/data:/app/data  # Persistir datos de demo
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8080
+
+  # FRONTEND - Web de catálogo/checkout
+  customer-app:
+    build: ./frontend/customer-app
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - VITE_GATEWAY_URL=http://localhost:8080
+
+  # OPCIONAL: Admin panel (para ver analytics)
+  admin-panel:
+    build: ./frontend/admin-panel
+    ports:
+      - "8081:80"
+    environment:
+      - VITE_API_URL=http://localhost:8080
+
+  # Cloudflare Tunnel (para exponer a internet)
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: demo_cloudflare_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - whatsapp-gateway
+      - customer-app
+
+# NOTA: api-service y sales-agent NO son necesarios para la demo
+# Los catálogos demo están hardcodeados en demo_config.py

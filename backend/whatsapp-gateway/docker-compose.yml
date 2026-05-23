@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # WHATSAPP GATEWAY
+  # ============================================================================
+  whatsapp-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: whatsapp-gateway
+    ports:
+      - "8095:8000"
+    environment:
+      # Proveedor de WhatsApp
+      - WHATSAPP_PROVIDER=${WHATSAPP_PROVIDER:-twilio}
+
+      # Twilio
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER:-+14155238886}
+
+      # Meta Cloud API
+      - META_PHONE_NUMBER_ID=${META_PHONE_NUMBER_ID:-}
+      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN:-}
+      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-mi_token_secreto}
+
+      # Servicios internos
+      - SALES_AGENT_URL=${SALES_AGENT_URL:-http://voice-assistant:8000}
+      - POS_MIDDLEWARE_URL=${POS_MIDDLEWARE_URL:-http://pos-middleware:8090}
+
+      # Redis
+      - REDIS_URL=${REDIS_URL:-redis://gateway-redis:6379/0}
+      - USE_LOCAL_SESSIONS=${USE_LOCAL_SESSIONS:-false}
+
+      # Configuración
+      - SESSION_TTL_MINUTES=30
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    volumes:
+      - ./src:/app/src:ro
+    depends_on:
+      - gateway-redis
+    networks:
+      - restaurant_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # REDIS - Sesiones
+  # ============================================================================
+  gateway-redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - gateway_redis_data:/data
+    networks:
+      - restaurant_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  gateway_redis_data:
+
+networks:
+  restaurant_network:
+    external: true

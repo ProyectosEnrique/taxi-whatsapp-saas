@@ -1,0 +1,342 @@
+<template>
+  <div class="dashboard">
+    <!-- Header -->
+    <div class="dashboard-header">
+      <h1>📊 Dashboard Administrativo</h1>
+      <p class="subtitle">Vista general del negocio en tiempo real</p>
+      <button @click="refreshData" class="btn-refresh" :disabled="loading">
+        {{ loading ? '🔄 Cargando...' : '🔄 Actualizar' }}
+      </button>
+    </div>
+
+    <!-- Loading State -->
+    <div v-if="loading && !analyticsStore.orders.length" class="loading-container">
+      <div class="spinner"></div>
+      <p>Cargando datos...</p>
+    </div>
+
+    <!-- Error State -->
+    <div v-else-if="error" class="error-container">
+      <p>❌ {{ error }}</p>
+      <button @click="refreshData" class="btn-retry">Reintentar</button>
+    </div>
+
+    <!-- Main Content -->
+    <div v-else class="dashboard-content">
+      <!-- Metrics Cards -->
+      <div class="metrics-grid">
+        <MetricsCard
+          label="Ventas del Día"
+          :value="analyticsStore.todaySales"
+          icon="💰"
+          variant="success"
+          format="currency"
+          subtitle="Ingresos totales de hoy"
+        />
+        <MetricsCard
+          label="Pedidos Activos"
+          :value="analyticsStore.activeOrders"
+          icon="📋"
+          variant="warning"
+          format="number"
+          subtitle="Pedidos en proceso"
+        />
+        <MetricsCard
+          label="Ocupación de Mesas"
+          :value="analyticsStore.tableOccupancy"
+          icon="🪑"
+          variant="info"
+          format="percent"
+          subtitle="Mesas ocupadas"
+        />
+        <MetricsCard
+          label="Ticket Promedio"
+          :value="analyticsStore.averageTicket"
+          icon="🧾"
+          variant="default"
+          format="currency"
+          subtitle="Promedio por orden"
+        />
+      </div>
+
+      <!-- Charts Section -->
+      <div class="charts-section">
+        <div class="chart-wrapper">
+          <HourlyOrdersChart
+            title="📈 Pedidos por Hora - Hoy"
+            :data="hourlyChartData"
+          />
+        </div>
+        <div class="chart-wrapper">
+          <TopProductsList
+            title="🏆 Top 10 Productos Más Vendidos"
+            :products="analyticsStore.topProducts"
+          />
+        </div>
+      </div>
+
+      <!-- Recent Orders -->
+      <div class="recent-section">
+        <RecentOrdersList
+          title="🕐 Órdenes Recientes"
+          :orders="analyticsStore.recentOrders"
+        />
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="actions-section">
+        <h3>⚡ Acciones Rápidas</h3>
+        <div class="actions-grid">
+          <button @click="viewReports" class="action-btn">
+            📊 Ver Reportes
+          </button>
+          <button @click="manageMenu" class="action-btn">
+            🍽️ Gestionar Menú
+          </button>
+          <button @click="manageTables" class="action-btn">
+            🪑 Gestionar Mesas
+          </button>
+          <button @click="manageUsers" class="action-btn">
+            👥 Gestionar Usuarios
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAnalyticsStore } from '../stores/analytics'
+import MetricsCard from '../components/MetricsCard.vue'
+import HourlyOrdersChart from '../components/HourlyOrdersChart.vue'
+import TopProductsList from '../components/TopProductsList.vue'
+import RecentOrdersList from '../components/RecentOrdersList.vue'
+
+const router = useRouter()
+const analyticsStore = useAnalyticsStore()
+
+const loading = ref(false)
+const error = ref(null)
+
+const hourlyChartData = computed(() => {
+  return analyticsStore.hourlyOrders.map(item => ({
+    label: item.hour,
+    value: item.orders
+  }))
+})
+
+async function refreshData() {
+  loading.value = true
+  error.value = null
+
+  try {
+    await analyticsStore.fetchAllData()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+function viewReports() {
+  alert('Funcionalidad de reportes - En desarrollo')
+}
+
+function manageMenu() {
+  router.push('/menu')
+}
+
+function manageTables() {
+  router.push('/tables')
+}
+
+function manageUsers() {
+  router.push('/users')
+}
+
+onMounted(() => {
+  refreshData()
+
+  // Auto-refresh every 60 seconds
+  setInterval(() => {
+    if (!loading.value) {
+      refreshData()
+    }
+  }, 60000)
+})
+</script>
+
+<style scoped>
+.dashboard {
+  min-height: 100vh;
+}
+
+/* Header */
+.dashboard-header {
+  background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+  color: white;
+  padding: 2rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.dashboard-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2rem;
+}
+
+.subtitle {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 1rem;
+}
+
+.btn-refresh {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Loading */
+.loading-container {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 1rem;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #34495e;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error */
+.error-container {
+  text-align: center;
+  padding: 2rem;
+  background: #fadbd8;
+  border-radius: 8px;
+  color: #e74c3c;
+}
+
+.btn-retry {
+  margin-top: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Charts Section */
+.charts-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.chart-wrapper {
+  min-height: 300px;
+}
+
+/* Recent Section */
+.recent-section {
+  margin-bottom: 2rem;
+}
+
+/* Actions Section */
+.actions-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.actions-section h3 {
+  margin: 0 0 1rem 0;
+  color: #2c3e50;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.action-btn {
+  padding: 1rem;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+@media (max-width: 768px) {
+  .dashboard-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .btn-refresh {
+    position: static;
+    margin-top: 1rem;
+    width: 100%;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .charts-section {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

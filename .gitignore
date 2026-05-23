@@ -1,0 +1,20 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.db
+*.sqlite
+logs/
+temp/
+conversation_archive/
+optimization_logs/
+training/
+qr_codes/
+data/learning/
+vps/frontend-dist/
+backend/api-service-base/menu-service/nul
+/nul
+**/nul
+backend/whatsapp-gateway && cp*
+# Cloud Run env var files (contain real credentials - use .env instead)
+env-vars-*.yaml

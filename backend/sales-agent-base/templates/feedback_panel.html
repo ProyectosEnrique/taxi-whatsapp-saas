@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Feedback - Voice Assistant</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-800: #1f2937;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--gray-50);
+            color: var(--gray-800);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--gray-800);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            border-color: var(--primary);
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 5px;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+
+        .stat-card .subtext {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+        }
+
+        .stat-card.success .value { color: var(--success); }
+        .stat-card.warning .value { color: var(--warning); }
+        .stat-card.error .value { color: var(--error); }
+
+        /* Entry List */
+        .entry-list {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .entry-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--gray-100);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .entry-item:hover {
+            background: var(--gray-50);
+        }
+
+        .entry-item:last-child {
+            border-bottom: none;
+        }
+
+        .entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .entry-id {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--gray-600);
+        }
+
+        .entry-time {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+        }
+
+        .entry-user-input {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .entry-response {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        .entry-meta {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-intent {
+            background: var(--gray-100);
+            color: var(--gray-800);
+        }
+
+        .badge-state {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-correct {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-partial {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-incorrect {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-pending {
+            background: var(--gray-200);
+            color: var(--gray-600);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--gray-600);
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-800);
+        }
+
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Detail Section */
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-section h4 {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 5px;
+        }
+
+        .detail-section .content {
+            background: var(--gray-50);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        /* Recommendations */
+        .recommendation-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--gray-200);
+        }
+
+        .recommendation-card.high {
+            border-left-color: var(--error);
+        }
+
+        .recommendation-card.medium {
+            border-left-color: var(--warning);
+        }
+
+        .recommendation-card.low {
+            border-left-color: var(--success);
+        }
+
+        .recommendation-card h4 {
+            margin-bottom: 10px;
+        }
+
+        .recommendation-card p {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray-600);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Panel de Feedback - Agente de Ventas</h1>
+    </header>
+
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" data-panel="dashboard">Dashboard</div>
+            <div class="tab" data-panel="pending">Pendientes</div>
+            <div class="tab" data-panel="reviewed">Revisados</div>
+            <div class="tab" data-panel="recommendations">Recomendaciones</div>
+        </div>
+
+        <!-- Dashboard Panel -->
+        <div id="dashboard" class="panel active">
+            <div class="stats-grid" id="stats-container">
+                <div class="loading">Cargando estadisticas...</div>
+            </div>
+        </div>
+
+        <!-- Pending Panel -->
+        <div id="pending" class="panel">
+            <h2 style="margin-bottom: 15px;">Entradas Pendientes de Revision</h2>
+            <div class="entry-list" id="pending-list">
+                <div class="loading">Cargando...</div>
+            </div>
+        </div>
+
+        <!-- Reviewed Panel -->
+        <div id="reviewed" class="panel">
+            <h2 style="margin-bottom: 15px;">Entradas Revisadas</h2>
+            <div class="entry-list" id="reviewed-list">
+                <div class="loading">Cargando...</div>
+            </div>
+        </div>
+
+        <!-- Recommendations Panel -->
+        <div id="recommendations" class="panel">
+            <h2 style="margin-bottom: 15px;">Recomendaciones de Mejora</h2>
+            <div id="recommendations-list">
+                <div class="loading">Cargando...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Review Modal -->
+    <div class="modal-overlay" id="review-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Revisar Entrada</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Content loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="submitReview()">Guardar Revision</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/feedback';
+        let currentEntryId = null;
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.panel).classList.add('active');
+
+                // Load data for panel
+                loadPanelData(tab.dataset.panel);
+            });
+        });
+
+        // Load initial data
+        loadPanelData('dashboard');
+
+        async function loadPanelData(panel) {
+            switch(panel) {
+                case 'dashboard':
+                    await loadStats();
+                    break;
+                case 'pending':
+                    await loadPendingEntries();
+                    break;
+                case 'reviewed':
+                    await loadReviewedEntries();
+                    break;
+                case 'recommendations':
+                    await loadRecommendations();
+                    break;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats?days=7`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('stats-container').innerHTML = `
+                        <div class="stat-card">
+                            <h3>Total Interacciones</h3>
+                            <div class="value">${stats.total_entries}</div>
+                            <div class="subtext">ultimos 7 dias</div>
+                        </div>
+                        <div class="stat-card success">
+                            <h3>Tasa de Acierto</h3>
+                            <div class="value">${stats.accuracy_rate}%</div>
+                            <div class="subtext">${stats.correct_count} correctas</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <h3>Parcialmente Correctas</h3>
+                            <div class="value">${stats.partial_rate}%</div>
+                            <div class="subtext">${stats.partial_count} parciales</div>
+                        </div>
+                        <div class="stat-card error">
+                            <h3>Tasa de Error</h3>
+                            <div class="value">${stats.error_rate}%</div>
+                            <div class="subtext">${stats.incorrect_count} errores</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Pendientes</h3>
+                            <div class="value">${stats.pending_count}</div>
+                            <div class="subtext">por revisar</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Tasa Aceptacion</h3>
+                            <div class="value">${stats.acceptance_rate}%</div>
+                            <div class="subtext">sugerencias aceptadas</div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                document.getElementById('stats-container').innerHTML = '<div class="loading">Error cargando estadisticas</div>';
+            }
+        }
+
+        async function loadPendingEntries() {
+            try {
+                const response = await fetch(`${API_BASE}/pending?limit=50`);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderEntryList('pending-list', data.entries, true);
+                }
+            } catch (e) {
+                document.getElementById('pending-list').innerHTML = '<div class="loading">Error cargando datos</div>';
+            }
+        }
+
+        async function loadReviewedEntries() {
+            try {
+                const response = await fetch(`${API_BASE}/entries?days=7&limit=50`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const reviewed = data.entries.filter(e => e.rating !== 'pending');
+                    renderEntryList('reviewed-list', reviewed, false);
+                }
+            } catch (e) {
+                document.getElementById('reviewed-list').innerHTML = '<div class="loading">Error cargando datos</div>';
+            }
+        }
+
+        async function loadRecommendations() {
+            try {
+                const response = await fetch(`${API_BASE}/recommendations?days=7`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const container = document.getElementById('recommendations-list');
+
+                    if (data.recommendations.length === 0) {
+                        container.innerHTML = '<div class="loading">No hay recomendaciones por ahora</div>';
+                        return;
+                    }
+
+                    container.innerHTML = data.recommendations.map(rec => `
+                        <div class="recommendation-card ${rec.priority}">
+                            <h4>${rec.issue}</h4>
+                            <p><strong>Area:</strong> ${rec.area}</p>
+                            <p><strong>Sugerencia:</strong> ${rec.suggestion}</p>
+                            <p><strong>Accion:</strong> ${rec.action}</p>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                document.getElementById('recommendations-list').innerHTML = '<div class="loading">Error cargando recomendaciones</div>';
+            }
+        }
+
+        function renderEntryList(containerId, entries, showReviewButton) {
+            const container = document.getElementById(containerId);
+
+            if (entries.length === 0) {
+                container.innerHTML = '<div class="loading">No hay entradas</div>';
+                return;
+            }
+
+            container.innerHTML = entries.map(entry => `
+                <div class="entry-item" onclick="openReviewModal('${entry.id}')">
+                    <div class="entry-header">
+                        <span class="entry-id">#${entry.id}</span>
+                        <span class="entry-time">${new Date(entry.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div class="entry-user-input">"${entry.user_input}"</div>
+                    <div class="entry-response">${entry.system_response.substring(0, 100)}...</div>
+                    <div class="entry-meta">
+                        <span class="badge badge-intent">${entry.detected_intent}</span>
+                        ${entry.context_snapshot ? `<span class="badge badge-state">${entry.context_snapshot.state}</span>` : ''}
+                        <span class="badge badge-${entry.rating}">${entry.rating}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function openReviewModal(entryId) {
+            currentEntryId = entryId;
+
+            try {
+                const response = await fetch(`${API_BASE}/entry/${entryId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const entry = data.entry;
+                    document.getElementById('modal-body').innerHTML = `
+                        <div class="detail-section">
+                            <h4>Usuario dijo:</h4>
+                            <div class="content">"${entry.user_input}"</div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Sistema respondio:</h4>
+                            <div class="content">${entry.system_response}</div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Contexto:</h4>
+                            <div class="content">
+                                Intent: ${entry.detected_intent} (${(entry.intent_confidence * 100).toFixed(0)}%)<br>
+                                Estado: ${entry.context_snapshot?.state || 'N/A'}<br>
+                                Categoria: ${entry.context_snapshot?.active_category || 'Ninguna'}<br>
+                                Producto recomendado: ${entry.recommended_product || 'Ninguno'}
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Calificacion:</label>
+                            <select id="review-rating">
+                                <option value="pending" ${entry.rating === 'pending' ? 'selected' : ''}>Pendiente</option>
+                                <option value="correct" ${entry.rating === 'correct' ? 'selected' : ''}>Correcta</option>
+                                <option value="partial" ${entry.rating === 'partial' ? 'selected' : ''}>Parcialmente Correcta</option>
+                                <option value="incorrect" ${entry.rating === 'incorrect' ? 'selected' : ''}>Incorrecta</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tipos de Error:</label>
+                            <div class="checkbox-group">
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="wrong_intent"> Intent incorrecto
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="wrong_product"> Producto equivocado
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="premature_rec"> Recomendacion prematura
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="should_list"> Debia listar opciones
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="lost_context"> Perdio contexto
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="wrong_category"> Categoria incorrecta
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="too_pushy"> Muy insistente
+                                </label>
+                                <label class="checkbox-item">
+                                    <input type="checkbox" name="error" value="unclear"> Respuesta confusa
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Respuesta Esperada:</label>
+                            <textarea id="review-expected" placeholder="Que deberia haber respondido el sistema...">${entry.expected_response || ''}</textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Notas del Revisor:</label>
+                            <textarea id="review-notes" placeholder="Notas adicionales...">${entry.reviewer_notes || ''}</textarea>
+                        </div>
+                    `;
+
+                    // Mark existing errors
+                    entry.error_types?.forEach(err => {
+                        const checkbox = document.querySelector(`input[value="${err}"]`);
+                        if (checkbox) checkbox.checked = true;
+                    });
+
+                    document.getElementById('review-modal').classList.add('active');
+                }
+            } catch (e) {
+                alert('Error cargando entrada');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('review-modal').classList.remove('active');
+            currentEntryId = null;
+        }
+
+        async function submitReview() {
+            if (!currentEntryId) return;
+
+            const rating = document.getElementById('review-rating').value;
+            const errorTypes = Array.from(document.querySelectorAll('input[name="error"]:checked')).map(cb => cb.value);
+            const expectedResponse = document.getElementById('review-expected').value;
+            const notes = document.getElementById('review-notes').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/entry/${currentEntryId}/review`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rating: rating,
+                        error_types: errorTypes.length > 0 ? errorTypes : ['none'],
+                        expected_response: expectedResponse,
+                        reviewer_notes: notes,
+                        reviewer: 'web_panel'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    closeModal();
+                    // Reload current panel
+                    const activeTab = document.querySelector('.tab.active');
+                    loadPanelData(activeTab.dataset.panel);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error guardando revision');
+            }
+        }
+
+        // Close modal on overlay click
+        document.getElementById('review-modal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - Tienda Online</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .cart-items {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .cart-item:last-child {
+            border-bottom: none;
+        }
+
+        .item-info {
+            flex: 1;
+        }
+
+        .item-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .item-quantity {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .item-price {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .total-section {
+            padding: 20px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #eee;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .total-row.final {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+            padding-top: 12px;
+            border-top: 2px solid #ddd;
+        }
+
+        .payment-section {
+            padding: 20px;
+        }
+
+        .payment-method {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .payment-method:hover {
+            border-color: #667eea;
+            background: #f9f9ff;
+        }
+
+        .payment-method.selected {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .payment-method input[type="radio"] {
+            margin-right: 12px;
+        }
+
+        .payment-icon {
+            font-size: 24px;
+            margin-right: 12px;
+        }
+
+        .payment-info {
+            flex: 1;
+        }
+
+        .payment-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .payment-description {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .delivery-section {
+            padding: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .section-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #333;
+        }
+
+        .delivery-options {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .delivery-option {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .delivery-option:hover {
+            border-color: #667eea;
+        }
+
+        .delivery-option.selected {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .checkout-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .checkout-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .checkout-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .success-message {
+            padding: 20px;
+            text-align: center;
+            color: #22c55e;
+        }
+
+        .error-message {
+            padding: 16px;
+            background: #fee2e2;
+            color: #dc2626;
+            border-radius: 8px;
+            margin: 12px 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛒 Finalizar Compra</h1>
+            <p>Completa tu pedido de forma segura</p>
+        </div>
+
+        <!-- Carrito de compras -->
+        <div class="cart-items" id="cartItems">
+            <!-- Se llena dinámicamente -->
+        </div>
+
+        <!-- Total -->
+        <div class="total-section">
+            <div class="total-row">
+                <span>Subtotal:</span>
+                <span id="subtotal">$0.00</span>
+            </div>
+            <div class="total-row">
+                <span>Envío:</span>
+                <span id="shipping">$0.00</span>
+            </div>
+            <div class="total-row final">
+                <span>Total:</span>
+                <span id="total">$0.00</span>
+            </div>
+        </div>
+
+        <!-- Método de entrega -->
+        <div class="delivery-section">
+            <h3 class="section-title">📦 Método de entrega</h3>
+            <div class="delivery-options">
+                <div class="delivery-option selected" data-method="pickup">
+                    <div>🏪 Recoger</div>
+                    <small>15-20 min</small>
+                </div>
+                <div class="delivery-option" data-method="delivery">
+                    <div>🛵 Envío</div>
+                    <small>30-45 min</small>
+                </div>
+            </div>
+
+            <div id="addressField" class="hidden">
+                <input
+                    type="text"
+                    id="deliveryAddress"
+                    placeholder="Calle, número, colonia"
+                >
+            </div>
+
+            <textarea
+                id="customerNotes"
+                placeholder="Notas especiales para tu pedido (opcional)"
+            ></textarea>
+        </div>
+
+        <!-- Métodos de pago -->
+        <div class="payment-section">
+            <h3 class="section-title">💳 Método de pago</h3>
+            <div id="paymentMethods">
+                <!-- Se llena dinámicamente desde el backend -->
+            </div>
+
+            <div id="errorMessage" class="error-message hidden"></div>
+
+            <button class="checkout-button" id="checkoutBtn">
+                Confirmar Pedido
+            </button>
+        </div>
+
+        <!-- Mensaje de éxito (oculto inicialmente) -->
+        <div id="successSection" class="success-message hidden">
+            <h2>✅ ¡Pedido Confirmado!</h2>
+            <p>Te enviamos los detalles por WhatsApp</p>
+        </div>
+    </div>
+
+    <script>
+        // =================================================================
+        // CONFIGURACIÓN
+        // =================================================================
+
+        const API_URL = 'http://localhost:8080';  // Cambiar a tu URL
+
+        // Obtener token de sesión de la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionToken = urlParams.get('st');
+
+        if (!sessionToken) {
+            alert('Sesión inválida');
+        }
+
+        // =================================================================
+        // ESTADO DE LA APP
+        // =================================================================
+
+        const state = {
+            cart: [],
+            total: 0,
+            deliveryMethod: 'pickup',
+            selectedPaymentMethod: null,
+            paymentProviders: [],
+            restaurantId: null  // ID de la tienda/restaurante
+        };
+
+        // =================================================================
+        // INICIALIZACIÓN
+        // =================================================================
+
+        async function init() {
+            // 1. Cargar métodos de pago disponibles
+            await loadPaymentProviders();
+
+            // 2. Cargar carrito desde sessionStorage o backend
+            loadCart();
+
+            // 3. Renderizar UI
+            renderCart();
+            renderTotal();
+
+            // 4. Setup event listeners
+            setupEventListeners();
+        }
+
+        // =================================================================
+        // CARGAR DATOS
+        // =================================================================
+
+        async function loadPaymentProviders() {
+            try {
+                const response = await fetch(`${API_URL}/api/v1/payment/providers`);
+                const data = await response.json();
+                state.paymentProviders = data.providers.filter(p => p.enabled);
+                renderPaymentMethods();
+            } catch (error) {
+                console.error('Error cargando métodos de pago:', error);
+            }
+        }
+
+        async function loadCart() {
+            // Cargar desde el backend usando sessionToken
+            try {
+                const response = await fetch(`${API_URL}/api/v1/session/${sessionToken}`);
+
+                if (!response.ok) {
+                    throw new Error('Error cargando sesión');
+                }
+
+                const data = await response.json();
+
+                if (data.success && data.cart) {
+                    // Cargar carrito real desde la sesión
+                    state.cart = data.cart;
+                    state.restaurantId = data.restaurant_id;
+
+                    console.log(`[Cart] Cargado: ${state.cart.length} items - Restaurant: ${state.restaurantId}`);
+                } else {
+                    // Si no hay cart, usar array vacío
+                    state.cart = [];
+                    console.log('[Cart] Sin productos en carrito');
+                }
+
+                calculateTotal();
+            } catch (error) {
+                console.error('[Cart] Error cargando:', error);
+                // Fallback: usar carrito vacío
+                state.cart = [];
+                calculateTotal();
+            }
+        }
+
+        // =================================================================
+        // CÁLCULOS
+        // =================================================================
+
+        function calculateTotal() {
+            const subtotal = state.cart.reduce((sum, item) => {
+                return sum + (item.price * item.quantity);
+            }, 0);
+
+            const shipping = state.deliveryMethod === 'delivery' ? 30 : 0;
+
+            state.total = subtotal + shipping;
+
+            return { subtotal, shipping, total: state.total };
+        }
+
+        // =================================================================
+        // RENDERIZADO
+        // =================================================================
+
+        function renderCart() {
+            const container = document.getElementById('cartItems');
+
+            container.innerHTML = state.cart.map(item => `
+                <div class="cart-item">
+                    <div class="item-info">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-quantity">Cantidad: ${item.quantity}</div>
+                        ${item.notes ? `<div class="item-notes"><em>${item.notes}</em></div>` : ''}
+                    </div>
+                    <div class="item-price">$${(item.price * item.quantity).toFixed(2)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderTotal() {
+            const { subtotal, shipping, total } = calculateTotal();
+
+            document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`;
+            document.getElementById('shipping').textContent = `$${shipping.toFixed(2)}`;
+            document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+        }
+
+        function renderPaymentMethods() {
+            const container = document.getElementById('paymentMethods');
+
+            container.innerHTML = state.paymentProviders.map(provider => `
+                <label class="payment-method" data-provider="${provider.id}">
+                    <input
+                        type="radio"
+                        name="payment"
+                        value="${provider.id}"
+                    >
+                    <span class="payment-icon">${provider.icon}</span>
+                    <div class="payment-info">
+                        <div class="payment-name">${provider.name}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            // Seleccionar primer método por defecto
+            if (state.paymentProviders.length > 0) {
+                const firstRadio = container.querySelector('input[type="radio"]');
+                firstRadio.checked = true;
+                state.selectedPaymentMethod = state.paymentProviders[0].id;
+                container.querySelector('.payment-method').classList.add('selected');
+            }
+        }
+
+        // =================================================================
+        // EVENT LISTENERS
+        // =================================================================
+
+        function setupEventListeners() {
+            // Delivery method
+            document.querySelectorAll('.delivery-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    document.querySelectorAll('.delivery-option').forEach(o =>
+                        o.classList.remove('selected')
+                    );
+                    this.classList.add('selected');
+
+                    state.deliveryMethod = this.dataset.method;
+
+                    // Mostrar/ocultar campo de dirección
+                    const addressField = document.getElementById('addressField');
+                    if (state.deliveryMethod === 'delivery') {
+                        addressField.classList.remove('hidden');
+                    } else {
+                        addressField.classList.add('hidden');
+                    }
+
+                    renderTotal();
+                });
+            });
+
+            // Payment method
+            document.addEventListener('click', function(e) {
+                const paymentMethod = e.target.closest('.payment-method');
+                if (paymentMethod) {
+                    document.querySelectorAll('.payment-method').forEach(m =>
+                        m.classList.remove('selected')
+                    );
+                    paymentMethod.classList.add('selected');
+
+                    const radio = paymentMethod.querySelector('input[type="radio"]');
+                    radio.checked = true;
+                    state.selectedPaymentMethod = radio.value;
+                }
+            });
+
+            // Checkout button
+            document.getElementById('checkoutBtn').addEventListener('click', handleCheckout);
+        }
+
+        // =================================================================
+        // CHECKOUT
+        // =================================================================
+
+        async function handleCheckout() {
+            const btn = document.getElementById('checkoutBtn');
+            const errorMsg = document.getElementById('errorMessage');
+
+            // Validaciones
+            if (!state.selectedPaymentMethod) {
+                showError('Selecciona un método de pago');
+                return;
+            }
+
+            if (state.deliveryMethod === 'delivery') {
+                const address = document.getElementById('deliveryAddress').value;
+                if (!address.trim()) {
+                    showError('Ingresa tu dirección de entrega');
+                    return;
+                }
+            }
+
+            // Deshabilitar botón
+            btn.disabled = true;
+            btn.textContent = 'Procesando...';
+            errorMsg.classList.add('hidden');
+
+            try {
+                // 1. Iniciar pago (si es necesario)
+                let paymentStatus = 'pending';
+
+                if (state.selectedPaymentMethod === 'stripe') {
+                    // Aquí iría la integración con Stripe Elements
+                    // Por ahora, simular éxito
+                    paymentStatus = 'completed';
+                } else if (state.selectedPaymentMethod === 'mercadopago') {
+                    // Redirigir a checkout de Mercado Pago
+                    const paymentData = await initPayment();
+                    window.location.href = paymentData.checkout_url;
+                    return;
+                } else {
+                    // Efectivo o transferencia
+                    paymentStatus = 'pending';
+                }
+
+                // 2. Enviar checkout completo
+                const checkoutData = {
+                    session_token: sessionToken,
+                    cart: state.cart,
+                    total: state.total,
+                    payment_method: state.selectedPaymentMethod,
+                    payment_status: paymentStatus,
+                    customer_notes: document.getElementById('customerNotes').value,
+                    delivery_method: state.deliveryMethod,
+                    delivery_address: state.deliveryMethod === 'delivery'
+                        ? document.getElementById('deliveryAddress').value
+                        : null
+                };
+
+                const response = await fetch(`${API_URL}/api/v1/web-checkout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(checkoutData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Mostrar éxito
+                    document.querySelector('.cart-items').classList.add('hidden');
+                    document.querySelector('.total-section').classList.add('hidden');
+                    document.querySelector('.delivery-section').classList.add('hidden');
+                    document.querySelector('.payment-section').classList.add('hidden');
+                    document.getElementById('successSection').classList.remove('hidden');
+
+                    // Opcional: Redirigir después de 3 segundos
+                    setTimeout(() => {
+                        window.location.href = 'https://wa.me/' + result.phone;
+                    }, 3000);
+                } else {
+                    showError(result.message || 'Error al procesar el pedido');
+                }
+
+            } catch (error) {
+                console.error('Error en checkout:', error);
+                showError('Error al procesar el pedido. Intenta de nuevo.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirmar Pedido';
+            }
+        }
+
+        async function initPayment() {
+            const response = await fetch(`${API_URL}/api/v1/payment/init`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    session_token: sessionToken,
+                    provider: state.selectedPaymentMethod,
+                    amount: state.total
+                })
+            });
+
+            return await response.json();
+        }
+
+        function showError(message) {
+            const errorMsg = document.getElementById('errorMessage');
+            errorMsg.textContent = message;
+            errorMsg.classList.remove('hidden');
+        }
+
+        // =================================================================
+        // INICIO
+        // =================================================================
+
+        init();
+    </script>
+</body>
+</html>

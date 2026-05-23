@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "whatsapp-saas-demo",
+    "production": "whatsapp-saas-prod"
+  }
+}

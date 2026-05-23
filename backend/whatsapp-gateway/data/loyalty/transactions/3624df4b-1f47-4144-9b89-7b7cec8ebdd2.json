@@ -1,0 +1,16 @@
+{
+  "transaction_id": "3624df4b-1f47-4144-9b89-7b7cec8ebdd2",
+  "customer_phone": "5215512345678",
+  "restaurant_id": "carniceria",
+  "transaction_type": "redeem",
+  "points_change": -100,
+  "points_balance_after": 0,
+  "order_id": null,
+  "order_total": 500.0,
+  "description": "Canje de 100 puntos por $50.00",
+  "metadata": {
+    "discount_amount": 50.0,
+    "order_total": 500.0
+  },
+  "created_at": "2026-01-07 23:54:58.783824"
+}

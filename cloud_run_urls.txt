@@ -1,0 +1,3 @@
+whatsapp-gateway=https://whatsapp-gateway-308574626875.us-central1.run.app
+sales-agent-service=https://sales-agent-service-308574626875.us-central1.run.app
+api-service=https://api-service-308574626875.us-central1.run.app

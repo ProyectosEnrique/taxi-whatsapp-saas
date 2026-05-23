@@ -1,0 +1,30 @@
+{
+  "name": "taxi-system-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-End tests for Taxi System (Driver, Customer, Admin)",
+  "private": true,
+  "scripts": {
+    "test:e2e": "cypress run",
+    "test:e2e:headed": "cypress run --headed",
+    "test:e2e:driver": "cypress run --spec 'cypress/e2e/driver/**/*.cy.js'",
+    "test:e2e:customer": "cypress run --spec 'cypress/e2e/customer/**/*.cy.js'",
+    "test:e2e:admin": "cypress run --spec 'cypress/e2e/admin/**/*.cy.js'",
+    "test:open": "cypress open",
+    "test:ci": "start-server-and-test 'npm run start:all' 'http://localhost:3002|http://localhost:3004|http://localhost:8083' 'npm run test:e2e'",
+    "start:all": "concurrently \"npm run dev:driver\" \"npm run dev:customer\" \"npm run dev:admin\" \"npm run dev:backend\"",
+    "dev:driver": "cd frontend/driver-app && npm run dev",
+    "dev:customer": "cd frontend/taxi-customer-app && npm run dev",
+    "dev:admin": "cd frontend/admin-panel && npm run dev",
+    "dev:backend": "cd backend/sales-agent-base && uvicorn run_v2:app --reload"
+  },
+  "devDependencies": {
+    "cypress": "^13.6.2",
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.3.1",
+    "start-server-and-test": "^2.0.3",
+    "@cypress/code-coverage": "^3.12.18",
+    "mochawesome": "^7.1.3",
+    "mochawesome-merge": "^4.3.0",
+    "mochawesome-report-generator": "^6.2.0"
+  }
+}

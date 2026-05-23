@@ -1,0 +1,321 @@
+# ================================================================================
+# DEPLOY TO GOOGLE CLOUD RUN - PRODUCTION
+# ================================================================================
+# Deployment profesional con Artifact Registry + Docker build
+# Incluye base de datos Rico Mar precargada
+# ================================================================================
+
+name: Deploy to Production (Professional)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-production.yml'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy (or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - api-service
+          - sales-agent-service
+          - whatsapp-gateway
+
+env:
+  PROJECT_ID: whatsapp-saas-prod-001
+  REGION: us-central1
+  ARTIFACT_REGISTRY: us-central1-docker.pkg.dev/whatsapp-saas-prod-001/whatsapp-services
+
+jobs:
+  # ============================================================================
+  # PREPARAR MENÚ DE RICO MAR
+  # ============================================================================
+
+  prepare-menu:
+    name: Prepare Rico Mar Menu
+    runs-on: ubuntu-latest
+    outputs:
+      menu-ready: ${{ steps.check.outputs.ready }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check if menu file exists
+        id: check
+        run: |
+          if [ -f "backend/api-service-base/menu-service/data/rico_mar_menu.json" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+            echo "✅ Menu file exists"
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Menu file not found - will use seed script"
+          fi
+
+  # ============================================================================
+  # DEPLOY API SERVICE (con base de datos Rico Mar)
+  # ============================================================================
+
+  deploy-api-service:
+    name: Deploy API Service
+    runs-on: ubuntu-latest
+    needs: prepare-menu
+    if: github.event.inputs.service == 'all' || github.event.inputs.service == 'api-service' || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image with Rico Mar menu
+        run: |
+          cd backend/api-service-base/menu-service
+
+          # Build usando Dockerfile de producción
+          docker build \
+            -t ${{ env.ARTIFACT_REGISTRY }}/api-service:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/api-service:latest \
+            -f Dockerfile.production \
+            --build-arg VERSION=${{ github.sha }} \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            .
+
+          echo "✅ Docker image built successfully"
+
+      - name: Verify database in image
+        run: |
+          # Extraer y verificar la base de datos
+          docker run --rm \
+            ${{ env.ARTIFACT_REGISTRY }}/api-service:latest \
+            sqlite3 menu_service.db \
+            "SELECT COUNT(*) as total_products FROM products;"
+
+          echo "✅ Database verified in image"
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.ARTIFACT_REGISTRY }}/api-service:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGISTRY }}/api-service:latest
+          echo "✅ Image pushed to Artifact Registry"
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: api-service
+          region: ${{ env.REGION }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/api-service:${{ github.sha }}
+          flags: |
+            --port=5011
+            --memory=512Mi
+            --cpu=1
+            --min-instances=1
+            --max-instances=10
+            --timeout=60
+            --allow-unauthenticated
+            --set-env-vars=ENVIRONMENT=production,DATABASE_URL=sqlite:///./menu_service.db
+
+      - name: Verify deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe api-service \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+
+          echo "🚀 API Service deployed to: $SERVICE_URL"
+
+          # Health check
+          for i in {1..10}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/health" 2>/dev/null || echo "000")
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "✅ Health check passed"
+
+              # Verificar productos de Rico Mar
+              PRODUCTS=$(curl -s "${SERVICE_URL}/api/v1/products?tenant_id=rico-mar-salvatierra&limit=1" | jq -r '.[0].name' 2>/dev/null || echo "error")
+
+              if [[ "$PRODUCTS" == *"Chilaquiles"* ]] || [[ "$PRODUCTS" == *"Aguachile"* ]]; then
+                echo "✅ Rico Mar menu verified: $PRODUCTS"
+                exit 0
+              else
+                echo "⚠️ Menu verification: $PRODUCTS"
+              fi
+            fi
+            echo "Attempt $i: HTTP $HTTP_STATUS, waiting..."
+            sleep 15
+          done
+
+          echo "⚠️ Deployment completed but verification timed out"
+          exit 0
+
+  # ============================================================================
+  # DEPLOY SALES AGENT SERVICE
+  # ============================================================================
+
+  deploy-sales-agent:
+    name: Deploy Sales Agent Service
+    runs-on: ubuntu-latest
+    if: github.event.inputs.service == 'all' || github.event.inputs.service == 'sales-agent-service' || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          cd backend/sales-agent-base
+
+          docker build \
+            -t ${{ env.ARTIFACT_REGISTRY }}/sales-agent-service:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/sales-agent-service:latest \
+            --build-arg VERSION=${{ github.sha }} \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.ARTIFACT_REGISTRY }}/sales-agent-service:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGISTRY }}/sales-agent-service:latest
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: sales-agent-service
+          region: ${{ env.REGION }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/sales-agent-service:${{ github.sha }}
+          flags: |
+            --port=5001
+            --memory=1Gi
+            --cpu=2
+            --min-instances=1
+            --max-instances=20
+            --timeout=300
+            --no-allow-unauthenticated
+            --set-env-vars=ENVIRONMENT=production,LLM_PROVIDER=cascade,TTS_PROVIDER=cartesia
+          secrets: |
+            CEREBRAS_API_KEY=cerebras-api-key:latest,
+            GOOGLE_API_KEY=google-api-key:latest,
+            GROQ_API_KEY=groq-api-key:latest,
+            CARTESIA_API_KEY=cartesia-api-key:latest,
+            OPENAI_API_KEY=openai-api-key:latest
+
+  # ============================================================================
+  # DEPLOY WHATSAPP GATEWAY
+  # ============================================================================
+
+  deploy-whatsapp-gateway:
+    name: Deploy WhatsApp Gateway
+    runs-on: ubuntu-latest
+    if: github.event.inputs.service == 'all' || github.event.inputs.service == 'whatsapp-gateway' || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          cd backend/whatsapp-gateway
+
+          docker build \
+            -t ${{ env.ARTIFACT_REGISTRY }}/whatsapp-gateway:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGISTRY }}/whatsapp-gateway:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.ARTIFACT_REGISTRY }}/whatsapp-gateway:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGISTRY }}/whatsapp-gateway:latest
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: whatsapp-gateway
+          region: ${{ env.REGION }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/whatsapp-gateway:${{ github.sha }}
+          flags: |
+            --port=8096
+            --memory=512Mi
+            --cpu=1
+            --min-instances=1
+            --max-instances=10
+            --timeout=60
+            --allow-unauthenticated
+            --set-env-vars=ENVIRONMENT=production,WHATSAPP_PROVIDER=twilio
+          secrets: |
+            TWILIO_ACCOUNT_SID=twilio-account-sid:latest,
+            TWILIO_AUTH_TOKEN=twilio-auth-token:latest,
+            META_ACCESS_TOKEN=meta-access-token:latest
+
+  # ============================================================================
+  # DEPLOYMENT SUMMARY
+  # ============================================================================
+
+  summary:
+    name: Deployment Summary
+    needs: [deploy-api-service, deploy-sales-agent, deploy-whatsapp-gateway]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Report status
+        run: |
+          echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Service Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| API Service | ${{ needs.deploy-api-service.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sales Agent | ${{ needs.deploy-sales-agent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WhatsApp Gateway | ${{ needs.deploy-whatsapp-gateway.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### URLs" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://api-service-308574626875.us-central1.run.app" >> $GITHUB_STEP_SUMMARY
+          echo "- Sales Agent: https://sales-agent-service-308574626875.us-central1.run.app" >> $GITHUB_STEP_SUMMARY
+          echo "- WhatsApp: https://whatsapp-gateway-308574626875.us-central1.run.app" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,106 @@
+# ============================================
+# VOICE RESTAURANT ASSISTANT - REQUIREMENTS
+# Dependencias para integración de voz + restaurante
+# v2.5.0 - Con Cartesia Sonic TTS ultra-rápido
+# ============================================
+
+# Web Framework
+Flask[async]==3.0.0
+Flask-CORS==4.0.0
+Werkzeug==3.0.1
+asgiref==3.7.2
+
+# HTTP Client
+httpx==0.27.0
+requests==2.31.0
+
+# Speech-to-Text (Deepgram)
+deepgram-sdk==3.2.7
+
+# NLP - LLM Providers (Multi-provider cascade)
+# Capa gratuita (en orden de preferencia):
+groq==0.4.2                    # Groq Cloud (Llama 3.1 8B) - legacy
+# Cerebras usa el SDK de OpenAI con base_url diferente, no necesita paquete adicional
+
+# Capa premium (en orden de preferencia):
+google-generativeai>=0.8.0     # Google Gemini 1.5 Pro (NUEVO - reemplaza GPT-4o)
+openai>=1.0.0                  # OpenAI GPT-4o - legacy
+
+# ============================================
+# NLU - Sentence Transformers (Búsqueda Semántica)
+# ============================================
+# Mejora ~20% accuracy en clasificación de intents
+# Usa modelo paraphrase-multilingual-MiniLM-L12-v2 para español
+sentence-transformers>=3.0.0
+numpy>=1.24.0
+
+# ============================================
+# RAG - Retrieval Augmented Generation
+# ============================================
+# ChromaDB para almacenamiento vectorial persistente
+# Usado en farmacias para búsqueda avanzada de medicamentos
+chromadb>=0.4.22
+hnswlib>=0.8.0  # Vector indexing (usado por ChromaDB)
+
+# ============================================
+# LoRA - Fine-tuning Local
+# ============================================
+# Para usar modelos fine-tuned localmente
+# Modelo entrenado en: /app/models/lora (TinyLlama + LoRA r=16)
+peft>=0.7.0
+accelerate>=0.25.0
+# bitsandbytes solo en Linux (no soportado en Windows)
+# bitsandbytes>=0.41.0;platform_system!="Windows"
+
+# ============================================
+# Text-to-Speech (Multi-provider cascade)
+# ============================================
+# Primary: Cartesia Sonic 3 (~90ms latency) - RECOMMENDED
+cartesia>=1.0.0
+
+# Fallback 1: Piper TTS (local, gratuito)
+# Ya incluido via docker, no requiere pip
+
+# Fallback 2: gTTS (Google TTS, basico)
+gTTS==2.5.0
+
+# Alternative Premium: ElevenLabs
+# elevenlabs>=1.0.0  # Descomentar si se usa
+
+# Configuration
+python-dotenv==1.0.0
+pydantic==2.6.3
+pydantic-settings==2.2.1
+PyYAML==6.0.1
+
+# Async support
+aiohttp==3.9.1
+aiofiles==23.2.1
+asyncio==3.4.3
+
+# Audio Processing
+soundfile==0.12.1
+pydub==0.25.1
+
+# QR Code Generation
+qrcode[pil]==7.4.2
+Pillow==10.2.0
+
+# Utilities
+python-jose[cryptography]==3.3.0  # JWT tokens
+passlib[bcrypt]==1.7.4  # Password hashing
+uuid==1.30
+
+# Logging
+structlog==24.1.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+asyncpg==0.29.0
+
+# Event Bus - Redis (desacopla servicios)
+redis>=5.0.0
+
+# Monitoring - Prometheus (métricas profesionales)
+prometheus-client==0.19.0

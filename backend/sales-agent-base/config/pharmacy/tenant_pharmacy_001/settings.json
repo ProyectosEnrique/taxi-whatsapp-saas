@@ -1,0 +1,43 @@
+{
+  "tenant_id": "tenant_pharmacy_001",
+  "business_info": {
+    "name": "Farmacia Santa Fe",
+    "type": "pharmacy",
+    "specialty": "farmacia_general",
+    "phone": "+5215587654321",
+    "address": "Calle Salud 789, Ciudad",
+    "active": true
+  },
+  "branding": {
+    "greeting_message": "Hola, bienvenido a Farmacia Santa Fe. ¿En qué puedo ayudarte hoy?",
+    "tone": "professional",
+    "language": "es-MX",
+    "primary_color": "#10B981",
+    "secondary_color": "#059669"
+  },
+  "business_rules": {
+    "min_order_amount": 50.0,
+    "delivery_fee": 20.0,
+    "prescription_verification": true,
+    "age_verification_required": true,
+    "controlled_substances_check": true,
+    "operating_hours": {
+      "monday": "08:00-22:00",
+      "tuesday": "08:00-22:00",
+      "wednesday": "08:00-22:00",
+      "thursday": "08:00-22:00",
+      "friday": "08:00-22:00",
+      "saturday": "09:00-21:00",
+      "sunday": "09:00-18:00"
+    }
+  },
+  "features": {
+    "upselling_enabled": true,
+    "recommendations_enabled": true,
+    "loyalty_program": false,
+    "voice_enabled": false,
+    "payment_methods": ["cash", "card", "transfer"],
+    "prescription_upload": true,
+    "medication_reminders": false
+  }
+}

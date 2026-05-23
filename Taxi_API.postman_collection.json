@@ -1,0 +1,850 @@
+{
+	"info": {
+		"_postman_id": "taxi-api-collection-v1",
+		"name": "Taxi System API",
+		"description": "Collection completa de endpoints para el sistema de gestión de taxis\n\n**Variables de entorno requeridas:**\n- `base_url`: URL base del API\n- `token`: Token JWT de autenticación\n- `tenant_id`: ID del tenant\n- `driver_id`: ID del conductor (se autocompleta)\n- `customer_id`: ID del cliente (se autocompleta)\n- `ride_id`: ID del viaje (se autocompleta)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login Driver",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('token', response.token);",
+									"    pm.environment.set('driver_id', response.user.id);",
+									"    pm.test('Token guardado correctamente', true);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+525512345678\",\n  \"password\": \"driver123\",\n  \"user_type\": \"driver\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Login Customer",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('token', response.token);",
+									"    pm.environment.set('customer_id', response.user.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+525555555555\",\n  \"password\": \"customer123\",\n  \"user_type\": \"customer\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Register New Driver",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+525512345679\",\n  \"password\": \"newdriver123\",\n  \"name\": \"Carlos Rodriguez\",\n  \"email\": \"carlos@example.com\",\n  \"user_type\": \"driver\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "register"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Drivers",
+			"item": [
+				{
+					"name": "List Drivers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/drivers?tenant_id={{tenant_id}}&status=available&page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["drivers"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "status",
+									"value": "available"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Driver by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/drivers/{{driver_id}}?tenant_id={{tenant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["drivers", "{{driver_id}}"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Driver",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"name\": \"Juan Pérez\",\n  \"phone\": \"+525512345678\",\n  \"email\": \"juan@example.com\",\n  \"license_number\": \"ABC123456\",\n  \"license_expiry\": \"2025-12-31\",\n  \"password\": \"driver123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/drivers",
+							"host": ["{{base_url}}"],
+							"path": ["drivers"]
+						}
+					}
+				},
+				{
+					"name": "Update Driver Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"available\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/drivers/{{driver_id}}/status",
+							"host": ["{{base_url}}"],
+							"path": ["drivers", "{{driver_id}}", "status"]
+						}
+					}
+				},
+				{
+					"name": "Update Driver Location",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"lat\": 19.4326,\n  \"lon\": -99.1332,\n  \"heading\": 90\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/drivers/{{driver_id}}/location",
+							"host": ["{{base_url}}"],
+							"path": ["drivers", "{{driver_id}}", "location"]
+						}
+					}
+				},
+				{
+					"name": "Find Nearby Drivers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/drivers/nearby?tenant_id={{tenant_id}}&lat=19.4326&lon=-99.1332&radius_km=5&vehicle_type=sedan",
+							"host": ["{{base_url}}"],
+							"path": ["drivers", "nearby"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "lat",
+									"value": "19.4326"
+								},
+								{
+									"key": "lon",
+									"value": "-99.1332"
+								},
+								{
+									"key": "radius_km",
+									"value": "5"
+								},
+								{
+									"key": "vehicle_type",
+									"value": "sedan"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Driver Schedules",
+			"item": [
+				{
+					"name": "Get Schedule Templates",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/driver/schedule/templates",
+							"host": ["{{base_url}}"],
+							"path": ["driver", "schedule", "templates"]
+						}
+					}
+				},
+				{
+					"name": "Get Driver Schedules",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/driver/schedule?driver_id={{driver_id}}&tenant_id={{tenant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["driver", "schedule"],
+							"query": [
+								{
+									"key": "driver_id",
+									"value": "{{driver_id}}"
+								},
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{driver_id}}\",\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"day_of_week\": 0,\n  \"shift_type\": \"morning\",\n  \"start_time\": \"06:00\",\n  \"end_time\": \"14:00\",\n  \"break_start\": \"10:00\",\n  \"break_end\": \"10:30\",\n  \"is_active\": true,\n  \"is_recurring\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/driver/schedule",
+							"host": ["{{base_url}}"],
+							"path": ["driver", "schedule"]
+						}
+					}
+				},
+				{
+					"name": "Create Bulk Schedules (Mon-Fri)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{driver_id}}\",\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"schedules\": [\n    {\n      \"day_of_week\": 0,\n      \"shift_type\": \"morning\",\n      \"start_time\": \"06:00\",\n      \"end_time\": \"14:00\",\n      \"break_start\": \"10:00\",\n      \"break_end\": \"10:30\"\n    },\n    {\n      \"day_of_week\": 1,\n      \"shift_type\": \"morning\",\n      \"start_time\": \"06:00\",\n      \"end_time\": \"14:00\",\n      \"break_start\": \"10:00\",\n      \"break_end\": \"10:30\"\n    },\n    {\n      \"day_of_week\": 2,\n      \"shift_type\": \"morning\",\n      \"start_time\": \"06:00\",\n      \"end_time\": \"14:00\",\n      \"break_start\": \"10:00\",\n      \"break_end\": \"10:30\"\n    },\n    {\n      \"day_of_week\": 3,\n      \"shift_type\": \"morning\",\n      \"start_time\": \"06:00\",\n      \"end_time\": \"14:00\",\n      \"break_start\": \"10:00\",\n      \"break_end\": \"10:30\"\n    },\n    {\n      \"day_of_week\": 4,\n      \"shift_type\": \"morning\",\n      \"start_time\": \"06:00\",\n      \"end_time\": \"14:00\",\n      \"break_start\": \"10:00\",\n      \"break_end\": \"10:30\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/driver/schedule/bulk",
+							"host": ["{{base_url}}"],
+							"path": ["driver", "schedule", "bulk"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Rides",
+			"item": [
+				{
+					"name": "Calculate Fare Estimate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"origin_lat\": 19.4326,\n  \"origin_lon\": -99.1332,\n  \"destination_lat\": 19.3907,\n  \"destination_lon\": -99.2837,\n  \"vehicle_type\": \"sedan\",\n  \"promo_code\": \"SUMMER2024\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides/estimate",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "estimate"]
+						}
+					}
+				},
+				{
+					"name": "Request Ride",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('ride_id', response.ride.ride_id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"origin_address\": \"Av. Insurgentes Sur 1234, CDMX\",\n  \"origin_lat\": 19.4326,\n  \"origin_lon\": -99.1332,\n  \"destination_address\": \"Aeropuerto Internacional CDMX\",\n  \"destination_lat\": 19.3907,\n  \"destination_lon\": -99.2837,\n  \"payment_method\": \"cash\",\n  \"promo_code\": \"SUMMER2024\",\n  \"notes\": \"Por favor usar la entrada principal\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides",
+							"host": ["{{base_url}}"],
+							"path": ["rides"]
+						}
+					}
+				},
+				{
+					"name": "Get Ride Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rides/{{ride_id}}?tenant_id={{tenant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "{{ride_id}}"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Assign Driver to Ride",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driver_id\": \"{{driver_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides/{{ride_id}}/assign",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "{{ride_id}}", "assign"]
+						}
+					}
+				},
+				{
+					"name": "Start Ride",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"started\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides/{{ride_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "{{ride_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Complete Ride",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actual_distance_km\": 13.2,\n  \"actual_duration_minutes\": 30,\n  \"final_fare\": 195.00\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides/{{ride_id}}/complete",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "{{ride_id}}", "complete"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Ride",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cancelled_by\": \"customer\",\n  \"reason\": \"Cambio de planes\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/rides/{{ride_id}}/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["rides", "{{ride_id}}", "cancel"]
+						}
+					}
+				},
+				{
+					"name": "List Rides",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rides?tenant_id={{tenant_id}}&status=completed&page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["rides"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "status",
+									"value": "completed"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Ratings",
+			"item": [
+				{
+					"name": "Create Rating",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenant_id}}\",\n  \"ride_id\": \"{{ride_id}}\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"driver_id\": \"{{driver_id}}\",\n  \"rating\": 4.5,\n  \"review\": \"Excelente servicio, muy puntual y amable\",\n  \"punctuality_rating\": 5.0,\n  \"cleanliness_rating\": 4.5,\n  \"driving_rating\": 4.5,\n  \"communication_rating\": 5.0,\n  \"rating_type\": \"customer_to_driver\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/ratings",
+							"host": ["{{base_url}}"],
+							"path": ["ratings"]
+						}
+					}
+				},
+				{
+					"name": "List Ratings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/ratings?tenant_id={{tenant_id}}&driver_id={{driver_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["ratings"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "driver_id",
+									"value": "{{driver_id}}"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Promo Codes",
+			"item": [
+				{
+					"name": "Validate Promo Code",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"SUMMER2024\",\n  \"customer_id\": \"{{customer_id}}\",\n  \"fare_amount\": 200.00\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/promo-codes/validate",
+							"host": ["{{base_url}}"],
+							"path": ["promo-codes", "validate"]
+						}
+					}
+				},
+				{
+					"name": "List Promo Codes",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/promo-codes?tenant_id={{tenant_id}}&active=true",
+							"host": ["{{base_url}}"],
+							"path": ["promo-codes"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "active",
+									"value": "true"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Analytics",
+			"item": [
+				{
+					"name": "Get Dashboard Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/dashboard?tenant_id={{tenant_id}}&from_date=2024-01-01&to_date=2024-01-31",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "dashboard"],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenant_id}}"
+								},
+								{
+									"key": "from_date",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "to_date",
+									"value": "2024-01-31"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Driver Earnings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/driver/{{driver_id}}/earnings?period=month",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "driver", "{{driver_id}}", "earnings"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								}
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"pm.test('Status code is successful', function () {",
+					"    pm.expect(pm.response.code).to.be.oneOf([200, 201, 204]);",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "tenant_id",
+			"value": "tenant_taxi_001",
+			"type": "string"
+		},
+		{
+			"key": "driver_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "customer_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "ride_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

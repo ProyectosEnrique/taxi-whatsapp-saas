@@ -1,0 +1,46 @@
+# ================================================================================
+# VOICE ASSISTANT - DOCKER IGNORE
+# ================================================================================
+
+# Legacy code - DO NOT include in Docker image
+_legacy/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests
+tests/
+test_*.py
+pytest.ini
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.md
+docs/
+
+# Temp and logs (created inside container)
+temp/
+logs/
+*.log
+
+# Local config
+.env.local
+.env.development

@@ -1,0 +1,48 @@
+{
+  "restaurant_id": "demo_grocery",
+  "enabled": true,
+  "points_per_currency": 0.2,
+  "currency_per_point": 0.3,
+  "min_points_to_redeem": 100,
+  "max_redeem_percentage": 50.0,
+  "points_expire_days": 90,
+  "tiers_enabled": true,
+  "tier_thresholds": {
+    "bronce": 0,
+    "plata": 500,
+    "oro": 1500,
+    "platino": 3000
+  },
+  "tier_multipliers": {
+    "bronce": 1.0,
+    "plata": 1.3,
+    "oro": 1.6,
+    "platino": 2.0
+  },
+  "tier_benefits": {
+    "bronce": {
+      "discount": 0,
+      "free_shipping": false
+    },
+    "plata": {
+      "discount": 2,
+      "free_shipping": true
+    },
+    "oro": {
+      "discount": 5,
+      "free_shipping": true
+    },
+    "platino": {
+      "discount": 8,
+      "free_shipping": true
+    }
+  },
+  "birthday_bonus": 100,
+  "referral_bonus": 60,
+  "first_purchase_bonus": 50,
+  "notify_points_earned": true,
+  "notify_tier_upgrade": true,
+  "notify_points_expiring": true,
+  "created_at": "2026-01-11T19:00:00.000000",
+  "updated_at": "2026-01-11T19:00:00.000000"
+}

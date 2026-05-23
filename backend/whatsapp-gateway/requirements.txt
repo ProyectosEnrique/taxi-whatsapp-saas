@@ -1,0 +1,47 @@
+# ================================================================================
+# WHATSAPP GATEWAY - Dependencies
+# ================================================================================
+
+# Framework web
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Cliente HTTP async
+aiohttp==3.9.1
+
+# Redis para sesiones
+redis==5.0.1
+
+# Variables de entorno
+python-dotenv==1.0.0
+
+# Validación
+pydantic==2.5.2
+pydantic-settings==2.1.0
+
+# Formularios (para Twilio webhook)
+python-multipart==0.0.6
+
+# Logging estructurado
+structlog==23.2.0
+
+# Utilidades
+httpx==0.25.2
+
+# Speech-to-Text (Deepgram) para notas de voz
+deepgram-sdk==3.0.0
+
+# Base de datos PostgreSQL
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.13.0
+
+# Autenticación JWT
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Twilio SDK (para provisión de números)
+twilio==8.10.0
+
+# Utilidades adicionales
+python-slugify==8.0.1

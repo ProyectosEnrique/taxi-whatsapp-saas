@@ -1,0 +1,48 @@
+{
+  "restaurant_id": "demo_services",
+  "enabled": true,
+  "points_per_currency": 0.08,
+  "currency_per_point": 0.7,
+  "min_points_to_redeem": 200,
+  "max_redeem_percentage": 40.0,
+  "points_expire_days": 365,
+  "tiers_enabled": true,
+  "tier_thresholds": {
+    "bronce": 0,
+    "plata": 1500,
+    "oro": 4000,
+    "platino": 8000
+  },
+  "tier_multipliers": {
+    "bronce": 1.0,
+    "plata": 1.5,
+    "oro": 2.0,
+    "platino": 3.0
+  },
+  "tier_benefits": {
+    "bronce": {
+      "discount": 0,
+      "free_shipping": false
+    },
+    "plata": {
+      "discount": 5,
+      "free_shipping": false
+    },
+    "oro": {
+      "discount": 10,
+      "free_shipping": false
+    },
+    "platino": {
+      "discount": 15,
+      "free_shipping": false
+    }
+  },
+  "birthday_bonus": 180,
+  "referral_bonus": 120,
+  "first_purchase_bonus": 100,
+  "notify_points_earned": true,
+  "notify_tier_upgrade": true,
+  "notify_points_expiring": true,
+  "created_at": "2026-01-11T19:00:00.000000",
+  "updated_at": "2026-01-11T19:00:00.000000"
+}

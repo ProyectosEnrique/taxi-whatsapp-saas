@@ -1,0 +1,112 @@
+# ================================================================================
+# DOCKERFILE - MENU SERVICE (PRODUCTION) - MULTI-TENANT
+# ================================================================================
+# Build con base de datos multi-tenant precargada:
+# - Rico Mar Salvatierra (173 productos - mariscos)
+# - Taxi Rápido (servicio de taxis)
+# - Vinetería Don Juan (vinos y licores)
+# - Farmacia Santa Fe (800+ medicamentos)
+# ================================================================================
+
+# ==============================================================================
+# STAGE 1: Builder con seed multi-tenant
+# ==============================================================================
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Instalar dependencias de sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    sqlite3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements e instalar dependencias
+COPY requirements.txt .
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copiar código fuente
+COPY src/ /app/src/
+COPY config/ /app/config/
+
+# Copiar script de seed unificado
+COPY seed_all_tenants.py /app/
+
+# Copiar TODOS los archivos JSON de tenants
+RUN mkdir -p /app/data
+COPY data/rico_mar_menu.json /app/data/
+COPY data/pharmacy_products.json /app/data/
+COPY data/wine_products.json /app/data/
+COPY data/taxi_service.json /app/data/
+COPY data/tenants_config.json /app/data/
+
+# ⭐ EJECUTAR SEED DE TODOS LOS TENANTS
+# Esto crea menu_service.db con TODOS los tenants
+ENV PYTHONPATH=/app
+RUN python seed_all_tenants.py || (echo "❌ Seed failed" && exit 1)
+
+# Verificar que se creó la base de datos correctamente
+RUN sqlite3 menu_service.db "SELECT tenant_id, COUNT(*) FROM products GROUP BY tenant_id;" && \
+    echo "✅ Base de datos multi-tenant creada con éxito"
+
+# ==============================================================================
+# STAGE 2: Runtime con base de datos multi-tenant precargada
+# ==============================================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar solo runtime dependencies
+RUN apt-get update && apt-get install -y \
+    sqlite3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar virtualenv desde builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copiar código de la aplicación
+COPY --from=builder /app/src /app/src
+COPY --from=builder /app/config /app/config
+
+# ⭐ COPIAR BASE DE DATOS MULTI-TENANT PRECARGADA
+COPY --from=builder /app/menu_service.db /app/menu_service.db
+
+# Crear directorio de datos con permisos
+RUN mkdir -p /app/data && \
+    chmod 755 /app/data && \
+    chmod 644 /app/menu_service.db
+
+# Crear usuario no-root
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Variables de entorno
+ENV DATABASE_URL=sqlite:///./menu_service.db
+ENV PYTHONPATH=/app
+ENV ENVIRONMENT=production
+ENV LOG_LEVEL=INFO
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5011/health || exit 1
+
+# Exponer puerto
+EXPOSE 5011
+
+# Comando de producción con gunicorn
+CMD ["gunicorn", "src.main:app", \
+     "--workers", "2", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:5011", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--log-level", "info"]
