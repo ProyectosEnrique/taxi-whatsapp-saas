@@ -26,7 +26,7 @@ networks:
     driver: bridge
   mandaya_net:
     external: true
-    name: mandaya_net
+    name: mandaya_prod_mandaya_net
   traefik-public:
     external: true
     name: traefik-public
