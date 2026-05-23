@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Driver, Trip, TripStatus
+from ..models import Driver, Trip, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_driver
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
@@ -239,21 +240,32 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
 
 @router.post("/seed-demo", include_in_schema=False)
 def seed_demo_drivers(db: Session = Depends(get_db)):
-    """Crea conductores de demo si no existen. Solo para desarrollo."""
+    """Crea conductores de demo + grupo de flota si no existen. Solo para desarrollo."""
+    # Crear / recuperar grupo demo
+    group = db.query(TaxiGroup).filter(TaxiGroup.name == "Taxi Demo Flota").first()
+    if not group:
+        wa = settings.WHATSAPP_NUMBER or "+521234500000"
+        group = TaxiGroup(name="Taxi Demo Flota", whatsapp_number=wa)
+        db.add(group)
+        db.flush()
+
     demos = [
-        dict(phone="+521234567001", name="Carlos Méndez",   password="demo1234",
-             vehicle_brand="Toyota", vehicle_model="Corolla", vehicle_plates="ABC-123", vehicle_color="Blanco", vehicle_year=2020),
-        dict(phone="+521234567002", name="María González",  password="demo1234",
-             vehicle_brand="Nissan", vehicle_model="Versa",   vehicle_plates="XYZ-456", vehicle_color="Gris",  vehicle_year=2021),
-        dict(phone="+521234567003", name="Roberto Sánchez", password="demo1234",
-             vehicle_brand="Chevrolet", vehicle_model="Aveo", vehicle_plates="DEF-789", vehicle_color="Negro", vehicle_year=2019),
+        dict(phone="+521234567001", name="Carlos Méndez",   password="demo1234", driver_code="carlos-001",
+             vehicle_brand="Toyota",    vehicle_model="Corolla", vehicle_plates="ABC-123", vehicle_color="Blanco", vehicle_year=2020),
+        dict(phone="+521234567002", name="María González",  password="demo1234", driver_code="maria-001",
+             vehicle_brand="Nissan",    vehicle_model="Versa",   vehicle_plates="XYZ-456", vehicle_color="Gris",   vehicle_year=2021),
+        dict(phone="+521234567003", name="Roberto Sánchez", password="demo1234", driver_code="roberto-001",
+             vehicle_brand="Chevrolet", vehicle_model="Aveo",    vehicle_plates="DEF-789", vehicle_color="Negro",  vehicle_year=2019),
     ]
     created = []
     for d in demos:
-        if not db.query(Driver).filter(Driver.phone == d["phone"]).first():
+        existing = db.query(Driver).filter(Driver.phone == d["phone"]).first()
+        if not existing:
             driver = Driver(
                 phone=d["phone"], name=d["name"],
                 password_hash=hash_password(d["password"]),
+                driver_code=d["driver_code"],
+                group_id=group.id,
                 vehicle_brand=d["vehicle_brand"], vehicle_model=d["vehicle_model"],
                 vehicle_plates=d["vehicle_plates"], vehicle_color=d["vehicle_color"],
                 vehicle_year=d["vehicle_year"],
@@ -262,5 +274,15 @@ def seed_demo_drivers(db: Session = Depends(get_db)):
             )
             db.add(driver)
             created.append(d["name"])
+        elif not existing.driver_code:
+            existing.driver_code = d["driver_code"]
+            existing.group_id    = group.id
     db.commit()
-    return {"created": created, "message": f"{len(created)} conductor(es) creado(s)"}
+    base = settings.PUBLIC_URL
+    links = [f"{base}/u/{d['driver_code']}" for d in demos]
+    return {
+        "created": created,
+        "message": f"{len(created)} conductor(es) creado(s)",
+        "group": group.name,
+        "landing_pages": links,
+    }

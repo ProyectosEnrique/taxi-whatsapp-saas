@@ -228,6 +228,25 @@ class ProductAlias(Base):
 
 
 # ==============================================================================
+# TAXI GROUP MODEL — Flota / empresa de taxis
+# ==============================================================================
+
+class TaxiGroup(Base):
+    __tablename__ = "taxi_groups"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    name            = Column(String(150), nullable=False)
+    whatsapp_number = Column(String(30), nullable=False)   # e.g. "+15551234567"
+    is_active       = Column(Boolean, default=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    drivers = relationship("Driver", back_populates="group")
+
+    def __repr__(self):
+        return f"<TaxiGroup(id={self.id}, name='{self.name}')>"
+
+
+# ==============================================================================
 # TRIP MODEL — Viajes de taxi con soporte de pago MercadoPago
 # ==============================================================================
 
@@ -298,9 +317,10 @@ class Customer(Base):
     phone        = Column(String(30), unique=True, nullable=False, index=True)
     name         = Column(String(150))
     email        = Column(String(150))
-    password_hash = Column(String(255), nullable=False)
-    is_active    = Column(Boolean, default=True)
-    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+    password_hash       = Column(String(255), nullable=False)
+    is_active           = Column(Boolean, default=True)
+    preferred_driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f"<Customer(phone='{self.phone}', name='{self.name}')>"
@@ -335,6 +355,11 @@ class Driver(Base):
     rating         = Column(Numeric(3, 2), default=5.00)
     total_trips    = Column(Integer, default=0)
     total_earnings = Column(Numeric(10, 2), default=0)
+
+    # QR / flota
+    driver_code = Column(String(30), unique=True, index=True)  # slug para URL: "carlos-a1b2"
+    group_id    = Column(Integer, ForeignKey("taxi_groups.id"), nullable=True)
+    group       = relationship("TaxiGroup", back_populates="drivers")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

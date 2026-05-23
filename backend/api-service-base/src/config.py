@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     PUBLIC_URL: str = "https://taxi.nexoai.lat"
     BUSINESS_NAME: str = "Taxi App"
     WHATSAPP_GATEWAY_URL: str = "http://taxi-whatsapp:8000"
+    WHATSAPP_NUMBER: str = ""           # número de flota, e.g. "+15551234567"
 
     # ==============================================================================
     # CONFIG FROM ENV FILE
