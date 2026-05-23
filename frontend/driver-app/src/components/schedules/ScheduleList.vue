@@ -151,6 +151,6 @@ const confirmDelete = (schedule) => {
 }
 
 .schedule-item:hover {
-  @apply transform scale-102;
+  transform: scale(1.02);
 }
 </style>
