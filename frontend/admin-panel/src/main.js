@@ -9,6 +9,7 @@ import DriversManagement from './views/DriversManagement.vue'
 import RidesMonitor from './views/RidesMonitor.vue'
 import IncidentsView from './views/IncidentsView.vue'
 import FareConfiguration from './views/FareConfiguration.vue'
+import PromosManagement from './views/PromosManagement.vue'
 
 const basePath = window.location.pathname.startsWith('/admin') ? '/admin' : '/'
 
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: '/rides',     component: RidesMonitor },
     { path: '/incidents', component: IncidentsView },
     { path: '/fares',     component: FareConfiguration },
+    { path: '/promos',    component: PromosManagement },
   ]
 })
 

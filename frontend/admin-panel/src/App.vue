@@ -62,5 +62,6 @@ const navItems = [
   { to: '/rides',     icon: '🗺️', label: 'Monitor de Viajes' },
   { to: '/incidents', icon: '🚨', label: 'Incidentes' },
   { to: '/fares',     icon: '💰', label: 'Tarifas' },
+  { to: '/promos',    icon: '🏷️', label: 'Promociones' },
 ]
 </script>
