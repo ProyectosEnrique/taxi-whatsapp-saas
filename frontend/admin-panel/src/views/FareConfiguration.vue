@@ -7,13 +7,42 @@
         <p class="text-gray-600 mt-1">Administra los precios y recargos del servicio</p>
       </div>
 
-      <button @click="saveConfiguration" class="btn btn-primary">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <button @click="saveConfiguration" :disabled="saving" class="btn btn-primary">
+        <svg v-if="saving" class="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <svg v-else class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
         </svg>
-        Guardar Cambios
+        {{ saving ? 'Guardando...' : 'Guardar Cambios' }}
       </button>
     </div>
+
+    <!-- Toast -->
+    <transition name="fade">
+      <div
+        v-if="toast"
+        :class="[
+          'fixed top-6 right-6 z-50 px-5 py-3 rounded-lg shadow-lg text-white text-sm font-medium flex items-center space-x-2',
+          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        ]"
+      >
+        <span>{{ toast.type === 'success' ? '✓' : '✗' }}</span>
+        <span>{{ toast.message }}</span>
+      </div>
+    </transition>
+
+    <!-- Loading overlay -->
+    <div v-if="loading" class="flex items-center justify-center py-20 text-gray-500">
+      <svg class="w-8 h-8 animate-spin mr-3" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+      Cargando configuración...
+    </div>
+
+    <div v-else>
 
     <!-- Warning Banner -->
     <div v-if="hasUnsavedChanges" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
@@ -366,21 +395,26 @@
         </section>
       </div>
     </div>
+    </div> <!-- end v-else -->
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 
-// State
+const API = '/api/v1/admin'
+
 const activeSection = ref('base')
 const hasUnsavedChanges = ref(false)
+const loading = ref(false)
+const saving = ref(false)
+const toast = ref(null) // { type: 'success'|'error', message }
 
 const sections = [
-  { id: 'base',     label: 'Tarifas Base',        emoji: '💵' },
-  { id: 'surge',    label: 'Surge Pricing',        emoji: '📈' },
-  { id: 'special',  label: 'Recargos Especiales',  emoji: '⭐' },
-  { id: 'discounts',label: 'Descuentos',           emoji: '🏷️' },
+  { id: 'base',      label: 'Tarifas Base',        emoji: '💵' },
+  { id: 'surge',     label: 'Surge Pricing',        emoji: '📈' },
+  { id: 'special',   label: 'Recargos Especiales',  emoji: '⭐' },
+  { id: 'discounts', label: 'Descuentos',           emoji: '🏷️' },
 ]
 
 const config = reactive({
@@ -389,42 +423,79 @@ const config = reactive({
   per_minute_rate: 2.0,
   minimum_fare: 70.0,
   surge_pricing: {
-    enabled: true,
+    enabled: false,
     peak_hours_multiplier: 1.3,
     late_night_multiplier: 1.5,
-    weekend_multiplier: 1.2
+    weekend_multiplier: 1.2,
   },
   special_charges: {
     airport_pickup: 30.0,
     airport_dropoff: 30.0,
     extra_passenger: 10.0,
-    luggage: 5.0
+    luggage: 5.0,
   },
   discounts: {
     frequent_rider: 0.10,
-    corporate: 0.15
-  }
+    corporate: 0.15,
+  },
 })
 
-// Methods
+function applyConfig(data) {
+  config.base_fare        = data.base_fare
+  config.per_km_rate      = data.per_km_rate
+  config.per_minute_rate  = data.per_minute_rate
+  config.minimum_fare     = data.minimum_fare
+  Object.assign(config.surge_pricing,   data.surge_pricing   || {})
+  Object.assign(config.special_charges, data.special_charges || {})
+  Object.assign(config.discounts,       data.discounts       || {})
+}
+
+function showToast(type, message) {
+  toast.value = { type, message }
+  setTimeout(() => { toast.value = null }, 3500)
+}
+
 function markAsChanged() {
   hasUnsavedChanges.value = true
 }
 
 function calculateExample() {
-  const distance = 10
-  const duration = 20
-  const fare = config.base_fare + (distance * config.per_km_rate) + (duration * config.per_minute_rate)
+  const fare = config.base_fare + 10 * config.per_km_rate + 20 * config.per_minute_rate
   return Math.max(fare, config.minimum_fare).toFixed(2)
 }
 
-async function saveConfiguration() {
-  // TODO: Llamar API para guardar
-  console.log('Saving configuration:', config)
-  hasUnsavedChanges.value = false
+onMounted(async () => {
+  loading.value = true
+  try {
+    const res = await fetch(`${API}/fares`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    applyConfig(await res.json())
+    hasUnsavedChanges.value = false
+  } catch (e) {
+    showToast('error', 'No se pudo cargar la configuración')
+  } finally {
+    loading.value = false
+  }
+})
 
-  // Mostrar notificación de éxito
-  alert('Configuración guardada exitosamente')
+async function saveConfiguration() {
+  saving.value = true
+  try {
+    const res = await fetch(`${API}/fares`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    if (data.config) applyConfig(data.config)
+    hasUnsavedChanges.value = false
+    showToast('success', 'Configuración guardada correctamente')
+  } catch (e) {
+    showToast('error', 'Error al guardar: ' + e.message)
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -438,10 +509,13 @@ async function saveConfiguration() {
 }
 
 .btn {
-  @apply px-6 py-3 rounded-lg font-medium transition-colors flex items-center;
+  @apply px-6 py-3 rounded-lg font-medium transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-primary {
   @apply bg-blue-600 text-white hover:bg-blue-700;
 }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

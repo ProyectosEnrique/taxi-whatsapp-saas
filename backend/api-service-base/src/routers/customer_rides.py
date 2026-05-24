@@ -12,12 +12,10 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_customer
+from ..fare_service import get_fare_config, calculate_fare
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/customer", tags=["customer"])
-
-BASE_FARE_MXN   = 20.0   # tarifa base
-FARE_PER_KM_MXN = 4.5    # por kilómetro
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,7 +120,7 @@ def update_profile(payload: dict, current: Customer = Depends(get_current_custom
 # ── Rides ─────────────────────────────────────────────────────────────────────
 
 @router.post("/rides/estimate")
-def estimate_fare(payload: dict, current: Customer = Depends(get_current_customer)):
+def estimate_fare(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
     def _lng(obj): return float(obj.get("lng") or obj.get("lon") or 0)
@@ -134,7 +132,8 @@ def estimate_fare(payload: dict, current: Customer = Depends(get_current_custome
     except Exception:
         dist = 3.0
     dist  = max(dist, 1.0)
-    fare  = round(BASE_FARE_MXN + dist * FARE_PER_KM_MXN, 2)
+    cfg   = get_fare_config(db)
+    fare  = calculate_fare(cfg, dist)
     mins  = max(5, int(dist * 2.5))
     return {"estimate": {"fare": fare, "distance_km": round(dist, 2), "duration_minutes": mins, "currency": "MXN"}}
 
@@ -153,7 +152,8 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
     except Exception:
         dist = 3.0
     dist = max(dist, 1.0)
-    fare = round(BASE_FARE_MXN + dist * FARE_PER_KM_MXN, 2)
+    cfg  = get_fare_config(db)
+    fare = calculate_fare(cfg, dist)
 
     trip = Trip(
         customer_phone      = current.phone,
@@ -235,7 +235,8 @@ def schedule_ride(payload: dict, current: Customer = Depends(get_current_custome
     except Exception:
         dist = 3.0
     dist = max(dist, 1.0)
-    fare = round(BASE_FARE_MXN + dist * FARE_PER_KM_MXN, 2)
+    cfg  = get_fare_config(db)
+    fare = calculate_fare(cfg, dist)
 
     # Pre-asignar al conductor preferido del cliente
     preferred = None

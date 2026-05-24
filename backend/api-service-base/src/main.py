@@ -140,7 +140,18 @@ async def lifespan(app: FastAPI):
         ("trips", "preferred_driver_name",   "VARCHAR(150)"),
         ("trips", "driver_released_at",      "DATETIME"),
     ]
-    # La tabla incidents la crea create_all automáticamente (modelo nuevo)
+    # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
+    # Sembrar fare_config fila única si no existe
+    try:
+        from .models import FareConfig
+        with SessionLocal() as _db:
+            if not _db.query(FareConfig).filter(FareConfig.id == 1).first():
+                _db.add(FareConfig(id=1))
+                _db.commit()
+                logger.info("fare_config: fila inicial creada")
+    except Exception as _fc_err:
+        logger.debug(f"fare_config seed: {_fc_err}")
+
     try:
         from sqlalchemy import text
         with engine.connect() as conn:

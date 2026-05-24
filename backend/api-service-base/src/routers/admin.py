@@ -11,8 +11,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Driver, Trip, TripStatus, Incident
+from ..models import Driver, Trip, TripStatus, Incident, FareConfig
 from ..auth import hash_password
+from ..fare_service import get_fare_config, fare_config_to_dict, invalidate_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -195,6 +196,48 @@ def delete_driver(phone: str, db: Session = Depends(get_db)):
     driver.is_online = False
     db.commit()
     return {"success": True}
+
+
+# ── Fare Config ───────────────────────────────────────────────────────────────
+
+@router.get("/fares")
+def get_fares(db: Session = Depends(get_db)):
+    cfg = get_fare_config(db)
+    return fare_config_to_dict(cfg)
+
+
+@router.put("/fares")
+def update_fares(payload: dict, db: Session = Depends(get_db)):
+    cfg = db.query(FareConfig).filter(FareConfig.id == 1).first()
+    if not cfg:
+        cfg = FareConfig(id=1)
+        db.add(cfg)
+
+    if "base_fare"       in payload: cfg.base_fare       = payload["base_fare"]
+    if "per_km_rate"     in payload: cfg.per_km_rate      = payload["per_km_rate"]
+    if "per_minute_rate" in payload: cfg.per_minute_rate  = payload["per_minute_rate"]
+    if "minimum_fare"    in payload: cfg.minimum_fare     = payload["minimum_fare"]
+
+    surge = payload.get("surge_pricing", {})
+    if "enabled"               in surge: cfg.surge_enabled           = surge["enabled"]
+    if "peak_hours_multiplier" in surge: cfg.surge_peak_multiplier   = surge["peak_hours_multiplier"]
+    if "late_night_multiplier" in surge: cfg.surge_night_multiplier  = surge["late_night_multiplier"]
+    if "weekend_multiplier"    in surge: cfg.surge_weekend_multiplier = surge["weekend_multiplier"]
+
+    charges = payload.get("special_charges", {})
+    if "airport_pickup"  in charges: cfg.charge_airport_pickup  = charges["airport_pickup"]
+    if "airport_dropoff" in charges: cfg.charge_airport_dropoff = charges["airport_dropoff"]
+    if "extra_passenger" in charges: cfg.charge_extra_passenger = charges["extra_passenger"]
+    if "luggage"         in charges: cfg.charge_luggage         = charges["luggage"]
+
+    discounts = payload.get("discounts", {})
+    if "frequent_rider" in discounts: cfg.discount_frequent_rider = discounts["frequent_rider"]
+    if "corporate"      in discounts: cfg.discount_corporate      = discounts["corporate"]
+
+    db.commit()
+    db.refresh(cfg)
+    invalidate_cache()
+    return {"success": True, "config": fare_config_to_dict(cfg)}
 
 
 # ── Rides ─────────────────────────────────────────────────────────────────────

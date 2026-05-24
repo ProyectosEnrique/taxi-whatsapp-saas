@@ -399,6 +399,43 @@ class Incident(Base):
         return f"<Incident(incident_id='{self.incident_id}', reporter='{self.reporter_phone}')>"
 
 
+# ==============================================================================
+# FARE CONFIG MODEL — fila única (id=1), configurable desde panel admin
+# ==============================================================================
+
+class FareConfig(Base):
+    __tablename__ = "fare_config"
+
+    id              = Column(Integer, primary_key=True, default=1)
+
+    # Tarifas base
+    base_fare       = Column(Numeric(10, 2), default=50.0)
+    per_km_rate     = Column(Numeric(10, 2), default=8.0)
+    per_minute_rate = Column(Numeric(10, 2), default=2.0)
+    minimum_fare    = Column(Numeric(10, 2), default=70.0)
+
+    # Surge pricing
+    surge_enabled          = Column(Boolean, default=False)
+    surge_peak_multiplier  = Column(Numeric(4, 2), default=1.3)  # 7-9am, 6-9pm
+    surge_night_multiplier = Column(Numeric(4, 2), default=1.5)  # 11pm-5am
+    surge_weekend_multiplier = Column(Numeric(4, 2), default=1.2)
+
+    # Recargos especiales
+    charge_airport_pickup  = Column(Numeric(10, 2), default=30.0)
+    charge_airport_dropoff = Column(Numeric(10, 2), default=30.0)
+    charge_extra_passenger = Column(Numeric(10, 2), default=10.0)
+    charge_luggage         = Column(Numeric(10, 2), default=5.0)
+
+    # Descuentos (fracción: 0.10 = 10%)
+    discount_frequent_rider = Column(Numeric(4, 3), default=0.10)
+    discount_corporate      = Column(Numeric(4, 3), default=0.15)
+
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<FareConfig(base={self.base_fare}, per_km={self.per_km_rate})>"
+
+
 class TripRating(Base):
     __tablename__ = "trip_ratings"
 
