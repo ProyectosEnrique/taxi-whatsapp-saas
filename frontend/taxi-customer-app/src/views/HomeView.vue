@@ -364,11 +364,16 @@ watch(() => locationStore.origin, async (loc) => {
 })
 
 watch(() => locationStore.destination, async (loc) => {
+  // Sync the text input (handles pre-fill from Sofia or other external sources)
+  if (loc?.address) destinationSearch.value = loc.address
+  else if (!loc) destinationSearch.value = ''
+
   if (!leafletMap) return
   if (loc?.lat && loc?.lng) {
     placeDestMarker(loc.lat, loc.lng)
     if (locationStore.origin) {
       await drawRoute(locationStore.origin.lat, locationStore.origin.lng, loc.lat, loc.lng)
+      estimateFare()
     } else {
       leafletMap.flyTo([loc.lat, loc.lng], 15, { duration: 1 })
     }
@@ -573,6 +578,15 @@ onMounted(async () => {
   })
 
   await initMap()
+
+  // Sync inputs if pre-filled externally (e.g. por Sofia antes de navegar aquí)
+  if (locationStore.destination?.address) {
+    destinationSearch.value = locationStore.destination.address
+    if (locationStore.canRequestRide) estimateFare()
+  }
+  if (locationStore.origin?.address) {
+    originSearch.value = locationStore.origin.address
+  }
 })
 
 onUnmounted(() => {
