@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup
+from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, PromoCode
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare
 
@@ -119,6 +119,50 @@ def update_profile(payload: dict, current: Customer = Depends(get_current_custom
 
 # ── Rides ─────────────────────────────────────────────────────────────────────
 
+def _apply_promo(code: str | None, fare: float, db: Session) -> tuple[float, str | None]:
+    """Aplica descuento de promo si el código es válido. Retorna (fare_final, promo_code_usado)."""
+    if not code:
+        return fare, None
+    code = code.strip().upper()
+    promo = db.query(PromoCode).filter(
+        PromoCode.code == code,
+        PromoCode.is_active == True,
+    ).first()
+    if not promo:
+        return fare, None
+    if promo.expires_at and promo.expires_at < datetime.now(timezone.utc):
+        return fare, None
+    if promo.max_uses > 0 and promo.used_count >= promo.max_uses:
+        return fare, None
+    promo.used_count += 1
+    discounted = round(fare * (1 - float(promo.discount_pct)), 2)
+    return discounted, code
+
+
+@router.post("/promo/validate")
+def validate_promo(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+    code = (payload.get("code") or "").strip().upper()
+    if not code:
+        raise HTTPException(400, "code requerido")
+    promo = db.query(PromoCode).filter(
+        PromoCode.code == code,
+        PromoCode.is_active == True,
+    ).first()
+    if not promo:
+        return {"valid": False, "message": "Código no válido"}
+    if promo.expires_at and promo.expires_at < datetime.now(timezone.utc):
+        return {"valid": False, "message": "Código expirado"}
+    if promo.max_uses > 0 and promo.used_count >= promo.max_uses:
+        return {"valid": False, "message": "Código agotado"}
+    pct = int(float(promo.discount_pct) * 100)
+    return {
+        "valid": True,
+        "discount_pct": float(promo.discount_pct),
+        "description": promo.description or f"{pct}% de descuento",
+        "message": f"¡{pct}% de descuento aplicado!",
+    }
+
+
 @router.post("/rides/estimate")
 def estimate_fare(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
@@ -154,6 +198,7 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
     dist = max(dist, 1.0)
     cfg  = get_fare_config(db)
     fare = calculate_fare(cfg, dist)
+    fare, promo_used = _apply_promo(payload.get("promo_code"), fare, db)
 
     trip = Trip(
         customer_phone      = current.phone,
@@ -173,7 +218,7 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
     db.add(trip)
     db.commit()
     db.refresh(trip)
-    logger.info(f"[Rides] Viaje {trip.trip_id} solicitado por {current.phone}")
+    logger.info(f"[Rides] Viaje {trip.trip_id} solicitado por {current.phone}" + (f" promo={promo_used}" if promo_used else ""))
     return {"ride": _trip_to_dict(trip)}
 
 
@@ -183,7 +228,7 @@ def get_active_ride(current: Customer = Depends(get_current_customer), db: Sessi
         db.query(Trip)
         .filter(
             Trip.customer_phone == current.phone,
-            Trip.status.in_([TripStatus.REQUESTED, TripStatus.CONFIRMED, TripStatus.IN_PROGRESS]),
+            Trip.status.in_([TripStatus.REQUESTED, TripStatus.CONFIRMED, TripStatus.DRIVER_ARRIVED, TripStatus.IN_PROGRESS]),
         )
         .order_by(Trip.created_at.desc())
         .first()

@@ -301,6 +301,9 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { driverApi } from '../services/api'
+import { useToast } from '../composables/useToast'
+
+const { success: toastSuccess, error: toastError } = useToast()
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -350,10 +353,10 @@ const saveVehicle = async () => {
       vehicle: { ...vehicleForm }
     })
 
-    alert('Vehículo actualizado exitosamente')
+    toastSuccess('Vehículo actualizado')
     editingVehicle.value = false
   } catch (err) {
-    alert('Error al actualizar vehículo')
+    toastError('Error al actualizar vehículo')
   } finally {
     saving.value = false
   }

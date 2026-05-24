@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Driver, Trip, TripStatus, Incident, FareConfig
+from ..models import Driver, Trip, TripStatus, Incident, FareConfig, PromoCode
 from ..auth import hash_password
 from ..fare_service import get_fare_config, fare_config_to_dict, invalidate_cache
 
@@ -256,3 +256,81 @@ def list_rides(
             pass
     trips = q.order_by(Trip.created_at.desc()).limit(limit).all()
     return {"rides": [_trip_to_dict(t) for t in trips]}
+
+
+# ── Promo Codes ───────────────────────────────────────────────────────────────
+
+def _promo_to_dict(p: PromoCode) -> dict:
+    return {
+        "id":           p.id,
+        "code":         p.code,
+        "discount_pct": float(p.discount_pct),
+        "description":  p.description or "",
+        "is_active":    p.is_active,
+        "max_uses":     p.max_uses,
+        "used_count":   p.used_count,
+        "expires_at":   p.expires_at.isoformat() if p.expires_at else None,
+        "created_at":   p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+@router.get("/promos")
+def list_promos(db: Session = Depends(get_db)):
+    promos = db.query(PromoCode).order_by(PromoCode.created_at.desc()).all()
+    return {"promos": [_promo_to_dict(p) for p in promos]}
+
+
+@router.post("/promos")
+def create_promo(payload: dict, db: Session = Depends(get_db)):
+    code = (payload.get("code") or "").strip().upper()
+    if not code:
+        raise HTTPException(400, "code requerido")
+    if db.query(PromoCode).filter(PromoCode.code == code).first():
+        raise HTTPException(409, "Código ya existe")
+    discount = float(payload.get("discount_pct", 0.10))
+    if not (0 < discount <= 1):
+        raise HTTPException(400, "discount_pct debe ser entre 0 y 1")
+    expires_at = None
+    if payload.get("expires_at"):
+        try:
+            expires_at = datetime.fromisoformat(payload["expires_at"].replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "expires_at inválido, usa ISO 8601")
+    promo = PromoCode(
+        code         = code,
+        discount_pct = discount,
+        description  = payload.get("description", ""),
+        is_active    = payload.get("is_active", True),
+        max_uses     = int(payload.get("max_uses", 0)),
+        expires_at   = expires_at,
+    )
+    db.add(promo)
+    db.commit()
+    db.refresh(promo)
+    return {"success": True, "promo": _promo_to_dict(promo)}
+
+
+@router.put("/promos/{code}")
+def update_promo(code: str, payload: dict, db: Session = Depends(get_db)):
+    promo = db.query(PromoCode).filter(PromoCode.code == code.upper()).first()
+    if not promo:
+        raise HTTPException(404, "Código no encontrado")
+    if "is_active"    in payload: promo.is_active    = payload["is_active"]
+    if "discount_pct" in payload: promo.discount_pct = float(payload["discount_pct"])
+    if "description"  in payload: promo.description  = payload["description"]
+    if "max_uses"     in payload: promo.max_uses      = int(payload["max_uses"])
+    if "expires_at"   in payload:
+        promo.expires_at = datetime.fromisoformat(payload["expires_at"].replace("Z", "+00:00")) if payload["expires_at"] else None
+    db.commit()
+    db.refresh(promo)
+    return {"success": True, "promo": _promo_to_dict(promo)}
+
+
+@router.delete("/promos/{code}")
+def delete_promo(code: str, db: Session = Depends(get_db)):
+    promo = db.query(PromoCode).filter(PromoCode.code == code.upper()).first()
+    if not promo:
+        raise HTTPException(404, "Código no encontrado")
+    db.delete(promo)
+    db.commit()
+    return {"success": True}

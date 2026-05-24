@@ -302,8 +302,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
 import { useDriverStore } from '../stores/driverStore'
 import { ridesApi } from '../services/api'
+import { useToast } from '../composables/useToast'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const { success: toastSuccess, error: toastError } = useToast()
 
 const router = useRouter()
 const route = useRoute()
@@ -463,7 +466,7 @@ const handleStartRide = async () => {
     ride.value = result.ride
     startTimer()
   } else {
-    alert(result.error || 'Error al iniciar el viaje')
+    toastError(result.error || 'Error al iniciar el viaje')
   }
   submitting.value = false
 }
@@ -480,10 +483,10 @@ const handleCompleteRide = async () => {
   })
 
   if (result.success) {
-    alert('¡Viaje completado exitosamente!')
+    toastSuccess('¡Viaje completado exitosamente!')
     router.push('/dashboard')
   } else {
-    alert(result.error || 'Error al completar el viaje')
+    toastError(result.error || 'Error al completar el viaje')
     submitting.value = false
   }
 }
@@ -493,10 +496,10 @@ const handleCancelRide = async () => {
   const result = await rideStore.cancelRide(rideId.value, cancelReason.value)
 
   if (result.success) {
-    alert('Viaje cancelado')
+    toastSuccess('Viaje cancelado')
     router.push('/dashboard')
   } else {
-    alert(result.error || 'Error al cancelar el viaje')
+    toastError(result.error || 'Error al cancelar el viaje')
     submitting.value = false
   }
 }

@@ -124,6 +124,9 @@
 import { ref, computed, onMounted, defineComponent, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { useToast } from '../composables/useToast'
+
+const { error: toastError } = useToast()
 
 const router = useRouter()
 const rideStore = useRideStore()
@@ -158,7 +161,7 @@ const handleClaim = async (rideId) => {
   claiming.value = rideId
   const result = await rideStore.claimScheduledRide(rideId)
   claiming.value = null
-  if (!result.success) alert(result.error || 'No se pudo reservar')
+  if (!result.success) toastError(result.error || 'No se pudo reservar')
 }
 
 const handleRelease = async () => {
@@ -167,7 +170,7 @@ const handleRelease = async () => {
   const result = await rideStore.releaseScheduledRide(rideToRelease.value.ride_id)
   releasing.value = false
   rideToRelease.value = null
-  if (!result.success) alert(result.error || 'No se pudo liberar')
+  if (!result.success) toastError(result.error || 'No se pudo liberar')
 }
 
 // Componente inline para las tarjetas de viaje

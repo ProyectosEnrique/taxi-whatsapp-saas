@@ -255,6 +255,7 @@ class TripStatus(str, enum.Enum):
     DRIVER_RELEASED  = "driver_released"
     REQUESTED        = "requested"
     CONFIRMED        = "confirmed"
+    DRIVER_ARRIVED   = "driver_arrived"
     IN_PROGRESS      = "in_progress"
     COMPLETED        = "completed"
     CANCELLED        = "cancelled"
@@ -434,6 +435,23 @@ class FareConfig(Base):
 
     def __repr__(self):
         return f"<FareConfig(base={self.base_fare}, per_km={self.per_km_rate})>"
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    code         = Column(String(50), unique=True, nullable=False, index=True)
+    discount_pct = Column(Numeric(4, 3), default=0.10)   # 0.0 – 1.0
+    description  = Column(String(200), default="")
+    is_active    = Column(Boolean, default=True)
+    max_uses     = Column(Integer, default=0)             # 0 = ilimitado
+    used_count   = Column(Integer, default=0)
+    expires_at   = Column(DateTime(timezone=True), nullable=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<PromoCode(code='{self.code}', discount={self.discount_pct})>"
 
 
 class TripRating(Base):

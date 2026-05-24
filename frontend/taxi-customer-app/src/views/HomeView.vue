@@ -200,8 +200,12 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLocationStore } from '../stores/locationStore'
 import { useRideStore } from '../stores/rideStore'
+import { useToast } from '../composables/useToast'
+import { ridesApi, promoApi } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const { success: toastSuccess, error: toastError, info: toastInfo } = useToast()
 
 const router = useRouter()
 const locationStore = useLocationStore()
@@ -357,6 +361,8 @@ const showDestinationResults = ref(false)
 const requesting = ref(false)
 const showPromoCode = ref(false)
 const promoCode = ref('')
+const promoDiscount = ref(0)
+const promoValidating = ref(false)
 
 const estimatedFare = computed(() => rideStore.estimatedFare)
 const favoriteLocations = computed(() => locationStore.favoriteLocations)
@@ -428,9 +434,8 @@ const clearDestination = () => {
 const getCurrentLocation = async () => {
   try {
     await locationStore.getCurrentLocation()
-    // El watcher de currentLocation mueve el mapa automáticamente
   } catch (err) {
-    alert('No se pudo obtener la ubicación')
+    toastError('No se pudo obtener la ubicación')
   }
 }
 
@@ -451,8 +456,23 @@ const estimateFare = async () => {
 }
 
 const validatePromo = async () => {
-  if (promoCode.value) {
-    alert(`Código ${promoCode.value} aplicado`)
+  const code = promoCode.value.trim()
+  if (!code) return
+  promoValidating.value = true
+  promoDiscount.value = 0
+  try {
+    const res = await promoApi.validatePromo(code)
+    if (res.valid) {
+      promoDiscount.value = res.discount_pct
+      toastSuccess(res.message)
+    } else {
+      toastError(res.message || 'Código no válido')
+      promoCode.value = ''
+    }
+  } catch {
+    toastError('Error al validar el código')
+  } finally {
+    promoValidating.value = false
   }
 }
 
@@ -474,10 +494,10 @@ const requestRide = async () => {
     if (result.success) {
       router.push(`/ride/${result.ride.ride_id}`)
     } else {
-      alert(result.error || 'Error al solicitar viaje')
+      toastError(result.error || 'Error al solicitar viaje')
     }
   } catch (err) {
-    alert('Error de conexión')
+    toastError('Error de conexión')
   } finally {
     requesting.value = false
   }

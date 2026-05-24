@@ -158,6 +158,9 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
 import { useLocationStore } from '../stores/locationStore'
+import { useToast } from '../composables/useToast'
+
+const { success: toastSuccess, error: toastError } = useToast()
 
 const router = useRouter()
 const rideStore = useRideStore()
@@ -282,10 +285,10 @@ const handleSchedule = async () => {
   })
 
   if (result.success) {
-    alert(`✅ Viaje programado para ${formatScheduledDate()}`)
+    toastSuccess(`Viaje programado para ${formatScheduledDate()}`)
     router.push('/scheduled')
   } else {
-    alert(result.error || 'Error al programar el viaje')
+    toastError(result.error || 'Error al programar el viaje')
     submitting.value = false
   }
 }

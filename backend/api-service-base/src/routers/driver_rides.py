@@ -295,9 +295,12 @@ def driver_arrived(ride_id: str, current: Driver = Depends(get_current_driver), 
     trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.driver_phone == current.phone).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
-    # Marcamos CONFIRMED para que el cliente sepa que el conductor llegó
-    # (el cliente verá "Conductor en camino" → "Conductor llegó")
-    return {"success": True, "status": trip.status.value}
+    if trip.status != TripStatus.CONFIRMED:
+        raise HTTPException(400, "El viaje no está en estado confirmado")
+    trip.status = TripStatus.DRIVER_ARRIVED
+    db.commit()
+    logger.info(f"[Driver] {current.name} llegó al origen del viaje {ride_id}")
+    return {"success": True, "ride": _trip_to_dict(trip)}
 
 
 @router.post("/rides/{ride_id}/start")
@@ -305,8 +308,8 @@ def start_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: 
     trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.driver_phone == current.phone).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
-    if trip.status != TripStatus.CONFIRMED:
-        raise HTTPException(400, "El viaje no está en estado confirmado")
+    if trip.status not in (TripStatus.CONFIRMED, TripStatus.DRIVER_ARRIVED):
+        raise HTTPException(400, "El viaje debe estar confirmado o con conductor esperando")
     trip.status = TripStatus.IN_PROGRESS
     db.commit()
     return {"success": True, "ride": _trip_to_dict(trip)}

@@ -170,6 +170,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { useToast } from '../composables/useToast'
+
+const { error: toastError } = useToast()
 
 const router = useRouter()
 const rideStore = useRideStore()
@@ -214,7 +217,7 @@ const handleCancel = async () => {
   const result = await rideStore.cancelScheduledRide(rideToCancel.value.ride_id)
   cancelling.value = false
   rideToCancel.value = null
-  if (!result.success) alert(result.error || 'No se pudo cancelar')
+  if (!result.success) toastError(result.error || 'No se pudo cancelar')
 }
 
 const handleReassign = async () => {
@@ -222,7 +225,7 @@ const handleReassign = async () => {
   actionLoading.value = true
   const result = await rideStore.reassignRide(releasedRide.value.ride_id)
   actionLoading.value = false
-  if (!result.success) alert(result.error || 'Error al reasignar')
+  if (!result.success) toastError(result.error || 'Error al reasignar')
 }
 
 const handleCancelReleased = async () => {
@@ -230,7 +233,7 @@ const handleCancelReleased = async () => {
   actionLoading.value = true
   const result = await rideStore.cancelScheduledRide(releasedRide.value.ride_id)
   actionLoading.value = false
-  if (!result.success) alert(result.error || 'No se pudo cancelar')
+  if (!result.success) toastError(result.error || 'No se pudo cancelar')
 }
 
 onMounted(async () => {

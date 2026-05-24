@@ -172,8 +172,11 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { useToast } from '../composables/useToast'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const { error: toastError } = useToast()
 
 const router = useRouter()
 const route = useRoute()
@@ -306,7 +309,7 @@ const handleAccept = async () => {
   if (result.success) {
     router.push(`/active-ride/${rideId.value}`)
   } else {
-    alert(result.error || 'Error al aceptar el viaje')
+    toastError(result.error || 'Error al aceptar el viaje')
     submitting.value = false
   }
 }
@@ -319,7 +322,7 @@ const handleReject = async () => {
     if (result.success) {
       router.push('/dashboard')
     } else {
-      alert(result.error || 'Error al rechazar el viaje')
+      toastError(result.error || 'Error al rechazar el viaje')
       submitting.value = false
     }
   }

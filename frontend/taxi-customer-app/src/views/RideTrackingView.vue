@@ -297,8 +297,11 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
 import { ridesApi } from '../services/api'
+import { useToast } from '../composables/useToast'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const { success: toastSuccess, error: toastError } = useToast()
 
 const router = useRouter()
 const route = useRoute()
@@ -333,6 +336,7 @@ const getStatusLabel = (status) => {
     assigned: 'Conductor asignado',
     confirmed: 'Conductor confirmado',
     driver_arriving: 'Conductor en camino',
+    driver_arrived: '¡Tu conductor llegó!',
     started: 'Viaje iniciado',
     in_progress: 'En camino al destino',
     completed: 'Viaje completado',
@@ -347,6 +351,7 @@ const getStatusColorClass = (status) => {
     assigned: 'bg-yellow-500',
     confirmed: 'bg-yellow-500',
     driver_arriving: 'bg-orange-500',
+    driver_arrived: 'bg-green-600',
     started: 'bg-green-500',
     in_progress: 'bg-green-500',
     completed: 'bg-gray-500',
@@ -484,7 +489,7 @@ const loadRideDetails = async () => {
 
   if (ride.value) {
     await initMap(ride.value)
-    const trackable = ['requested', 'assigned', 'confirmed', 'driver_arriving', 'started', 'in_progress']
+    const trackable = ['requested', 'assigned', 'confirmed', 'driver_arriving', 'driver_arrived', 'started', 'in_progress']
     if (trackable.includes(ride.value.status)) {
       rideStore.startTracking()
     }
@@ -496,13 +501,13 @@ const cancelRide = async () => {
   try {
     const result = await rideStore.cancelRide(rideId.value, cancelReason.value || 'Cliente canceló')
     if (result.success) {
-      alert('Viaje cancelado exitosamente')
+      toastSuccess('Viaje cancelado exitosamente')
       router.push('/home')
     } else {
-      alert(result.error || 'Error al cancelar')
+      toastError(result.error || 'Error al cancelar')
     }
   } catch (err) {
-    alert('Error de conexión')
+    toastError('Error de conexión')
   } finally {
     cancelling.value = false
     showCancelDialog.value = false
@@ -515,12 +520,12 @@ const submitRating = async () => {
     const result = await rideStore.rateRide(rideId.value, rating.value, ratingComment.value)
     if (result.success) {
       rated.value = true
-      alert('¡Gracias por tu calificación!')
+      toastSuccess('¡Gracias por tu calificación!')
     } else {
-      alert(result.error || 'Error al calificar')
+      toastError(result.error || 'Error al calificar')
     }
   } catch (err) {
-    alert('Error de conexión')
+    toastError('Error de conexión')
   }
 }
 

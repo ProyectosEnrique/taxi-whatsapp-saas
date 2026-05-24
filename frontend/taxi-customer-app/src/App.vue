@@ -58,6 +58,17 @@
     <div v-if="sosPanicSent" class="sos-banner">
       🚨 ALERTA ENVIADA · {{ sosPanicTime }} · Ayuda en camino
     </div>
+
+    <!-- Toast global -->
+    <Transition name="toast-slide">
+      <div
+        v-if="toast"
+        :class="['app-toast', toast.type === 'success' ? 'app-toast--success' : toast.type === 'info' ? 'app-toast--info' : 'app-toast--error']"
+      >
+        <span class="app-toast-icon">{{ toast.type === 'success' ? '✓' : toast.type === 'info' ? 'ℹ' : '✗' }}</span>
+        {{ toast.message }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -68,6 +79,9 @@ import { useAuthStore } from './stores/authStore'
 import { useChatStore } from './stores/chat'
 import { ridesApi } from './services/api'
 import VoiceAssistantModal from './components/VoiceAssistantModal.vue'
+import { useToast } from './composables/useToast'
+
+const { toast } = useToast()
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
@@ -253,4 +267,32 @@ onMounted(() => {
   z-index: 9998;
   letter-spacing: .5px;
 }
+
+/* ── Toast global ─────────────────────────────────────────── */
+.app-toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  box-shadow: 0 4px 20px rgba(0,0,0,.25);
+  max-width: calc(100vw - 32px);
+  white-space: nowrap;
+}
+.app-toast--success { background: #16a34a; }
+.app-toast--error   { background: #dc2626; }
+.app-toast--info    { background: #2563eb; }
+.app-toast-icon { font-size: 16px; }
+
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
+.toast-slide-enter-from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+.toast-slide-leave-to   { opacity: 0; transform: translateX(-50%) translateY(16px); }
 </style>
