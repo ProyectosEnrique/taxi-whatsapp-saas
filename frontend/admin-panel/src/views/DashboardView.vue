@@ -1,190 +1,162 @@
 <template>
-  <div class="dashboard">
+  <div class="p-8">
     <!-- Header -->
-    <div class="dashboard-header">
-      <h1>📊 Dashboard Administrativo</h1>
-      <p class="subtitle">Vista general del negocio en tiempo real</p>
-      <button @click="refreshData" class="btn-refresh" :disabled="loading">
-        {{ loading ? '🔄 Cargando...' : '🔄 Actualizar' }}
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <p class="text-gray-500 mt-1">Resumen operativo en tiempo real</p>
+      </div>
+      <button @click="load" class="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition">
+        <span :class="loading ? 'animate-spin' : ''">🔄</span>
+        <span>Actualizar</span>
       </button>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="loading && !analyticsStore.orders.length" class="loading-container">
-      <div class="spinner"></div>
-      <p>Cargando datos...</p>
-    </div>
-
-    <!-- Error State -->
-    <div v-else-if="error" class="error-container">
-      <p>❌ {{ error }}</p>
-      <button @click="refreshData" class="btn-retry">Reintentar</button>
-    </div>
-
-    <!-- Main Content -->
-    <div v-else class="dashboard-content">
-      <!-- Metrics Cards - Fila Principal -->
-      <div class="metrics-grid">
-        <MetricsCard
-          label="Ventas del Día"
-          :value="analyticsStore.todaySales"
-          icon="💰"
-          variant="success"
-          format="currency"
-          :subtitle="salesComparisonText"
-          :trend="analyticsStore.salesChange"
-        />
-        <MetricsCard
-          label="Pedidos Hoy"
-          :value="analyticsStore.todayOrdersCount"
-          icon="📋"
-          variant="warning"
-          format="number"
-          :subtitle="`Ayer: ${analyticsStore.yesterdayOrdersCount} pedidos`"
-        />
-        <MetricsCard
-          label="Ocupación de Mesas"
-          :value="analyticsStore.tableOccupancy"
-          icon="🪑"
-          variant="info"
-          format="percent"
-          subtitle="Mesas ocupadas"
-        />
-        <MetricsCard
-          label="Ticket Promedio"
-          :value="analyticsStore.averageTicket"
-          icon="🧾"
-          variant="default"
-          format="currency"
-          subtitle="Promedio por orden"
-        />
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div class="bg-white rounded-xl shadow p-6 border-l-4 border-green-500">
+        <p class="text-sm text-gray-500 mb-1">Conductores Online</p>
+        <p class="text-4xl font-bold text-green-600">{{ stats.drivers.online }}</p>
+        <p class="text-xs text-gray-400 mt-2">de {{ stats.drivers.total }} registrados</p>
       </div>
 
-      <!-- Métricas Financieras - NUEVO -->
-      <div class="metrics-grid financial-metrics">
-        <MetricsCard
-          label="Food Cost"
-          :value="analyticsStore.todayFoodCost"
-          icon="🍴"
-          :variant="analyticsStore.todayFoodCost <= 35 ? 'success' : analyticsStore.todayFoodCost <= 40 ? 'warning' : 'danger'"
-          format="percent"
-          subtitle="Costo de alimentos hoy"
-        />
-        <MetricsCard
-          label="Margen Bruto"
-          :value="analyticsStore.todayGrossMargin"
-          icon="💵"
-          :variant="analyticsStore.todayGrossMargin >= 60 ? 'success' : analyticsStore.todayGrossMargin >= 50 ? 'warning' : 'danger'"
-          format="percent"
-          subtitle="Margen de ganancia"
-        />
-        <MetricsCard
-          label="Rotación Productos"
-          :value="analyticsStore.productRotationRate"
-          icon="🔄"
-          :variant="analyticsStore.productRotationRate >= 60 ? 'success' : analyticsStore.productRotationRate >= 40 ? 'warning' : 'info'"
-          format="percent"
-          :subtitle="`${analyticsStore.productsNotSoldToday.length} sin ventas hoy`"
-        />
-        <MetricsCard
-          label="Ventas Semana"
-          :value="analyticsStore.weeklySalesTotal"
-          icon="📅"
-          variant="info"
-          format="currency"
-          :subtitle="weeklyComparisonText"
-          :trend="analyticsStore.weeklyChange"
-        />
+      <div class="bg-white rounded-xl shadow p-6 border-l-4 border-blue-500">
+        <p class="text-sm text-gray-500 mb-1">Viajes Activos</p>
+        <p class="text-4xl font-bold text-blue-600">{{ stats.trips.active }}</p>
+        <p class="text-xs text-gray-400 mt-2">en este momento</p>
       </div>
 
-      <!-- Gauge de Satisfacción + Tendencia Semanal -->
-      <div class="sentiment-weekly-section">
-        <SentimentGauge
-          title="Satisfacción del Cliente"
-          :value="analyticsStore.avgSentiment"
-          description="Basado en análisis de conversaciones de voz"
-        />
+      <div class="bg-white rounded-xl shadow p-6 border-l-4 border-yellow-500">
+        <p class="text-sm text-gray-500 mb-1">Viajes Hoy</p>
+        <p class="text-4xl font-bold text-yellow-600">{{ stats.trips.completed_today }}</p>
+        <p class="text-xs text-gray-400 mt-2">completados</p>
+      </div>
 
-        <div class="weekly-trend-card">
-          <h3>📈 Tendencia Semanal</h3>
-          <div class="weekly-chart">
+      <div class="bg-white rounded-xl shadow p-6 border-l-4 border-purple-500">
+        <p class="text-sm text-gray-500 mb-1">Ganancias Hoy</p>
+        <p class="text-4xl font-bold text-purple-600">${{ stats.earnings.today.toFixed(0) }}</p>
+        <p class="text-xs text-gray-400 mt-2">MXN</p>
+      </div>
+    </div>
+
+    <!-- Segunda fila -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <!-- Estado de flota -->
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Estado de Flota</h2>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="h-3 w-3 rounded-full bg-green-500 inline-block"></span>
+              <span class="text-sm text-gray-700">Disponibles</span>
+            </div>
+            <span class="font-semibold text-green-600">{{ stats.drivers.online - stats.drivers.busy }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="h-3 w-3 rounded-full bg-yellow-500 inline-block"></span>
+              <span class="text-sm text-gray-700">En viaje</span>
+            </div>
+            <span class="font-semibold text-yellow-600">{{ stats.drivers.busy }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="h-3 w-3 rounded-full bg-gray-400 inline-block"></span>
+              <span class="text-sm text-gray-700">Offline</span>
+            </div>
+            <span class="font-semibold text-gray-600">{{ stats.drivers.offline }}</span>
+          </div>
+
+          <!-- Bar visual -->
+          <div class="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden flex">
             <div
-              v-for="day in analyticsStore.weeklyTrend"
-              :key="day.date"
-              class="week-day-bar"
-            >
-              <div
-                class="bar-fill"
-                :style="{ height: getBarHeight(day.sales) + '%' }"
-                :class="{ 'best-day': isBestDay(day) }"
-              ></div>
-              <span class="day-label">{{ day.dayName }}</span>
-              <span class="day-value">${{ formatNumber(day.sales) }}</span>
+              class="h-full bg-green-500 transition-all"
+              :style="{ width: fleetPct.available + '%' }"
+            ></div>
+            <div
+              class="h-full bg-yellow-500 transition-all"
+              :style="{ width: fleetPct.busy + '%' }"
+            ></div>
+          </div>
+          <p class="text-xs text-gray-400">
+            {{ stats.drivers.total > 0 ? Math.round(stats.drivers.online / stats.drivers.total * 100) : 0 }}% de la flota activa
+          </p>
+        </div>
+      </div>
+
+      <!-- Viajes por estado -->
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Viajes en Curso</h2>
+        <div class="space-y-3">
+          <div v-for="ride in activeRides.slice(0, 5)" :key="ride.ride_id" class="flex items-start justify-between text-sm">
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-gray-900 truncate">{{ ride.customer.name }}</p>
+              <p class="text-xs text-gray-500 truncate">{{ ride.origin.address }}</p>
+            </div>
+            <span :class="statusClass(ride.status)" class="ml-2 flex-shrink-0 px-2 py-0.5 text-xs rounded-full">
+              {{ statusLabel(ride.status) }}
+            </span>
+          </div>
+          <div v-if="activeRides.length === 0" class="text-center py-4 text-gray-400 text-sm">
+            Sin viajes activos
+          </div>
+          <router-link
+            v-if="activeRides.length > 0"
+            to="/rides"
+            class="block text-center text-sm text-blue-600 hover:underline mt-2"
+          >
+            Ver todos ({{ activeRides.length }}) →
+          </router-link>
+        </div>
+      </div>
+
+      <!-- Incidentes / Alertas -->
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+          Incidentes Activos
+          <span
+            v-if="stats.incidents.active > 0"
+            class="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full"
+          >{{ stats.incidents.active }}</span>
+        </h2>
+        <div v-if="stats.incidents.active === 0" class="text-center py-6 text-gray-400">
+          <div class="text-4xl mb-2">✅</div>
+          <p class="text-sm">Sin incidentes activos</p>
+        </div>
+        <div v-else class="space-y-2">
+          <div v-for="inc in incidents.slice(0, 4)" :key="inc.incident_id" class="flex items-start space-x-2 text-sm">
+            <span class="text-red-500 flex-shrink-0">🚨</span>
+            <div class="min-w-0">
+              <p class="font-medium text-gray-900">{{ inc.reporter_name }}</p>
+              <p class="text-xs text-gray-500">{{ inc.reporter_type === 'driver' ? 'Conductor' : 'Cliente' }} · {{ formatTime(inc.created_at) }}</p>
             </div>
           </div>
-          <div v-if="analyticsStore.bestDayOfWeek" class="best-day-info">
-            🏆 Mejor día: <strong>{{ analyticsStore.bestDayOfWeek.dayName }}</strong>
-            (${{ formatNumber(analyticsStore.bestDayOfWeek.sales) }})
-          </div>
+          <router-link to="/incidents" class="block text-center text-sm text-blue-600 hover:underline mt-2">
+            Ver todos →
+          </router-link>
         </div>
       </div>
+    </div>
 
-      <!-- Alerta de productos agotados -->
-      <div v-if="analyticsStore.soldOutProducts.length > 0" class="sold-out-alert">
-        <div class="alert-header">
-          <span class="alert-icon">⚠️</span>
-          <span class="alert-title">Productos Agotados ({{ analyticsStore.soldOutProducts.length }})</span>
+    <!-- Totales acumulados -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Acumulado Total</h2>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <div>
+          <p class="text-sm text-gray-500">Viajes Totales</p>
+          <p class="text-2xl font-bold text-gray-900">{{ stats.trips.total }}</p>
         </div>
-        <div class="sold-out-list">
-          <span v-for="product in analyticsStore.soldOutProducts" :key="product.id" class="sold-out-item">
-            {{ product.name }}
-          </span>
+        <div>
+          <p class="text-sm text-gray-500">Ganancias Totales</p>
+          <p class="text-2xl font-bold text-green-600">${{ stats.earnings.total.toFixed(0) }}</p>
         </div>
-      </div>
-
-      <!-- Charts Section -->
-      <div class="charts-section">
-        <div class="chart-wrapper">
-          <HourlyOrdersChart
-            title="📈 Pedidos por Hora - Hoy"
-            :data="hourlyChartData"
-          />
+        <div>
+          <p class="text-sm text-gray-500">Conductores Registrados</p>
+          <p class="text-2xl font-bold text-blue-600">{{ stats.drivers.total }}</p>
         </div>
-        <div class="chart-wrapper">
-          <TopProductsList
-            title="🏆 Top 10 Productos Más Vendidos"
-            :products="analyticsStore.topProducts"
-          />
-        </div>
-      </div>
-
-      <!-- Voice Assistant Metrics Section -->
-      <VoiceAssistantMetrics />
-
-      <!-- Recent Orders -->
-      <div class="recent-section">
-        <RecentOrdersList
-          title="🕐 Órdenes Recientes"
-          :orders="analyticsStore.recentOrders"
-        />
-      </div>
-
-      <!-- Quick Actions -->
-      <div class="actions-section">
-        <h3>⚡ Acciones Rápidas</h3>
-        <div class="actions-grid">
-          <button @click="viewReports" class="action-btn">
-            📊 Ver Reportes
-          </button>
-          <button @click="manageMenu" class="action-btn">
-            🍽️ Gestionar Menú
-          </button>
-          <button @click="manageTables" class="action-btn">
-            🪑 Gestionar Mesas
-          </button>
-          <button @click="manageUsers" class="action-btn">
-            👥 Gestionar Usuarios
-          </button>
+        <div>
+          <p class="text-sm text-gray-500">Incidentes Totales</p>
+          <p class="text-2xl font-bold text-red-600">{{ incidentsTotal }}</p>
         </div>
       </div>
     </div>
@@ -192,409 +164,80 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAnalyticsStore } from '../stores/analytics'
-import MetricsCard from '../components/MetricsCard.vue'
-import HourlyOrdersChart from '../components/HourlyOrdersChart.vue'
-import TopProductsList from '../components/TopProductsList.vue'
-import RecentOrdersList from '../components/RecentOrdersList.vue'
-import VoiceAssistantMetrics from '../components/VoiceAssistantMetrics.vue'
-import SentimentGauge from '../components/SentimentGauge.vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
-const router = useRouter()
-const analyticsStore = useAnalyticsStore()
+const API = '/api/v1/admin'
 
 const loading = ref(false)
-const error = ref(null)
-
-const hourlyChartData = computed(() => {
-  return analyticsStore.hourlyOrders.map(item => ({
-    label: item.hour,
-    value: item.orders
-  }))
+const stats = ref({
+  drivers:   { total: 0, online: 0, busy: 0, offline: 0 },
+  trips:     { active: 0, completed_today: 0, total: 0 },
+  earnings:  { today: 0, total: 0 },
+  incidents: { active: 0 },
 })
+const activeRides  = ref([])
+const incidents    = ref([])
+const incidentsTotal = ref(0)
 
-const salesComparisonText = computed(() => {
-  const change = analyticsStore.salesChange
-  const yesterday = analyticsStore.yesterdaySales
-  if (change > 0) return `+${change}% vs ayer ($${yesterday.toFixed(0)})`
-  if (change < 0) return `${change}% vs ayer ($${yesterday.toFixed(0)})`
-  return `Sin cambio vs ayer ($${yesterday.toFixed(0)})`
-})
+let interval = null
 
-const weeklyComparisonText = computed(() => {
-  const change = analyticsStore.weeklyChange
-  if (change > 0) return `+${change}% vs semana anterior`
-  if (change < 0) return `${change}% vs semana anterior`
-  return 'Sin cambio vs semana anterior'
-})
-
-function formatNumber(num) {
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'k'
+const fleetPct = computed(() => {
+  const t = stats.value.drivers.total || 1
+  return {
+    available: Math.round((stats.value.drivers.online - stats.value.drivers.busy) / t * 100),
+    busy:      Math.round(stats.value.drivers.busy / t * 100),
   }
-  return Math.round(num).toString()
+})
+
+function statusLabel(s) {
+  return { requested: 'Solicitado', confirmed: 'Asignado', in_progress: 'En viaje', scheduled: 'Programado' }[s] || s
+}
+function statusClass(s) {
+  return {
+    requested:   'bg-blue-100 text-blue-800',
+    confirmed:   'bg-yellow-100 text-yellow-800',
+    in_progress: 'bg-green-100 text-green-800',
+  }[s] || 'bg-gray-100 text-gray-800'
+}
+function formatTime(ts) {
+  if (!ts) return ''
+  const diff = Date.now() - new Date(ts).getTime()
+  if (diff < 60000) return 'Hace un momento'
+  if (diff < 3600000) return `Hace ${Math.floor(diff / 60000)} min`
+  return `Hace ${Math.floor(diff / 3600000)}h`
 }
 
-function getBarHeight(sales) {
-  const maxSales = Math.max(...analyticsStore.weeklyTrend.map(d => d.sales))
-  if (maxSales === 0) return 0
-  return Math.round((sales / maxSales) * 100)
-}
-
-function isBestDay(day) {
-  const best = analyticsStore.bestDayOfWeek
-  return best && day.date === best.date
-}
-
-async function refreshData() {
+async function load() {
   loading.value = true
-  error.value = null
-
   try {
-    // Cargar datos principales primero (más rápido)
-    await analyticsStore.fetchAllData()
-
-    // Cargar métricas de voz después (lazy loading)
-    // No bloquea la renderización del dashboard principal
-    analyticsStore.fetchVoiceMetrics(7).catch(err => {
-      console.warn('Voice metrics failed to load:', err.message)
-    })
-  } catch (err) {
-    error.value = err.message
+    const [sRes, rRes, iRes] = await Promise.all([
+      fetch(`${API}/stats`),
+      fetch(`${API}/rides`),
+      fetch('/api/v1/incidents'),
+    ])
+    if (sRes.ok) stats.value = await sRes.json()
+    if (rRes.ok) {
+      const data = await rRes.json()
+      activeRides.value = (data.rides || []).filter(r =>
+        ['requested', 'confirmed', 'in_progress'].includes(r.status)
+      )
+    }
+    if (iRes.ok) {
+      const data = await iRes.json()
+      incidentsTotal.value = (data.incidents || []).length
+      incidents.value = (data.incidents || []).filter(i => i.status === 'active')
+    }
+  } catch (e) {
+    console.error('Dashboard load error:', e)
   } finally {
     loading.value = false
   }
 }
 
-function viewReports() {
-  alert('Funcionalidad de reportes - En desarrollo')
-}
-
-function manageMenu() {
-  router.push('/menu')
-}
-
-function manageTables() {
-  router.push('/tables')
-}
-
-function manageUsers() {
-  router.push('/users')
-}
-
 onMounted(() => {
-  refreshData()
-
-  // Auto-refresh every 60 seconds
-  setInterval(() => {
-    if (!loading.value) {
-      refreshData()
-    }
-  }, 60000)
+  load()
+  interval = setInterval(load, 15000)
 })
+
+onUnmounted(() => clearInterval(interval))
 </script>
-
-<style scoped>
-.dashboard {
-  min-height: 100vh;
-}
-
-/* Header */
-.dashboard-header {
-  background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-  color: white;
-  padding: 2rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  position: relative;
-}
-
-.dashboard-header h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: 2rem;
-}
-
-.subtitle {
-  margin: 0;
-  opacity: 0.9;
-  font-size: 1rem;
-}
-
-.btn-refresh {
-  position: absolute;
-  top: 2rem;
-  right: 2rem;
-  padding: 0.75rem 1.5rem;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 2px solid white;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s;
-}
-
-.btn-refresh:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-}
-
-.btn-refresh:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Loading */
-.loading-container {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  margin: 0 auto 1rem;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #34495e;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Error */
-.error-container {
-  text-align: center;
-  padding: 2rem;
-  background: #fadbd8;
-  border-radius: 8px;
-  color: #e74c3c;
-}
-
-.btn-retry {
-  margin-top: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-/* Metrics Grid */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.financial-metrics {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-}
-
-/* Sentiment + Weekly Section */
-.sentiment-weekly-section {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.weekly-trend-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.weekly-trend-card h3 {
-  margin: 0 0 1rem 0;
-  color: #2c3e50;
-}
-
-.weekly-chart {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  height: 150px;
-  padding: 0 0.5rem;
-  gap: 0.5rem;
-}
-
-.week-day-bar {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-}
-
-.bar-fill {
-  width: 100%;
-  max-width: 40px;
-  background: linear-gradient(180deg, #3498db 0%, #2980b9 100%);
-  border-radius: 4px 4px 0 0;
-  transition: height 0.3s ease;
-  margin-top: auto;
-}
-
-.bar-fill.best-day {
-  background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%);
-}
-
-.day-label {
-  font-size: 0.75rem;
-  color: #7f8c8d;
-  margin-top: 0.5rem;
-}
-
-.day-value {
-  font-size: 0.7rem;
-  color: #95a5a6;
-}
-
-.best-day-info {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-  font-size: 0.9rem;
-  color: #7f8c8d;
-  text-align: center;
-}
-
-.best-day-info strong {
-  color: #27ae60;
-}
-
-/* Alerta de productos agotados */
-.sold-out-alert {
-  background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
-  border: 2px solid #f39c12;
-  border-radius: 12px;
-  padding: 1rem 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.alert-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.alert-icon {
-  font-size: 1.5rem;
-}
-
-.alert-title {
-  font-weight: 700;
-  color: #856404;
-  font-size: 1.1rem;
-}
-
-.sold-out-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.sold-out-item {
-  background: #e74c3c;
-  color: white;
-  padding: 0.3rem 0.75rem;
-  border-radius: 15px;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-/* Charts Section */
-.charts-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.chart-wrapper {
-  min-height: 300px;
-}
-
-/* Recent Section */
-.recent-section {
-  margin-bottom: 2rem;
-}
-
-/* Actions Section */
-.actions-section {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.actions-section h3 {
-  margin: 0 0 1rem 0;
-  color: #2c3e50;
-}
-
-.actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.action-btn {
-  padding: 1rem;
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 1rem;
-  transition: all 0.3s;
-}
-
-.action-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-}
-
-@media (max-width: 768px) {
-  .dashboard-header h1 {
-    font-size: 1.5rem;
-  }
-
-  .btn-refresh {
-    position: static;
-    margin-top: 1rem;
-    width: 100%;
-  }
-
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sentiment-weekly-section {
-    grid-template-columns: 1fr;
-  }
-
-  .charts-section {
-    grid-template-columns: 1fr;
-  }
-
-  .financial-metrics {
-    padding: 1rem;
-  }
-}
-</style>

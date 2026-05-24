@@ -31,6 +31,7 @@ from .routers.locations import router as locations_router
 from .routers.incidents import customer_router as incidents_customer_router
 from .routers.incidents import driver_router as incidents_driver_router
 from .routers.incidents import admin_router as incidents_admin_router
+from .routers.admin import router as admin_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -324,6 +325,7 @@ app.include_router(locations_router)
 app.include_router(incidents_customer_router)
 app.include_router(incidents_driver_router)
 app.include_router(incidents_admin_router)
+app.include_router(admin_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

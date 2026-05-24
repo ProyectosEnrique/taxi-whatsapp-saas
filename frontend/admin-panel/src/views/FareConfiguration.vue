@@ -1,5 +1,5 @@
 <template>
-  <div class="fare-configuration">
+  <div class="fare-configuration p-8">
     <!-- Header -->
     <div class="page-header">
       <div>
@@ -42,13 +42,11 @@
                 activeSection === section.id
                   ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-700'
                   : 'text-gray-600 hover:bg-gray-50',
-                'block px-4 py-3 cursor-pointer transition-colors'
+                'flex items-center space-x-2 px-4 py-3 cursor-pointer transition-colors'
               ]"
             >
-              <div class="flex items-center">
-                <component :is="section.icon" class="w-5 h-5 mr-3" />
-                <span class="font-medium">{{ section.label }}</span>
-              </div>
+              <span>{{ section.emoji }}</span>
+              <span class="font-medium">{{ section.label }}</span>
             </a>
           </nav>
 
@@ -374,21 +372,15 @@
 <script setup>
 import { ref, reactive } from 'vue'
 
-// Icons (would normally import from a library)
-const MoneyIcon = 'svg'
-const ClockIcon = 'svg'
-const StarIcon = 'svg'
-const TagIcon = 'svg'
-
 // State
 const activeSection = ref('base')
 const hasUnsavedChanges = ref(false)
 
 const sections = [
-  { id: 'base', label: 'Tarifas Base', icon: MoneyIcon },
-  { id: 'surge', label: 'Surge Pricing', icon: ClockIcon },
-  { id: 'special', label: 'Recargos Especiales', icon: StarIcon },
-  { id: 'discounts', label: 'Descuentos', icon: TagIcon }
+  { id: 'base',     label: 'Tarifas Base',        emoji: '💵' },
+  { id: 'surge',    label: 'Surge Pricing',        emoji: '📈' },
+  { id: 'special',  label: 'Recargos Especiales',  emoji: '⭐' },
+  { id: 'discounts',label: 'Descuentos',           emoji: '🏷️' },
 ]
 
 const config = reactive({

@@ -1,434 +1,309 @@
 <template>
-  <div class="drivers-management">
+  <div class="p-8">
     <!-- Header -->
-    <div class="page-header">
-      <h1 class="text-3xl font-bold text-gray-900">Gestión de Conductores</h1>
-      <button @click="showAddDriverModal = true" class="btn btn-primary">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        Agregar Conductor
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Conductores</h1>
+        <p class="text-gray-500 mt-1">Gestión de la flota de conductores</p>
+      </div>
+      <button @click="openAdd" class="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium">
+        <span>+</span>
+        <span>Agregar Conductor</span>
       </button>
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-      <div class="stat-card">
-        <div class="stat-icon bg-green-100">
-          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-lg shadow p-5 flex items-center space-x-4">
+        <div class="p-3 bg-green-100 rounded-lg">
+          <span class="text-2xl">✅</span>
         </div>
         <div>
-          <p class="stat-label">Disponibles</p>
-          <p class="stat-value text-green-600">{{ stats.available }}</p>
+          <p class="text-xs text-gray-500 uppercase font-medium">Disponibles</p>
+          <p class="text-2xl font-bold text-green-600">{{ countByStatus('available') }}</p>
         </div>
       </div>
-
-      <div class="stat-card">
-        <div class="stat-icon bg-yellow-100">
-          <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+      <div class="bg-white rounded-lg shadow p-5 flex items-center space-x-4">
+        <div class="p-3 bg-yellow-100 rounded-lg">
+          <span class="text-2xl">🚗</span>
         </div>
         <div>
-          <p class="stat-label">Ocupados</p>
-          <p class="stat-value text-yellow-600">{{ stats.busy }}</p>
+          <p class="text-xs text-gray-500 uppercase font-medium">En Viaje</p>
+          <p class="text-2xl font-bold text-yellow-600">{{ countByStatus('busy') }}</p>
         </div>
       </div>
-
-      <div class="stat-card">
-        <div class="stat-icon bg-gray-100">
-          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-          </svg>
+      <div class="bg-white rounded-lg shadow p-5 flex items-center space-x-4">
+        <div class="p-3 bg-gray-100 rounded-lg">
+          <span class="text-2xl">💤</span>
         </div>
         <div>
-          <p class="stat-label">Offline</p>
-          <p class="stat-value text-gray-600">{{ stats.offline }}</p>
+          <p class="text-xs text-gray-500 uppercase font-medium">Offline</p>
+          <p class="text-2xl font-bold text-gray-600">{{ countByStatus('offline') }}</p>
         </div>
       </div>
-
-      <div class="stat-card">
-        <div class="stat-icon bg-blue-100">
-          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
+      <div class="bg-white rounded-lg shadow p-5 flex items-center space-x-4">
+        <div class="p-3 bg-blue-100 rounded-lg">
+          <span class="text-2xl">👥</span>
         </div>
         <div>
-          <p class="stat-label">Total Conductores</p>
-          <p class="stat-value text-blue-600">{{ stats.total }}</p>
+          <p class="text-xs text-gray-500 uppercase font-medium">Total</p>
+          <p class="text-2xl font-bold text-blue-600">{{ drivers.length }}</p>
         </div>
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
-          <input
-            v-model="filters.search"
-            type="text"
-            placeholder="Buscar por nombre, teléfono..."
-            class="input"
-          />
-        </div>
-
-        <div>
-          <select v-model="filters.status" class="input">
-            <option value="">Todos los estados</option>
-            <option value="available">Disponible</option>
-            <option value="busy">Ocupado</option>
-            <option value="offline">Offline</option>
-            <option value="on_break">En descanso</option>
-          </select>
-        </div>
-
-        <div>
-          <select v-model="filters.vehicleType" class="input">
-            <option value="">Todos los vehículos</option>
-            <option value="sedan">Sedan</option>
-            <option value="suv">SUV</option>
-            <option value="van">Van</option>
-            <option value="luxury">Lujo</option>
-          </select>
-        </div>
-
-        <div>
-          <select v-model="filters.rating" class="input">
-            <option value="">Todas las calificaciones</option>
-            <option value="5">5 estrellas</option>
-            <option value="4">4+ estrellas</option>
-            <option value="3">3+ estrellas</option>
-          </select>
-        </div>
-      </div>
+    <!-- Search -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <input
+        v-model="search"
+        type="text"
+        placeholder="Buscar por nombre, teléfono o placas..."
+        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+      />
     </div>
 
-    <!-- Drivers Table -->
+    <!-- Table -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="table-header">Conductor</th>
-            <th class="table-header">Vehículo</th>
-            <th class="table-header">Estado</th>
-            <th class="table-header">Rating</th>
-            <th class="table-header">Viajes</th>
-            <th class="table-header">Aceptación</th>
-            <th class="table-header">Ubicación</th>
-            <th class="table-header">Acciones</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conductor</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehículo</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Viajes</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          <tr v-for="driver in filteredDrivers" :key="driver.driver_id" class="hover:bg-gray-50">
-            <!-- Conductor -->
-            <td class="table-cell">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 h-10 w-10">
-                  <div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                    <span class="text-gray-600 font-medium">{{ driver.name.charAt(0) }}</span>
-                  </div>
+          <tr v-for="d in filtered" :key="d.driver_id" class="hover:bg-gray-50" :class="!d.is_active ? 'opacity-50' : ''">
+            <td class="px-6 py-4">
+              <div class="flex items-center space-x-3">
+                <div class="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
+                  {{ d.name.charAt(0).toUpperCase() }}
                 </div>
-                <div class="ml-4">
-                  <div class="text-sm font-medium text-gray-900">{{ driver.name }}</div>
-                  <div class="text-sm text-gray-500">{{ driver.phone }}</div>
+                <div>
+                  <p class="text-sm font-medium text-gray-900">{{ d.name }}</p>
+                  <p class="text-xs text-gray-500">{{ d.phone }}</p>
                 </div>
               </div>
             </td>
-
-            <!-- Vehículo -->
-            <td class="table-cell">
-              <div class="text-sm text-gray-900">{{ driver.vehicle.brand }} {{ driver.vehicle.model }}</div>
-              <div class="text-sm text-gray-500">{{ driver.vehicle.plates }} • {{ driver.vehicle.color }}</div>
+            <td class="px-6 py-4 text-sm text-gray-700">
+              <p>{{ d.vehicle.brand }} {{ d.vehicle.model }}</p>
+              <p class="text-xs text-gray-500">{{ d.vehicle.plates }} · {{ d.vehicle.color }}</p>
             </td>
-
-            <!-- Estado -->
-            <td class="table-cell">
-              <span :class="getStatusClass(driver.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
-                {{ getStatusLabel(driver.status) }}
+            <td class="px-6 py-4">
+              <span :class="statusClass(d.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
+                {{ statusLabel(d.status) }}
               </span>
             </td>
-
-            <!-- Rating -->
-            <td class="table-cell">
-              <div class="flex items-center">
-                <svg class="w-5 h-5 text-yellow-400 fill-current" viewBox="0 0 20 20">
-                  <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
-                </svg>
-                <span class="ml-1 text-sm font-medium text-gray-900">{{ driver.rating.toFixed(1) }}</span>
-              </div>
+            <td class="px-6 py-4 text-sm">
+              <span class="text-yellow-500">★</span>
+              <span class="font-medium">{{ d.rating.toFixed(1) }}</span>
             </td>
-
-            <!-- Viajes -->
-            <td class="table-cell">
-              <div class="text-sm text-gray-900">{{ driver.total_rides }}</div>
-            </td>
-
-            <!-- Aceptación -->
-            <td class="table-cell">
-              <div class="text-sm text-gray-900">{{ (driver.acceptance_rate * 100).toFixed(0) }}%</div>
-            </td>
-
-            <!-- Ubicación -->
-            <td class="table-cell">
-              <button @click="showDriverOnMap(driver)" class="text-blue-600 hover:text-blue-800">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-            </td>
-
-            <!-- Acciones -->
-            <td class="table-cell">
+            <td class="px-6 py-4 text-sm text-gray-700">{{ d.total_rides }}</td>
+            <td class="px-6 py-4">
               <div class="flex items-center space-x-2">
-                <button @click="viewDriver(driver)" class="btn-icon text-blue-600 hover:text-blue-800">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </button>
-
-                <button @click="editDriver(driver)" class="btn-icon text-green-600 hover:text-green-800">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
-
-                <button @click="deleteDriver(driver)" class="btn-icon text-red-600 hover:text-red-800">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
+                <button @click="openEdit(d)" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Editar">✏️</button>
+                <button @click="toggleActive(d)" class="p-1.5 rounded transition"
+                  :class="d.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'"
+                  :title="d.is_active ? 'Desactivar' : 'Activar'">
+                  {{ d.is_active ? '🚫' : '✅' }}
                 </button>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
-
-      <!-- Empty State -->
-      <div v-if="filteredDrivers.length === 0" class="text-center py-12">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-        <h3 class="mt-2 text-sm font-medium text-gray-900">No hay conductores</h3>
-        <p class="mt-1 text-sm text-gray-500">Comienza agregando un nuevo conductor.</p>
+      <div v-if="filtered.length === 0" class="text-center py-12 text-gray-400">
+        <div class="text-5xl mb-3">🔍</div>
+        <p>No hay conductores que coincidan</p>
       </div>
     </div>
 
-    <!-- Add Driver Modal -->
-    <!-- TODO: Implementar modal de agregar conductor -->
+    <!-- Modal Agregar / Editar -->
+    <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900">{{ editingDriver ? 'Editar Conductor' : 'Nuevo Conductor' }}</h2>
+          <button @click="showModal = false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <form @submit.prevent="saveDriver" class="p-6 space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input v-model="form.name" required class="input" placeholder="Carlos García" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono *</label>
+              <input v-model="form.phone" required :disabled="!!editingDriver" class="input disabled:bg-gray-100" placeholder="+5215511111111" />
+            </div>
+          </div>
+
+          <div v-if="!editingDriver">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <input v-model="form.password" type="password" class="input" placeholder="1234" />
+          </div>
+          <div v-else>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña (vacío = sin cambio)</label>
+            <input v-model="form.password" type="password" class="input" placeholder="Dejar vacío para no cambiar" />
+          </div>
+
+          <div class="border-t pt-4">
+            <p class="text-sm font-medium text-gray-700 mb-3">Vehículo</p>
+            <div class="grid grid-cols-2 gap-3">
+              <input v-model="form.vehicle_brand" class="input" placeholder="Marca (Nissan)" />
+              <input v-model="form.vehicle_model" class="input" placeholder="Modelo (Versa)" />
+              <input v-model="form.vehicle_plates" class="input" placeholder="Placas (ABC-123)" />
+              <input v-model="form.vehicle_color" class="input" placeholder="Color" />
+              <input v-model.number="form.vehicle_year" type="number" class="input" placeholder="Año (2020)" />
+            </div>
+          </div>
+
+          <p v-if="formError" class="text-sm text-red-600">{{ formError }}</p>
+
+          <div class="flex space-x-3 pt-2">
+            <button type="button" @click="showModal = false" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 transition">
+              Cancelar
+            </button>
+            <button type="submit" :disabled="saving" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition disabled:opacity-50">
+              {{ saving ? 'Guardando...' : (editingDriver ? 'Guardar Cambios' : 'Crear Conductor') }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-// State
+const API = '/api/v1/admin'
 const drivers = ref([])
-const stats = ref({
-  available: 0,
-  busy: 0,
-  offline: 0,
-  total: 0
+const search  = ref('')
+const showModal      = ref(false)
+const editingDriver  = ref(null)
+const saving         = ref(false)
+const formError      = ref('')
+
+const form = ref({
+  name: '', phone: '', password: '',
+  vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_color: '', vehicle_year: null,
 })
 
-const filters = ref({
-  search: '',
-  status: '',
-  vehicleType: '',
-  rating: ''
+const filtered = computed(() => {
+  const q = search.value.toLowerCase()
+  return drivers.value.filter(d =>
+    !q ||
+    d.name.toLowerCase().includes(q) ||
+    d.phone.includes(q) ||
+    (d.vehicle.plates || '').toLowerCase().includes(q)
+  )
 })
 
-const showAddDriverModal = ref(false)
+function countByStatus(s) {
+  if (s === 'available') return drivers.value.filter(d => d.status === 'available' && d.is_active).length
+  if (s === 'busy')      return drivers.value.filter(d => d.status === 'busy').length
+  return drivers.value.filter(d => !d.is_online && d.is_active).length
+}
 
-// Computed
-const filteredDrivers = computed(() => {
-  let filtered = drivers.value
-
-  // Buscar por nombre o teléfono
-  if (filters.value.search) {
-    const search = filters.value.search.toLowerCase()
-    filtered = filtered.filter(d =>
-      d.name.toLowerCase().includes(search) ||
-      d.phone.includes(search)
-    )
-  }
-
-  // Filtrar por estado
-  if (filters.value.status) {
-    filtered = filtered.filter(d => d.status === filters.value.status)
-  }
-
-  // Filtrar por tipo de vehículo
-  if (filters.value.vehicleType) {
-    filtered = filtered.filter(d => d.vehicle.type === filters.value.vehicleType)
-  }
-
-  // Filtrar por rating
-  if (filters.value.rating) {
-    const minRating = parseInt(filters.value.rating)
-    filtered = filtered.filter(d => d.rating >= minRating)
-  }
-
-  return filtered
-})
-
-// Methods
-function getStatusClass(status) {
-  const classes = {
+function statusLabel(s) {
+  return { available: 'Disponible', busy: 'En viaje', offline: 'Offline' }[s] || s
+}
+function statusClass(s) {
+  return {
     available: 'bg-green-100 text-green-800',
-    busy: 'bg-yellow-100 text-yellow-800',
-    offline: 'bg-gray-100 text-gray-800',
-    on_break: 'bg-blue-100 text-blue-800'
+    busy:      'bg-yellow-100 text-yellow-800',
+    offline:   'bg-gray-100 text-gray-800',
+  }[s] || 'bg-gray-100 text-gray-800'
+}
+
+function openAdd() {
+  editingDriver.value = null
+  formError.value = ''
+  form.value = { name: '', phone: '', password: '1234', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_color: '', vehicle_year: null }
+  showModal.value = true
+}
+
+function openEdit(driver) {
+  editingDriver.value = driver
+  formError.value = ''
+  form.value = {
+    name: driver.name,
+    phone: driver.phone,
+    password: '',
+    vehicle_brand:  driver.vehicle.brand,
+    vehicle_model:  driver.vehicle.model,
+    vehicle_plates: driver.vehicle.plates,
+    vehicle_color:  driver.vehicle.color,
+    vehicle_year:   driver.vehicle.year,
   }
-  return classes[status] || 'bg-gray-100 text-gray-800'
+  showModal.value = true
 }
 
-function getStatusLabel(status) {
-  const labels = {
-    available: 'Disponible',
-    busy: 'Ocupado',
-    offline: 'Offline',
-    on_break: 'En descanso'
+async function saveDriver() {
+  saving.value = true
+  formError.value = ''
+  try {
+    let res
+    if (editingDriver.value) {
+      res = await fetch(`${API}/drivers/${editingDriver.value.phone}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form.value),
+      })
+    } else {
+      res = await fetch(`${API}/drivers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form.value),
+      })
+    }
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'Error al guardar')
+    showModal.value = false
+    await loadDrivers()
+  } catch (e) {
+    formError.value = e.message
+  } finally {
+    saving.value = false
   }
-  return labels[status] || status
 }
 
-function showDriverOnMap(driver) {
-  // TODO: Abrir mapa centrado en conductor
-  console.log('Show driver on map:', driver)
-}
-
-function viewDriver(driver) {
-  // TODO: Abrir vista detallada del conductor
-  console.log('View driver:', driver)
-}
-
-function editDriver(driver) {
-  // TODO: Abrir modal de edición
-  console.log('Edit driver:', driver)
-}
-
-function deleteDriver(driver) {
-  if (confirm(`¿Estás seguro de eliminar a ${driver.name}?`)) {
-    // TODO: Llamar API para eliminar
-    console.log('Delete driver:', driver)
+async function toggleActive(driver) {
+  const action = driver.is_active ? 'desactivar' : 'activar'
+  if (!confirm(`¿${action} a ${driver.name}?`)) return
+  try {
+    const res = await fetch(`${API}/drivers/${driver.phone}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: !driver.is_active }),
+    })
+    if (res.ok) await loadDrivers()
+  } catch (e) {
+    console.error(e)
   }
 }
 
 async function loadDrivers() {
-  // TODO: Llamar API real
-  // Por ahora, datos de ejemplo
-  drivers.value = [
-    {
-      driver_id: 'driver_001',
-      name: 'Juan Pérez',
-      phone: '+5215522222001',
-      status: 'available',
-      rating: 4.9,
-      total_rides: 1523,
-      acceptance_rate: 0.95,
-      vehicle: {
-        type: 'sedan',
-        brand: 'Nissan',
-        model: 'Versa',
-        plates: 'ABC-1234',
-        color: 'Blanco'
-      }
-    },
-    {
-      driver_id: 'driver_002',
-      name: 'María González',
-      phone: '+5215522222002',
-      status: 'busy',
-      rating: 4.8,
-      total_rides: 892,
-      acceptance_rate: 0.92,
-      vehicle: {
-        type: 'sedan',
-        brand: 'Toyota',
-        model: 'Corolla',
-        plates: 'XYZ-5678',
-        color: 'Gris'
-      }
-    },
-    {
-      driver_id: 'driver_003',
-      name: 'Carlos Ramírez',
-      phone: '+5215522222003',
-      status: 'offline',
-      rating: 4.7,
-      total_rides: 654,
-      acceptance_rate: 0.88,
-      vehicle: {
-        type: 'suv',
-        brand: 'Mazda',
-        model: 'CX-5',
-        plates: 'DEF-9012',
-        color: 'Negro'
-      }
+  try {
+    const res = await fetch(`${API}/drivers`)
+    if (res.ok) {
+      const data = await res.json()
+      drivers.value = data.drivers || []
     }
-  ]
-
-  // Calcular estadísticas
-  stats.value = {
-    available: drivers.value.filter(d => d.status === 'available').length,
-    busy: drivers.value.filter(d => d.status === 'busy').length,
-    offline: drivers.value.filter(d => d.status === 'offline').length,
-    total: drivers.value.length
+  } catch (e) {
+    console.error('loadDrivers:', e)
   }
 }
 
-// Lifecycle
-onMounted(() => {
-  loadDrivers()
-})
+onMounted(loadDrivers)
 </script>
 
 <style scoped>
-.page-header {
-  @apply flex justify-between items-center mb-8;
-}
-
-.stat-card {
-  @apply bg-white rounded-lg shadow p-6 flex items-center space-x-4;
-}
-
-.stat-icon {
-  @apply rounded-lg p-3;
-}
-
-.stat-label {
-  @apply text-sm font-medium text-gray-500;
-}
-
-.stat-value {
-  @apply text-2xl font-bold;
-}
-
 .input {
-  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent;
-}
-
-.table-header {
-  @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
-}
-
-.table-cell {
-  @apply px-6 py-4 whitespace-nowrap;
-}
-
-.btn {
-  @apply px-4 py-2 rounded-lg font-medium transition-colors flex items-center;
-}
-
-.btn-primary {
-  @apply bg-blue-600 text-white hover:bg-blue-700;
-}
-
-.btn-icon {
-  @apply p-1 rounded hover:bg-gray-100 transition-colors;
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm;
 }
 </style>
