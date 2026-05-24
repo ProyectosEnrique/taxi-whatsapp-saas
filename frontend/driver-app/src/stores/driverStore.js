@@ -110,29 +110,31 @@ export const useDriverStore = defineStore('driver', () => {
     }
   }
 
-  const startLocationTracking = () => {
-    if (!navigator.geolocation) {
-      console.error('Geolocalización no soportada')
-      return
-    }
+  let _geoWatchId = null
+  let _lastSentAt = 0
+  const THROTTLE_MS = 5000 // enviar al servidor máximo cada 5s
 
-    // Actualizar ubicación cada 10 segundos
-    const watchId = navigator.geolocation.watchPosition(
+  const startLocationTracking = () => {
+    if (!navigator.geolocation || _geoWatchId !== null) return
+
+    _geoWatchId = navigator.geolocation.watchPosition(
       (position) => {
+        const now = Date.now()
+        if (now - _lastSentAt < THROTTLE_MS) return
+        _lastSentAt = now
         const { latitude, longitude } = position.coords
         updateLocation(latitude, longitude)
       },
-      (error) => {
-        console.error('Error de geolocalización:', error)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      }
+      (err) => console.warn('GPS error:', err.message),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     )
+  }
 
-    return watchId
+  const stopLocationTracking = () => {
+    if (_geoWatchId !== null) {
+      navigator.geolocation.clearWatch(_geoWatchId)
+      _geoWatchId = null
+    }
   }
 
   const toggleStatus = async () => {
@@ -160,6 +162,7 @@ export const useDriverStore = defineStore('driver', () => {
     startPolling,
     stopPolling,
     startLocationTracking,
+    stopLocationTracking,
     toggleStatus
   }
 })

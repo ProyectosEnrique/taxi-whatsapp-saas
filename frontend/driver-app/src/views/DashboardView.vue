@@ -319,12 +319,11 @@ const currentDate = computed(() => {
 const setStatus = async (status) => {
   const result = await driverStore.updateStatus(status)
   if (result.success && status === 'available') {
-    // Iniciar polling cuando se activa
     rideStore.startPolling()
     driverStore.startLocationTracking()
   } else if (result.success && status === 'offline') {
-    // Detener polling cuando se desactiva
     rideStore.stopPolling()
+    driverStore.stopLocationTracking()
   }
 }
 
@@ -345,6 +344,7 @@ const handleLogout = async () => {
   if (confirm('¿Estás seguro de cerrar sesión?')) {
     rideStore.stopPolling()
     driverStore.stopPolling()
+    driverStore.stopLocationTracking()
     await authStore.logout()
     router.push('/login')
   }
@@ -363,8 +363,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Limpiar polling al salir
   rideStore.stopPolling()
+  driverStore.stopLocationTracking()
 })
 </script>
 

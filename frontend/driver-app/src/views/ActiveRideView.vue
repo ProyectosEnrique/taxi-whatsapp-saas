@@ -300,6 +300,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { useDriverStore } from '../stores/driverStore'
 import { ridesApi } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -307,6 +308,7 @@ import 'leaflet/dist/leaflet.css'
 const router = useRouter()
 const route = useRoute()
 const rideStore = useRideStore()
+const driverStore = useDriverStore()
 
 const ride = ref(null)
 const loading = ref(true)
@@ -554,6 +556,8 @@ const openWaze = () => {
 
 onMounted(() => {
   loadRideDetails()
+  // Asegurar GPS activo durante el viaje aunque el conductor venga de otra ruta
+  driverStore.startLocationTracking()
 })
 
 onUnmounted(() => {
