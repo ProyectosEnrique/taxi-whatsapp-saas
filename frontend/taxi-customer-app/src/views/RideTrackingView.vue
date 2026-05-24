@@ -53,6 +53,43 @@
       </div>
     </div>
 
+    <!-- Pantalla de espera de pago con MercadoPago -->
+    <div v-else-if="ride && ride.payment_method === 'card' && paymentPending" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div class="text-7xl mb-5 animate-pulse">💳</div>
+      <h2 class="text-2xl font-bold text-gray-900 mb-2">Esperando confirmación de pago</h2>
+      <p class="text-gray-500 mb-6">Verifica tu pago en MercadoPago.<br>Esta pantalla se actualizará automáticamente.</p>
+      <div class="flex justify-center space-x-1 mb-8">
+        <div class="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"></div>
+        <div class="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+        <div class="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 w-full max-w-sm mb-6">
+        <p class="text-sm text-gray-600 mb-1">Viaje <span class="font-mono font-bold">{{ ride.ride_id }}</span></p>
+        <p class="text-2xl font-bold text-blue-600">${{ ride.total_fare }} MXN</p>
+        <p class="text-xs text-gray-500 mt-1">{{ ride.destination?.address }}</p>
+      </div>
+      <button
+        @click="retryPayment"
+        :disabled="retryingPayment"
+        class="w-full max-w-sm py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl mb-3 transition"
+      >
+        {{ retryingPayment ? 'Generando link...' : '🔗 Volver a MercadoPago' }}
+      </button>
+      <button @click="goBack" class="text-sm text-gray-400 hover:text-gray-600">
+        Cancelar viaje
+      </button>
+    </div>
+
+    <!-- Pago fallido -->
+    <div v-else-if="ride && ride.payment_status === 'failed'" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div class="text-7xl mb-5">❌</div>
+      <h2 class="text-2xl font-bold text-gray-900 mb-2">Pago no procesado</h2>
+      <p class="text-gray-500 mb-6">El pago fue rechazado o cancelado.</p>
+      <button @click="goBack" class="w-full max-w-sm py-3 bg-taxi-yellow text-white font-semibold rounded-xl">
+        Solicitar nuevo viaje
+      </button>
+    </div>
+
     <!-- Main Content -->
     <div v-else-if="ride" class="flex-1 flex flex-col min-h-0">
       <!-- Map Area -->
@@ -296,7 +333,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
-import { ridesApi } from '../services/api'
+import { ridesApi, paymentApi } from '../services/api'
 import { useToast } from '../composables/useToast'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -321,10 +358,14 @@ const rating = ref(0)
 const ratingComment = ref('')
 const rated = ref(false)
 const mapContainer = ref(null)
+const retryingPayment = ref(false)
+
+const paymentPending = computed(() => ride.value?.payment_status === 'pending_payment')
 
 let leafletMap = null
 let driverMarker = null
 let routeLayer = null
+let paymentPollInterval = null
 
 const rideId = computed(() => route.params.rideId)
 const rideStatus = computed(() => ride.value?.status || null)
@@ -561,15 +602,52 @@ const triggerPanic = async () => {
   }
 }
 
+const retryPayment = async () => {
+  retryingPayment.value = true
+  try {
+    const pref = await paymentApi.createMPPreference(rideId.value)
+    sessionStorage.setItem('pending_mp_trip', rideId.value)
+    window.location.href = pref.init_point
+  } catch {
+    toastError('No se pudo generar el link de pago. Intenta de nuevo.')
+  } finally {
+    retryingPayment.value = false
+  }
+}
+
+const startPaymentPolling = () => {
+  if (paymentPollInterval) return
+  paymentPollInterval = setInterval(async () => {
+    try {
+      const data = await paymentApi.getPaymentStatus(rideId.value)
+      if (data.payment_status && data.payment_status !== 'pending_payment') {
+        ride.value = { ...ride.value, payment_status: data.payment_status }
+        clearInterval(paymentPollInterval)
+        paymentPollInterval = null
+        if (data.payment_status === 'approved') {
+          toastSuccess('¡Pago confirmado!')
+        }
+      }
+    } catch { /* ignorar errores de red en polling */ }
+  }, 3000)
+}
+
 const goBack = () => router.push('/home')
 const goHome = () => router.push('/home')
 
-onMounted(() => {
-  loadRideDetails()
+onMounted(async () => {
+  await loadRideDetails()
+  if (ride.value?.payment_method === 'card' && ride.value?.payment_status === 'pending_payment') {
+    startPaymentPolling()
+  }
 })
 
 onUnmounted(() => {
   rideStore.stopTracking()
+  if (paymentPollInterval) {
+    clearInterval(paymentPollInterval)
+    paymentPollInterval = null
+  }
   if (leafletMap) {
     leafletMap.remove()
     leafletMap = null

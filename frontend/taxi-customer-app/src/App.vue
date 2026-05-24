@@ -74,7 +74,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/authStore'
 import { useChatStore } from './stores/chat'
 import { ridesApi } from './services/api'
@@ -82,6 +82,7 @@ import VoiceAssistantModal from './components/VoiceAssistantModal.vue'
 import { useToast } from './composables/useToast'
 
 const { toast } = useToast()
+const router = useRouter()
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
@@ -121,6 +122,24 @@ const sosTrigger = async () => {
 
 onMounted(() => {
   authStore.checkAuth()
+
+  // Detectar regreso desde el checkout de MercadoPago
+  // MP redirige a /cliente/?trip=TRIP-XXX&collection_status=approved|failure
+  const params = new URLSearchParams(window.location.search)
+  const tripFromMP  = params.get('trip') || sessionStorage.getItem('pending_mp_trip')
+  const mpStatus    = params.get('collection_status') || params.get('status')
+
+  if (tripFromMP) {
+    sessionStorage.removeItem('pending_mp_trip')
+    // Limpiar los query params de MP de la URL sin recargar
+    window.history.replaceState({}, '', window.location.pathname)
+
+    if (mpStatus === 'failure' || mpStatus === 'rejected') {
+      // Ir igual al tracking — la vista mostrará el estado de pago fallido
+    }
+    // Siempre redirigir al tracking para que el usuario vea el estado real
+    router.push(`/ride/${tripFromMP}`)
+  }
 })
 </script>
 

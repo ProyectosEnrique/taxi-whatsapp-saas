@@ -182,7 +182,17 @@ export const paymentApi = {
   setDefaultPaymentMethod: async (methodId) => {
     const response = await api.put(`/customer/payment-methods/${methodId}/default`)
     return response.data
-  }
+  },
+
+  createMPPreference: async (trip_id) => {
+    const response = await api.post('/payments/mp-preference', { trip_id })
+    return response.data
+  },
+
+  getPaymentStatus: async (trip_id) => {
+    const response = await api.get(`/payments/status/${trip_id}`)
+    return response.data
+  },
 }
 
 export const promoApi = {

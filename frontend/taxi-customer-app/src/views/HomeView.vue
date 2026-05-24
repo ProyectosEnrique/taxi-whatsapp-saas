@@ -150,14 +150,49 @@
           </div>
         </div>
 
+        <!-- Método de pago -->
+        <div class="mb-4">
+          <p class="text-xs font-medium text-gray-500 mb-2">Método de pago</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              @click="paymentMethod = 'cash'"
+              :class="[
+                'flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-semibold text-sm transition',
+                paymentMethod === 'cash'
+                  ? 'border-taxi-yellow bg-yellow-50 text-gray-900'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+              ]"
+            >
+              💵 Efectivo
+            </button>
+            <button
+              @click="paymentMethod = 'card'"
+              :class="[
+                'flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-semibold text-sm transition',
+                paymentMethod === 'card'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+              ]"
+            >
+              💳 Tarjeta
+            </button>
+          </div>
+          <p v-if="paymentMethod === 'card'" class="text-xs text-blue-600 mt-1.5 text-center">
+            Serás redirigido al checkout de MercadoPago
+          </p>
+        </div>
+
         <!-- Request Ride Button -->
         <button
           @click="requestRide"
           :disabled="!locationStore.canRequestRide || requesting"
           class="w-full bg-taxi-yellow hover:bg-yellow-500 text-white font-bold py-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          <span v-if="!requesting">{{ locationStore.canRequestRide ? '🚕 Solicitar Taxi' : 'Ingresa origen y destino' }}</span>
-          <span v-else>Solicitando...</span>
+          <span v-if="requesting">
+            <span v-if="creatingPayment">Generando link de pago...</span>
+            <span v-else>Solicitando...</span>
+          </span>
+          <span v-else>{{ locationStore.canRequestRide ? '🚕 Solicitar Taxi' : 'Ingresa origen y destino' }}</span>
         </button>
 
         <!-- Programar viaje -->
@@ -201,7 +236,7 @@ import { useRouter } from 'vue-router'
 import { useLocationStore } from '../stores/locationStore'
 import { useRideStore } from '../stores/rideStore'
 import { useToast } from '../composables/useToast'
-import { ridesApi, promoApi } from '../services/api'
+import { ridesApi, promoApi, paymentApi } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -359,6 +394,8 @@ const destinationResults = ref([])
 const showOriginResults = ref(false)
 const showDestinationResults = ref(false)
 const requesting = ref(false)
+const creatingPayment = ref(false)
+const paymentMethod = ref('cash')
 const showPromoCode = ref(false)
 const promoCode = ref('')
 const promoDiscount = ref(0)
@@ -480,26 +517,48 @@ const requestRide = async () => {
   if (!locationStore.canRequestRide) return
 
   requesting.value = true
+  creatingPayment.value = false
 
   try {
     const rideData = {
-      origin: locationStore.origin,
-      destination: locationStore.destination,
-      payment_method: 'cash',
-      promo_code: promoCode.value || null
+      origin:         locationStore.origin,
+      destination:    locationStore.destination,
+      payment_method: paymentMethod.value,
+      promo_code:     promoCode.value || null,
     }
 
     const result = await rideStore.requestRide(rideData)
 
-    if (result.success) {
-      router.push(`/ride/${result.ride.ride_id}`)
-    } else {
+    if (!result.success) {
       toastError(result.error || 'Error al solicitar viaje')
+      return
     }
+
+    const tripId = result.ride.ride_id
+
+    // Pago con tarjeta: crear preferencia MP y redirigir al checkout
+    if (paymentMethod.value === 'card') {
+      creatingPayment.value = true
+      try {
+        const pref = await paymentApi.createMPPreference(tripId)
+        // Guardar trip_id en sessionStorage para recuperar al volver de MP
+        sessionStorage.setItem('pending_mp_trip', tripId)
+        // Redirigir al checkout de MercadoPago (misma ventana)
+        window.location.href = pref.init_point
+      } catch {
+        toastError('No se pudo generar el link de pago. Intenta con efectivo.')
+        // El viaje ya fue creado — ir al tracking de todas formas
+        router.push(`/ride/${tripId}`)
+      }
+      return
+    }
+
+    router.push(`/ride/${tripId}`)
   } catch (err) {
     toastError('Error de conexión')
   } finally {
     requesting.value = false
+    creatingPayment.value = false
   }
 }
 
