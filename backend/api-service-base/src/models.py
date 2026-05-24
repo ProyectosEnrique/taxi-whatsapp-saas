@@ -251,11 +251,13 @@ class TaxiGroup(Base):
 # ==============================================================================
 
 class TripStatus(str, enum.Enum):
-    REQUESTED   = "requested"
-    CONFIRMED   = "confirmed"
-    IN_PROGRESS = "in_progress"
-    COMPLETED   = "completed"
-    CANCELLED   = "cancelled"
+    SCHEDULED        = "scheduled"
+    DRIVER_RELEASED  = "driver_released"
+    REQUESTED        = "requested"
+    CONFIRMED        = "confirmed"
+    IN_PROGRESS      = "in_progress"
+    COMPLETED        = "completed"
+    CANCELLED        = "cancelled"
 
 
 class Trip(Base):
@@ -286,6 +288,12 @@ class Trip(Base):
     payment_status   = Column(String(30), default="pending") # pending | pending_payment | paid | failed
     mp_preference_id = Column(String(255))
     mp_payment_id    = Column(String(100))
+
+    # Viaje programado
+    scheduled_at           = Column(DateTime(timezone=True), nullable=True)
+    preferred_driver_phone = Column(String(30),  nullable=True)
+    preferred_driver_name  = Column(String(150), nullable=True)
+    driver_released_at     = Column(DateTime(timezone=True), nullable=True)
 
     # Estado del viaje
     status             = Column(SAEnum(TripStatus), default=TripStatus.REQUESTED, index=True)
@@ -370,6 +378,26 @@ class Driver(Base):
 # ==============================================================================
 # TRIP RATING MODEL
 # ==============================================================================
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    incident_id    = Column(String(50), unique=True, nullable=False, index=True,
+                            default=lambda: f"INC-{uuid.uuid4().hex[:8].upper()}")
+    trip_id        = Column(String(50), nullable=True)
+    reporter_type  = Column(String(20), nullable=False)   # "driver" | "customer"
+    reporter_phone = Column(String(30), nullable=False)
+    reporter_name  = Column(String(150))
+    lat            = Column(Numeric(10, 7), nullable=True)
+    lng            = Column(Numeric(10, 7), nullable=True)
+    notes          = Column(Text, nullable=True)
+    status         = Column(String(20), default="active")  # active | resolved
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<Incident(incident_id='{self.incident_id}', reporter='{self.reporter_phone}')>"
+
 
 class TripRating(Base):
     __tablename__ = "trip_ratings"

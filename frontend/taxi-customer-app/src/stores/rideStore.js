@@ -5,6 +5,7 @@ import { ridesApi } from '../services/api'
 export const useRideStore = defineStore('ride', () => {
   const activeRide = ref(null)
   const rideHistory = ref([])
+  const scheduledRides = ref([])
   const estimatedFare = ref(null)
   const loading = ref(false)
   const error = ref(null)
@@ -148,9 +149,62 @@ export const useRideStore = defineStore('ride', () => {
     estimatedFare.value = null
   }
 
+  const scheduleRide = async (rideData) => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await ridesApi.scheduleRide(rideData)
+      scheduledRides.value.push(response.ride)
+      scheduledRides.value.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+      return { success: true, ride: response.ride }
+    } catch (err) {
+      error.value = err.response?.data?.detail || 'Error al programar viaje'
+      return { success: false, error: error.value }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const fetchScheduledRides = async () => {
+    try {
+      const response = await ridesApi.getScheduledRides()
+      scheduledRides.value = response.rides || []
+    } catch (err) {
+      scheduledRides.value = []
+    }
+  }
+
+  const reassignRide = async (rideId) => {
+    loading.value = true
+    try {
+      const response = await ridesApi.reassignRide(rideId)
+      const idx = scheduledRides.value.findIndex(r => r.ride_id === rideId)
+      if (idx !== -1) scheduledRides.value[idx] = response.ride
+      return { success: true, ride: response.ride }
+    } catch (err) {
+      return { success: false, error: err.response?.data?.detail || 'Error al reasignar' }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const cancelScheduledRide = async (rideId) => {
+    loading.value = true
+    try {
+      await ridesApi.cancelScheduledRide(rideId)
+      scheduledRides.value = scheduledRides.value.filter(r => r.ride_id !== rideId)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err.response?.data?.detail || 'Error al cancelar' }
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     activeRide,
     rideHistory,
+    scheduledRides,
     estimatedFare,
     loading,
     error,
@@ -165,6 +219,10 @@ export const useRideStore = defineStore('ride', () => {
     fetchHistory,
     startTracking,
     stopTracking,
-    clearEstimate
+    clearEstimate,
+    scheduleRide,
+    fetchScheduledRides,
+    cancelScheduledRide,
+    reassignRide
   }
 })

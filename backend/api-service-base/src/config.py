@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     BUSINESS_NAME: str = "Taxi App"
     WHATSAPP_GATEWAY_URL: str = "http://taxi-whatsapp:8000"
     WHATSAPP_NUMBER: str = ""           # número de flota, e.g. "+15551234567"
+    EMERGENCY_PHONE: str = "911"        # número al que llama el botón de pánico
 
     # ==============================================================================
     # CONFIG FROM ENV FILE

@@ -7,6 +7,8 @@ export const useRideStore = defineStore('ride', () => {
   const pendingRequests = ref([])
   const activeRide = ref(null)
   const rideHistory = ref([])
+  const myScheduledRides = ref([])
+  const poolScheduledRides = ref([])
   const loading = ref(false)
   const error = ref(null)
   const pollingInterval = ref(null)
@@ -187,11 +189,49 @@ export const useRideStore = defineStore('ride', () => {
     }
   }
 
+  const fetchScheduledRides = async () => {
+    try {
+      const response = await ridesApi.getScheduledRides()
+      myScheduledRides.value   = response.mine  || []
+      poolScheduledRides.value = response.pool  || []
+    } catch (err) {
+      console.error('Error al obtener viajes programados:', err)
+    }
+  }
+
+  const claimScheduledRide = async (rideId) => {
+    loading.value = true
+    try {
+      await ridesApi.claimScheduledRide(rideId)
+      await fetchScheduledRides()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err.response?.data?.detail || 'Error al reservar' }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const releaseScheduledRide = async (rideId) => {
+    loading.value = true
+    try {
+      await ridesApi.releaseScheduledRide(rideId)
+      myScheduledRides.value = myScheduledRides.value.filter(r => r.ride_id !== rideId)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err.response?.data?.detail || 'Error al liberar' }
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     // State
     pendingRequests,
     activeRide,
     rideHistory,
+    myScheduledRides,
+    poolScheduledRides,
     loading,
     error,
     // Getters
@@ -209,6 +249,9 @@ export const useRideStore = defineStore('ride', () => {
     cancelRide,
     fetchHistory,
     startPolling,
-    stopPolling
+    stopPolling,
+    fetchScheduledRides,
+    claimScheduledRide,
+    releaseScheduledRide
   }
 })

@@ -16,12 +16,30 @@
               </p>
             </div>
           </div>
-          <div class="text-2xl font-bold text-green-600">
-            ${{ ride?.total_fare || '0.00' }}
+          <div class="flex items-center space-x-3">
+            <div class="text-2xl font-bold text-green-600">
+              ${{ ride?.total_fare || '0.00' }}
+            </div>
+            <button
+              @click="showPanicModal = true"
+              :class="[
+                'px-3 py-1.5 rounded-lg font-bold text-sm transition',
+                panicSent
+                  ? 'bg-red-600 text-white animate-pulse'
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              ]"
+            >
+              🚨 SOS
+            </button>
           </div>
         </div>
       </div>
     </header>
+
+    <!-- Banner alerta activa -->
+    <div v-if="panicSent" class="bg-red-600 text-white px-4 py-2 text-center text-sm font-semibold">
+      🚨 ALERTA ENVIADA — {{ panicTime }} — Ayuda en camino
+    </div>
 
     <!-- Contenido principal -->
     <main class="max-w-7xl mx-auto px-4 py-6">
@@ -111,24 +129,21 @@
             </div>
           </div>
 
-          <!-- Mapa placeholder -->
-          <div class="mt-6 bg-gray-200 rounded-lg h-64 flex flex-col items-center justify-center">
-            <div class="text-6xl mb-2">🗺️</div>
-            <p class="text-gray-600 mb-4">Vista de mapa en vivo</p>
-            <div class="flex space-x-2">
-              <button
-                @click="openGoogleMaps"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
-              >
-                Abrir Google Maps
-              </button>
-              <button
-                @click="openWaze"
-                class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg text-sm"
-              >
-                Abrir Waze
-              </button>
-            </div>
+          <!-- Mapa Leaflet (OpenStreetMap) -->
+          <div ref="mapContainer" class="mt-6 rounded-lg overflow-hidden" style="height:280px;z-index:0"></div>
+          <div class="mt-3 flex space-x-2">
+            <button
+              @click="openGoogleMaps"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium"
+            >
+              🗺️ Google Maps
+            </button>
+            <button
+              @click="openWaze"
+              class="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-2 rounded-lg text-sm font-medium"
+            >
+              🔵 Waze
+            </button>
           </div>
         </div>
 
@@ -206,6 +221,35 @@
       </div>
     </main>
 
+    <!-- Modal Pánico -->
+    <div
+      v-if="showPanicModal"
+      class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+        <div class="bg-red-600 p-6 text-white text-center">
+          <div class="text-6xl mb-2">🚨</div>
+          <h2 class="text-2xl font-black">EMERGENCIA</h2>
+          <p class="text-red-100 text-sm mt-1">¿Confirmas que necesitas ayuda ahora?</p>
+        </div>
+        <div class="p-5 space-y-3">
+          <button
+            @click="triggerPanic"
+            :disabled="sendingPanic"
+            class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-xl text-lg disabled:opacity-50 shadow-lg"
+          >
+            {{ sendingPanic ? 'Enviando alerta...' : '📞 SÍ, LLAMAR AHORA' }}
+          </button>
+          <button
+            @click="showPanicModal = false"
+            class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl"
+          >
+            Cancelar — Estoy bien
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal de cancelación -->
     <div
       v-if="showCancelDialog"
@@ -253,9 +297,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { ridesApi } from '../services/api'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 const router = useRouter()
 const route = useRoute()
@@ -270,6 +317,12 @@ const cancelReason = ref('')
 const elapsedTime = ref('00:00:00')
 const timerInterval = ref(null)
 const startTime = ref(null)
+const mapContainer = ref(null)
+let leafletMap = null
+const showPanicModal = ref(false)
+const sendingPanic = ref(false)
+const panicSent = ref(false)
+const panicTime = ref('')
 
 const rideId = computed(() => route.params.rideId)
 // backend usa 'confirmed' para viaje aceptado, el template espera 'assigned'
@@ -301,6 +354,70 @@ const getStatusColor = (status) => {
   return colors[status] || 'text-gray-600'
 }
 
+const initMap = async (rideData) => {
+  await nextTick()
+  if (!mapContainer.value || !rideData) return
+
+  const oLat = rideData.origin.lat
+  const oLng = rideData.origin.lng
+  const dLat = rideData.destination.lat
+  const dLng = rideData.destination.lng
+
+  if (!oLat || !oLng || !dLat || !dLng) return
+
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
+  }
+
+  const centerLat = (oLat + dLat) / 2
+  const centerLng = (oLng + dLng) / 2
+
+  leafletMap = L.map(mapContainer.value).setView([centerLat, centerLng], 13)
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(leafletMap)
+
+  const iconA = L.divIcon({
+    html: '<div style="background:#22c55e;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.4)">A</div>',
+    className: '',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  })
+  const iconB = L.divIcon({
+    html: '<div style="background:#ef4444;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.4)">B</div>',
+    className: '',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  })
+
+  L.marker([oLat, oLng], { icon: iconA }).addTo(leafletMap)
+    .bindPopup(`<b>Origen</b><br>${rideData.origin.address}`)
+  L.marker([dLat, dLng], { icon: iconB }).addTo(leafletMap)
+    .bindPopup(`<b>Destino</b><br>${rideData.destination.address}`)
+
+  leafletMap.fitBounds([[oLat, oLng], [dLat, dLng]], { padding: [40, 40] })
+
+  // Intentar ruta real con OSRM, fallback a línea recta
+  try {
+    const res = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng])
+      L.polyline(coords, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(leafletMap)
+      return
+    }
+  } catch (_) { /* OSRM no disponible, usar línea recta */ }
+
+  L.polyline([[oLat, oLng], [dLat, dLng]], {
+    color: '#3b82f6', weight: 3, opacity: 0.6, dashArray: '8,6'
+  }).addTo(leafletMap)
+}
+
 const loadRideDetails = async () => {
   loading.value = true
   error.value = null
@@ -310,10 +427,11 @@ const loadRideDetails = async () => {
     if (result.success) {
       ride.value = result.ride
 
-      // Iniciar cronómetro si el viaje ya empezó
       if (ride.value.status === 'started' || ride.value.status === 'in_progress') {
         startTimer()
       }
+
+      initMap(ride.value)
     } else {
       error.value = result.error
     }
@@ -381,26 +499,57 @@ const handleCancelRide = async () => {
   }
 }
 
+const triggerPanic = async () => {
+  sendingPanic.value = true
+  try {
+    let lat = null, lng = null
+    try {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 })
+      )
+      lat = pos.coords.latitude
+      lng = pos.coords.longitude
+    } catch (_) { /* GPS no disponible */ }
+
+    const result = await ridesApi.reportIncident({
+      trip_id: ride.value?.ride_id || null,
+      lat, lng,
+      notes: 'Pánico activado desde app del conductor',
+    })
+
+    panicSent.value = true
+    panicTime.value = new Date().toLocaleTimeString('es-MX')
+    showPanicModal.value = false
+    window.open(`tel:${result.emergency_phone || '911'}`)
+  } catch (_) {
+    window.open('tel:911')
+    panicSent.value = true
+    panicTime.value = new Date().toLocaleTimeString('es-MX')
+    showPanicModal.value = false
+  } finally {
+    sendingPanic.value = false
+  }
+}
+
 const navigateToOrigin = () => {
-  openGoogleMapsNavigation(ride.value.origin.lat, ride.value.origin.lon)
+  const addr = encodeURIComponent(ride.value.origin.address)
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}&travelmode=driving`, '_blank')
 }
 
 const navigateToDestination = () => {
-  openGoogleMapsNavigation(ride.value.destination.lat, ride.value.destination.lon)
-}
-
-const openGoogleMapsNavigation = (lat, lon) => {
-  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`, '_blank')
+  const addr = encodeURIComponent(ride.value.destination.address)
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}&travelmode=driving`, '_blank')
 }
 
 const openGoogleMaps = () => {
-  const origin = `${ride.value.origin.lat},${ride.value.origin.lon}`
-  const destination = `${ride.value.destination.lat},${ride.value.destination.lon}`
-  window.open(`https://www.google.com/maps/dir/${origin}/${destination}`, '_blank')
+  const origin = encodeURIComponent(ride.value.origin.address)
+  const destination = encodeURIComponent(ride.value.destination.address)
+  window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`, '_blank')
 }
 
 const openWaze = () => {
-  window.open(`https://waze.com/ul?ll=${ride.value.destination.lat},${ride.value.destination.lon}&navigate=yes`, '_blank')
+  const destination = encodeURIComponent(ride.value.destination.address)
+  window.open(`https://waze.com/ul?q=${destination}&navigate=yes`, '_blank')
 }
 
 onMounted(() => {
@@ -410,6 +559,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (timerInterval.value) {
     clearInterval(timerInterval.value)
+  }
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
   }
 })
 </script>

@@ -11,7 +11,7 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,10 +22,15 @@ from starlette.responses import Response
 # Importar routers
 from .routers import products, categories, agent, promotions, aliases, upload
 from .routers.payments import router as payments_router, cleanup_expired_pending_payments
+from .models import Trip, TripStatus
+from .database import SessionLocal
 from .routers.customer_rides import router as customer_router
 from .routers.driver_rides import router as driver_router
 from .routers.landing import router as landing_router
 from .routers.locations import router as locations_router
+from .routers.incidents import customer_router as incidents_customer_router
+from .routers.incidents import driver_router as incidents_driver_router
+from .routers.incidents import admin_router as incidents_admin_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -63,6 +68,55 @@ request_duration = Histogram(
 # LIFESPAN - Startup/Shutdown Events
 # ==============================================================================
 
+async def _activate_scheduled_rides():
+    """
+    Cada minuto:
+    - SCHEDULED + driver asignado + <= 15 min → CONFIRMED (el conductor está listo)
+    - SCHEDULED + sin driver    + <= 15 min → REQUESTED (abierto al pool)
+    - DRIVER_RELEASED + sin respuesta del cliente en 30 min → SCHEDULED sin driver (pool)
+    """
+    await asyncio.sleep(10)
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.now(timezone.utc)
+            activation_cutoff  = now + timedelta(minutes=15)
+            auto_pool_cutoff   = now - timedelta(minutes=30)
+
+            # Activar programados
+            scheduled = (
+                db.query(Trip)
+                .filter(Trip.status == TripStatus.SCHEDULED, Trip.scheduled_at <= activation_cutoff)
+                .all()
+            )
+            for trip in scheduled:
+                if trip.driver_phone:
+                    trip.status = TripStatus.CONFIRMED
+                    logger.info(f"[Scheduler] {trip.trip_id} → CONFIRMED (conductor {trip.driver_name})")
+                else:
+                    trip.status = TripStatus.REQUESTED
+                    logger.info(f"[Scheduler] {trip.trip_id} → REQUESTED (pool)")
+
+            # Auto-reasignar viajes liberados sin respuesta del cliente
+            released = (
+                db.query(Trip)
+                .filter(Trip.status == TripStatus.DRIVER_RELEASED, Trip.driver_released_at <= auto_pool_cutoff)
+                .all()
+            )
+            for trip in released:
+                trip.status       = TripStatus.SCHEDULED
+                trip.driver_phone = None
+                trip.driver_name  = None
+                logger.info(f"[Scheduler] {trip.trip_id} → pool (cliente no respondió en 30 min)")
+
+            if scheduled or released:
+                db.commit()
+            db.close()
+        except Exception as exc:
+            logger.error(f"[Scheduler] Error: {exc}")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manejo de eventos de inicio y cierre de la aplicación"""
@@ -78,8 +132,30 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables verified/created")
 
+    # Migraciones en caliente
+    _migrations = [
+        ("trips", "scheduled_at",           "DATETIME"),
+        ("trips", "preferred_driver_phone",  "VARCHAR(30)"),
+        ("trips", "preferred_driver_name",   "VARCHAR(150)"),
+        ("trips", "driver_released_at",      "DATETIME"),
+    ]
+    # La tabla incidents la crea create_all automáticamente (modelo nuevo)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            for table, col, col_type in _migrations:
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                    conn.commit()
+                    logger.info(f"Migration: {table}.{col} añadida")
+                except Exception:
+                    pass  # columna ya existe
+    except Exception as _mig_err:
+        logger.debug(f"Migration error: {_mig_err}")
+
     # Background tasks
     asyncio.create_task(cleanup_expired_pending_payments())
+    asyncio.create_task(_activate_scheduled_rides())
 
     yield
 
@@ -245,6 +321,9 @@ app.include_router(customer_router)
 app.include_router(driver_router)
 app.include_router(landing_router)
 app.include_router(locations_router)
+app.include_router(incidents_customer_router)
+app.include_router(incidents_driver_router)
+app.include_router(incidents_admin_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

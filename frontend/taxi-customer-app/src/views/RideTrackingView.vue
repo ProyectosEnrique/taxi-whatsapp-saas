@@ -11,10 +11,28 @@
             <h1 class="font-bold text-gray-900">{{ getStatusLabel(rideStatus) }}</h1>
             <p class="text-sm text-gray-500">ID: {{ rideId }}</p>
           </div>
-          <div class="w-10"></div>
+          <!-- Botón SOS -->
+          <button
+            v-if="rideStatus && rideStatus !== 'completed' && rideStatus !== 'cancelled'"
+            @click="showPanicModal = true"
+            :class="[
+              'px-3 py-1.5 rounded-lg font-bold text-sm transition',
+              panicSent
+                ? 'bg-red-600 text-white animate-pulse'
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            ]"
+          >
+            🚨 SOS
+          </button>
+          <div v-else class="w-10"></div>
         </div>
       </div>
     </header>
+
+    <!-- Banner alerta activa -->
+    <div v-if="panicSent" class="bg-red-600 text-white px-4 py-2 text-center text-sm font-semibold">
+      🚨 ALERTA ENVIADA — Ayuda en camino — {{ panicTime }}
+    </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex-1 flex items-center justify-center">
@@ -36,21 +54,13 @@
     </div>
 
     <!-- Main Content -->
-    <div v-else-if="ride" class="flex-1 flex flex-col">
+    <div v-else-if="ride" class="flex-1 flex flex-col min-h-0">
       <!-- Map Area -->
-      <div class="flex-1 relative bg-gray-200">
-        <div class="absolute inset-0 flex items-center justify-center">
-          <div class="text-center">
-            <div class="text-6xl mb-4">🗺️</div>
-            <p class="text-gray-600">Mapa con tracking en tiempo real</p>
-            <p class="text-sm text-gray-500 mt-2">
-              Conductor: {{ ride.driver?.current_lat?.toFixed(4) }}, {{ ride.driver?.current_lon?.toFixed(4) }}
-            </p>
-          </div>
-        </div>
+      <div class="flex-1 relative min-h-0">
+        <div ref="mapContainer" class="absolute inset-0" style="z-index:0"></div>
 
-        <!-- Status Badge -->
-        <div class="absolute top-4 left-4 right-4">
+        <!-- Status Badge overlay -->
+        <div class="absolute top-4 left-4 right-4" style="z-index:800">
           <div :class="[
             'px-4 py-2 rounded-full text-white font-semibold text-center shadow-lg',
             getStatusColorClass(rideStatus)
@@ -58,26 +68,27 @@
             {{ getStatusLabel(rideStatus) }}
           </div>
         </div>
+
+        <!-- Searching spinner overlay -->
+        <div v-if="rideStatus === 'requested'" class="absolute inset-0 flex items-center justify-center" style="z-index:800">
+          <div class="bg-white bg-opacity-90 rounded-2xl p-6 text-center shadow-xl">
+            <div class="text-5xl mb-3 animate-pulse">🔍</div>
+            <p class="font-bold text-gray-900">Buscando conductor...</p>
+            <div class="flex justify-center space-x-1 mt-2">
+              <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce"></div>
+              <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce" style="animation-delay:0.1s"></div>
+              <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce" style="animation-delay:0.2s"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Info Card -->
-      <div class="bg-white rounded-t-3xl shadow-2xl p-6 max-h-[50vh] overflow-y-auto">
-        <!-- Searching for Driver -->
-        <div v-if="rideStatus === 'requested'" class="text-center py-8">
-          <div class="text-6xl mb-4 animate-pulse">🔍</div>
-          <h3 class="text-xl font-bold text-gray-900 mb-2">Buscando conductor...</h3>
-          <p class="text-gray-600 mb-4">Esto puede tomar unos segundos</p>
-          <div class="flex items-center justify-center space-x-2">
-            <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce"></div>
-            <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
-            <div class="w-2 h-2 bg-taxi-yellow rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-          </div>
-        </div>
-
+      <div class="bg-white rounded-t-3xl shadow-2xl p-6 max-h-[50vh] overflow-y-auto" style="z-index:10">
         <!-- Driver Assigned -->
-        <div v-else>
+        <div v-if="ride.driver">
           <!-- Driver Info -->
-          <div v-if="ride.driver" class="mb-6">
+          <div class="mb-4">
             <h3 class="text-lg font-semibold text-gray-900 mb-3">Tu Conductor</h3>
             <div class="flex items-center space-x-4 bg-gray-50 p-4 rounded-lg">
               <div class="w-16 h-16 bg-gray-300 rounded-full flex items-center justify-center text-3xl">
@@ -112,7 +123,7 @@
           </div>
 
           <!-- ETA -->
-          <div v-if="rideStatus === 'assigned' || rideStatus === 'driver_arriving'" class="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div v-if="rideStatus === 'assigned' || rideStatus === 'driver_arriving'" class="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600">Tiempo estimado de llegada</p>
@@ -121,93 +132,120 @@
               <div class="text-4xl">🚗💨</div>
             </div>
           </div>
+        </div>
 
-          <!-- Route Info -->
-          <div class="mb-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-3">Ruta del Viaje</h3>
-            <div class="space-y-3">
-              <div class="flex items-start">
-                <span class="text-green-500 text-xl mr-3">📍</span>
-                <div class="flex-1">
-                  <p class="text-sm text-gray-500">Origen</p>
-                  <p class="text-gray-900">{{ ride.origin.address }}</p>
-                </div>
-              </div>
-              <div class="flex items-start">
-                <span class="text-red-500 text-xl mr-3">📍</span>
-                <div class="flex-1">
-                  <p class="text-sm text-gray-500">Destino</p>
-                  <p class="text-gray-900">{{ ride.destination.address }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Fare Info -->
-          <div class="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600">Tarifa Total</p>
-                <p class="text-3xl font-bold text-green-600">${{ ride.total_fare }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-sm text-gray-600">{{ ride.distance_km }} km</p>
-                <p class="text-sm text-gray-600">~{{ ride.duration_minutes }} min</p>
-              </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-2">
-              Método de pago: {{ ride.payment_method === 'cash' ? '💵 Efectivo' : '💳 Tarjeta' }}
-            </p>
-          </div>
-
-          <!-- Actions -->
+        <!-- Route Info -->
+        <div class="mb-4">
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">Ruta del Viaje</h3>
           <div class="space-y-3">
-            <!-- Cancel Button (only if not started) -->
-            <button
-              v-if="rideStatus !== 'started' && rideStatus !== 'in_progress' && rideStatus !== 'completed'"
-              @click="showCancelDialog = true"
-              class="w-full py-3 border-2 border-red-500 text-red-500 font-semibold rounded-lg hover:bg-red-50"
-            >
-              Cancelar Viaje
-            </button>
-
-            <!-- Rate Ride (when completed) -->
-            <div v-if="rideStatus === 'completed' && !rated" class="border-2 border-taxi-yellow rounded-lg p-4">
-              <h3 class="text-lg font-semibold text-gray-900 mb-3">Califica tu viaje</h3>
-              <div class="flex justify-center space-x-2 mb-3">
-                <button
-                  v-for="star in 5"
-                  :key="star"
-                  @click="rating = star"
-                  class="text-3xl"
-                >
-                  {{ star <= rating ? '⭐' : '☆' }}
-                </button>
+            <div class="flex items-start">
+              <span class="text-green-500 text-xl mr-3">📍</span>
+              <div class="flex-1">
+                <p class="text-sm text-gray-500">Origen</p>
+                <p class="text-gray-900">{{ ride.origin.address }}</p>
               </div>
-              <textarea
-                v-model="ratingComment"
-                placeholder="Comentario (opcional)"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3"
-                rows="3"
-              ></textarea>
+            </div>
+            <div class="flex items-start">
+              <span class="text-red-500 text-xl mr-3">📍</span>
+              <div class="flex-1">
+                <p class="text-sm text-gray-500">Destino</p>
+                <p class="text-gray-900">{{ ride.destination.address }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fare Info -->
+        <div class="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Tarifa Total</p>
+              <p class="text-3xl font-bold text-green-600">${{ ride.total_fare }}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-gray-600">{{ ride.distance_km }} km</p>
+              <p class="text-sm text-gray-600">~{{ ride.duration_minutes }} min</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-2">
+            Método de pago: {{ ride.payment_method === 'cash' ? '💵 Efectivo' : '💳 Tarjeta' }}
+          </p>
+        </div>
+
+        <!-- Actions -->
+        <div class="space-y-3">
+          <button
+            v-if="rideStatus !== 'started' && rideStatus !== 'in_progress' && rideStatus !== 'completed'"
+            @click="showCancelDialog = true"
+            class="w-full py-3 border-2 border-red-500 text-red-500 font-semibold rounded-lg hover:bg-red-50"
+          >
+            Cancelar Viaje
+          </button>
+
+          <!-- Rate Ride (when completed) -->
+          <div v-if="rideStatus === 'completed' && !rated" class="border-2 border-taxi-yellow rounded-lg p-4">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Califica tu viaje</h3>
+            <div class="flex justify-center space-x-2 mb-3">
               <button
-                @click="submitRating"
-                :disabled="rating === 0"
-                class="w-full bg-taxi-yellow text-white py-3 rounded-lg font-semibold disabled:opacity-50"
+                v-for="star in 5"
+                :key="star"
+                @click="rating = star"
+                class="text-3xl"
               >
-                Enviar Calificación
+                {{ star <= rating ? '⭐' : '☆' }}
               </button>
             </div>
-
-            <!-- Back to Home -->
+            <textarea
+              v-model="ratingComment"
+              placeholder="Comentario (opcional)"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3"
+              rows="3"
+            ></textarea>
             <button
-              v-if="rideStatus === 'completed'"
-              @click="goHome"
-              class="w-full bg-taxi-green text-white py-3 rounded-lg font-semibold"
+              @click="submitRating"
+              :disabled="rating === 0"
+              class="w-full bg-taxi-yellow text-white py-3 rounded-lg font-semibold disabled:opacity-50"
             >
-              Solicitar Otro Viaje
+              Enviar Calificación
             </button>
           </div>
+
+          <button
+            v-if="rideStatus === 'completed'"
+            @click="goHome"
+            class="w-full bg-taxi-green text-white py-3 rounded-lg font-semibold"
+          >
+            Solicitar Otro Viaje
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pánico -->
+    <div
+      v-if="showPanicModal"
+      class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+        <div class="bg-red-600 p-6 text-white text-center">
+          <div class="text-6xl mb-2">🚨</div>
+          <h2 class="text-2xl font-black">EMERGENCIA</h2>
+          <p class="text-red-100 text-sm mt-1">¿Confirmas que necesitas ayuda ahora?</p>
+        </div>
+        <div class="p-5 space-y-3">
+          <button
+            @click="triggerPanic"
+            :disabled="sendingPanic"
+            class="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-xl text-lg disabled:opacity-50 shadow-lg"
+          >
+            {{ sendingPanic ? 'Enviando alerta...' : '📞 SÍ, LLAMAR AHORA' }}
+          </button>
+          <button
+            @click="showPanicModal = false"
+            class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl"
+          >
+            Cancelar — Estoy bien
+          </button>
         </div>
       </div>
     </div>
@@ -221,7 +259,6 @@
       <div class="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
         <h3 class="text-xl font-bold text-gray-900 mb-4">¿Cancelar viaje?</h3>
         <p class="text-gray-600 mb-4">¿Estás seguro de que deseas cancelar este viaje?</p>
-
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-2">Motivo (opcional)</label>
           <select
@@ -235,7 +272,6 @@
             <option value="other">Otro motivo</option>
           </select>
         </div>
-
         <div class="flex space-x-3">
           <button
             @click="showCancelDialog = false"
@@ -257,9 +293,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import { ridesApi } from '../services/api'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 const router = useRouter()
 const route = useRoute()
@@ -269,23 +308,30 @@ const ride = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const showCancelDialog = ref(false)
+const showPanicModal = ref(false)
+const sendingPanic = ref(false)
+const panicSent = ref(false)
+const panicTime = ref('')
 const cancelReason = ref('')
 const cancelling = ref(false)
 const rating = ref(0)
 const ratingComment = ref('')
 const rated = ref(false)
+const mapContainer = ref(null)
+
+let leafletMap = null
+let driverMarker = null
+let routeLayer = null
 
 const rideId = computed(() => route.params.rideId)
 const rideStatus = computed(() => ride.value?.status || null)
-const estimatedArrivalTime = computed(() => {
-  // Simulación - en producción vendría del backend
-  return Math.floor(Math.random() * 10) + 5
-})
+const estimatedArrivalTime = ref(Math.floor(Math.random() * 10) + 5)
 
 const getStatusLabel = (status) => {
   const labels = {
     requested: 'Buscando conductor...',
     assigned: 'Conductor asignado',
+    confirmed: 'Conductor confirmado',
     driver_arriving: 'Conductor en camino',
     started: 'Viaje iniciado',
     in_progress: 'En camino al destino',
@@ -299,6 +345,7 @@ const getStatusColorClass = (status) => {
   const colors = {
     requested: 'bg-blue-500',
     assigned: 'bg-yellow-500',
+    confirmed: 'bg-yellow-500',
     driver_arriving: 'bg-orange-500',
     started: 'bg-green-500',
     in_progress: 'bg-green-500',
@@ -308,6 +355,115 @@ const getStatusColorClass = (status) => {
   return colors[status] || 'bg-gray-500'
 }
 
+const makeMarkerIcon = (label, color) => L.divIcon({
+  html: `<div style="background:${color};color:white;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.35)"><span style="transform:rotate(45deg)">${label}</span></div>`,
+  className: '',
+  iconSize: [30, 30],
+  iconAnchor: [15, 30]
+})
+
+const makeTaxiIcon = () => L.divIcon({
+  html: '<div style="font-size:30px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));line-height:1">🚕</div>',
+  className: '',
+  iconSize: [34, 34],
+  iconAnchor: [17, 17]
+})
+
+const initMap = async (rideData) => {
+  await nextTick()
+  if (!mapContainer.value) return
+
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
+    driverMarker = null
+    routeLayer = null
+  }
+
+  const oLat = rideData.origin?.lat
+  const oLng = rideData.origin?.lng
+  const dLat = rideData.destination?.lat
+  const dLng = rideData.destination?.lng
+
+  const centerLat = oLat || 20.5888
+  const centerLng = oLng || -100.3899
+
+  leafletMap = L.map(mapContainer.value, { zoomControl: false }).setView([centerLat, centerLng], 14)
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(leafletMap)
+
+  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
+
+  const bounds = []
+
+  if (oLat && oLng) {
+    L.marker([oLat, oLng], { icon: makeMarkerIcon('A', '#22c55e') })
+      .addTo(leafletMap)
+      .bindPopup(`<b>Origen</b><br>${rideData.origin.address || ''}`)
+    bounds.push([oLat, oLng])
+  }
+
+  if (dLat && dLng) {
+    L.marker([dLat, dLng], { icon: makeMarkerIcon('B', '#ef4444') })
+      .addTo(leafletMap)
+      .bindPopup(`<b>Destino</b><br>${rideData.destination.address || ''}`)
+    bounds.push([dLat, dLng])
+  }
+
+  if (oLat && oLng && dLat && dLng) {
+    try {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+      const resp = await fetch(osrmUrl)
+      const data = await resp.json()
+      if (data.routes?.[0]) {
+        routeLayer = L.geoJSON(data.routes[0].geometry, {
+          style: { color: '#3b82f6', weight: 4, opacity: 0.85 }
+        }).addTo(leafletMap)
+      }
+    } catch {
+      routeLayer = L.polyline([[oLat, oLng], [dLat, dLng]], {
+        color: '#3b82f6', weight: 3, dashArray: '8,8', opacity: 0.7
+      }).addTo(leafletMap)
+    }
+  }
+
+  const driverLat = rideData.driver?.current_lat
+  const driverLon = rideData.driver?.current_lon
+  if (driverLat && driverLon) {
+    driverMarker = L.marker([driverLat, driverLon], { icon: makeTaxiIcon() })
+      .addTo(leafletMap)
+      .bindPopup(`<b>${rideData.driver.name}</b>`)
+    bounds.push([driverLat, driverLon])
+  }
+
+  if (bounds.length >= 2) {
+    leafletMap.fitBounds(bounds, { padding: [50, 50] })
+  } else if (bounds.length === 1) {
+    leafletMap.setView(bounds[0], 15)
+  }
+}
+
+const updateDriverMarker = (lat, lon) => {
+  if (!leafletMap || !lat || !lon) return
+  if (driverMarker) {
+    driverMarker.setLatLng([lat, lon])
+  } else {
+    driverMarker = L.marker([lat, lon], { icon: makeTaxiIcon() })
+      .addTo(leafletMap)
+      .bindPopup(ride.value?.driver?.name || 'Conductor')
+  }
+}
+
+watch(() => rideStore.activeRide, (newRide) => {
+  if (!newRide) return
+  ride.value = newRide
+  const lat = newRide.driver?.current_lat
+  const lon = newRide.driver?.current_lon
+  if (lat && lon) updateDriverMarker(lat, lon)
+}, { deep: true })
+
 const loadRideDetails = async () => {
   loading.value = true
   error.value = null
@@ -316,6 +472,7 @@ const loadRideDetails = async () => {
     const result = await rideStore.fetchRideDetails(rideId.value)
     if (result.success) {
       ride.value = result.ride
+      rideStore.activeRide = result.ride
     } else {
       error.value = result.error
     }
@@ -324,14 +481,20 @@ const loadRideDetails = async () => {
   } finally {
     loading.value = false
   }
+
+  if (ride.value) {
+    await initMap(ride.value)
+    const trackable = ['requested', 'assigned', 'confirmed', 'driver_arriving', 'started', 'in_progress']
+    if (trackable.includes(ride.value.status)) {
+      rideStore.startTracking()
+    }
+  }
 }
 
 const cancelRide = async () => {
   cancelling.value = true
-
   try {
     const result = await rideStore.cancelRide(rideId.value, cancelReason.value || 'Cliente canceló')
-
     if (result.success) {
       alert('Viaje cancelado exitosamente')
       router.push('/home')
@@ -348,10 +511,8 @@ const cancelRide = async () => {
 
 const submitRating = async () => {
   if (rating.value === 0) return
-
   try {
     const result = await rideStore.rateRide(rideId.value, rating.value, ratingComment.value)
-
     if (result.success) {
       rated.value = true
       alert('¡Gracias por tu calificación!')
@@ -363,27 +524,50 @@ const submitRating = async () => {
   }
 }
 
-const goBack = () => {
-  router.push('/home')
+const triggerPanic = async () => {
+  sendingPanic.value = true
+  try {
+    let lat = null, lng = null
+    try {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 })
+      )
+      lat = pos.coords.latitude
+      lng = pos.coords.longitude
+    } catch (_) { /* GPS no disponible */ }
+
+    const result = await ridesApi.reportIncident({
+      trip_id: ride.value?.ride_id || null,
+      lat, lng,
+      notes: 'Pánico activado desde app del cliente',
+    })
+
+    panicSent.value = true
+    panicTime.value = new Date().toLocaleTimeString('es-MX')
+    showPanicModal.value = false
+    window.open(`tel:${result.emergency_phone || '911'}`)
+  } catch (err) {
+    window.open('tel:911')
+    panicSent.value = true
+    panicTime.value = new Date().toLocaleTimeString('es-MX')
+    showPanicModal.value = false
+  } finally {
+    sendingPanic.value = false
+  }
 }
 
-const goHome = () => {
-  router.push('/home')
-}
+const goBack = () => router.push('/home')
+const goHome = () => router.push('/home')
 
 onMounted(() => {
   loadRideDetails()
-
-  // Start tracking if ride is active
-  if (rideStore.hasActiveRide) {
-    rideStore.startTracking()
-  }
 })
 
 onUnmounted(() => {
-  // Clean up tracking when leaving
-  if (rideStatus.value === 'completed' || rideStatus.value === 'cancelled') {
-    rideStore.stopTracking()
+  rideStore.stopTracking()
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
   }
 })
 </script>

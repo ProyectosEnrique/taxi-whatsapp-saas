@@ -4,13 +4,13 @@ Rutas: /api/v1/customer/*
 """
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Customer, Driver, Trip, TripRating, TripStatus
+from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,9 @@ def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
         "payment_method": trip.payment_method,
         "payment_status": trip.payment_status,
         "created_at":   trip.created_at.isoformat() if trip.created_at else None,
+        "scheduled_at":          trip.scheduled_at.isoformat() if trip.scheduled_at else None,
+        "preferred_driver_name": trip.preferred_driver_name,
+        "preferred_driver_phone":trip.preferred_driver_phone,
         "driver": None,
     }
     if driver:
@@ -122,10 +125,11 @@ def update_profile(payload: dict, current: Customer = Depends(get_current_custom
 def estimate_fare(payload: dict, current: Customer = Depends(get_current_customer)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
+    def _lng(obj): return float(obj.get("lng") or obj.get("lon") or 0)
     try:
         dist = _haversine_km(
-            float(origin.get("lat", 0)), float(origin.get("lng", 0)),
-            float(destination.get("lat", 0)), float(destination.get("lng", 0)),
+            float(origin.get("lat", 0)), _lng(origin),
+            float(destination.get("lat", 0)), _lng(destination),
         )
     except Exception:
         dist = 3.0
@@ -140,10 +144,11 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
 
+    def _lng(obj): return obj.get("lng") or obj.get("lon")
     try:
         dist = _haversine_km(
-            float(origin.get("lat", 0)), float(origin.get("lng", 0)),
-            float(destination.get("lat", 0)), float(destination.get("lng", 0)),
+            float(origin.get("lat", 0)), float(_lng(origin) or 0),
+            float(destination.get("lat", 0)), float(_lng(destination) or 0),
         )
     except Exception:
         dist = 3.0
@@ -156,9 +161,9 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
         origin_address      = origin.get("address", ""),
         destination_address = destination.get("address", ""),
         origin_lat          = origin.get("lat"),
-        origin_lng          = origin.get("lng"),
+        origin_lng          = _lng(origin),
         destination_lat     = destination.get("lat"),
-        destination_lng     = destination.get("lng"),
+        destination_lng     = _lng(destination),
         fare                = fare,
         distance_km         = round(dist, 2),
         payment_method      = payload.get("payment_method", "cash"),
@@ -199,6 +204,113 @@ def get_history(current: Customer = Depends(get_current_customer), db: Session =
         .all()
     )
     return {"rides": [_trip_to_dict(t) for t in trips]}
+
+
+@router.post("/rides/schedule")
+def schedule_ride(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+    origin      = payload.get("origin", {})
+    destination = payload.get("destination", {})
+    scheduled_at_str = payload.get("scheduled_at")
+
+    if not scheduled_at_str:
+        raise HTTPException(400, "scheduled_at es requerido (ISO 8601)")
+
+    try:
+        scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(400, "Formato de fecha inválido. Usa ISO 8601")
+
+    min_advance = datetime.now(timezone.utc) + timedelta(minutes=30)
+    if scheduled_at < min_advance:
+        raise HTTPException(400, "El viaje debe programarse con al menos 30 minutos de anticipación")
+
+    def _lng(obj): return obj.get("lng") or obj.get("lon")
+    try:
+        dist = _haversine_km(
+            float(origin.get("lat", 0)), float(_lng(origin) or 0),
+            float(destination.get("lat", 0)), float(_lng(destination) or 0),
+        )
+    except Exception:
+        dist = 3.0
+    dist = max(dist, 1.0)
+    fare = round(BASE_FARE_MXN + dist * FARE_PER_KM_MXN, 2)
+
+    # Pre-asignar al conductor preferido del cliente
+    preferred = None
+    if current.preferred_driver_id:
+        preferred = db.query(Driver).filter(Driver.id == current.preferred_driver_id).first()
+
+    trip = Trip(
+        customer_phone         = current.phone,
+        customer_name          = current.name,
+        origin_address         = origin.get("address", ""),
+        destination_address    = destination.get("address", ""),
+        origin_lat             = origin.get("lat"),
+        origin_lng             = _lng(origin),
+        destination_lat        = destination.get("lat"),
+        destination_lng        = _lng(destination),
+        fare                   = fare,
+        distance_km            = round(dist, 2),
+        payment_method         = payload.get("payment_method", "cash"),
+        status                 = TripStatus.SCHEDULED,
+        payment_status         = "pending",
+        scheduled_at           = scheduled_at,
+        driver_phone           = preferred.phone if preferred else None,
+        driver_name            = preferred.name  if preferred else None,
+        preferred_driver_phone = preferred.phone if preferred else None,
+        preferred_driver_name  = preferred.name  if preferred else None,
+    )
+    db.add(trip)
+    db.commit()
+    db.refresh(trip)
+    logger.info(f"[Rides] Viaje programado {trip.trip_id} para {scheduled_at.isoformat()} → conductor: {preferred.name if preferred else 'pool'}")
+    return {"ride": _trip_to_dict(trip)}
+
+
+@router.get("/rides/scheduled")
+def get_scheduled_rides(current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+    trips = (
+        db.query(Trip)
+        .filter(
+            Trip.customer_phone == current.phone,
+            Trip.status.in_([TripStatus.SCHEDULED, TripStatus.DRIVER_RELEASED]),
+        )
+        .order_by(Trip.scheduled_at.asc())
+        .all()
+    )
+    return {"rides": [_trip_to_dict(t) for t in trips]}
+
+
+@router.post("/rides/{ride_id}/reassign")
+def reassign_ride(ride_id: str, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+    """El cliente acepta que se asigne a otro conductor (después de que el preferido liberó)."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.customer_phone == current.phone).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    if trip.status != TripStatus.DRIVER_RELEASED:
+        raise HTTPException(400, "El viaje no está en estado de liberación")
+    trip.status      = TripStatus.SCHEDULED
+    trip.driver_phone = None
+    trip.driver_name  = None
+    db.commit()
+    logger.info(f"[Rides] Cliente {current.phone} acepta reasignación del viaje {ride_id} al pool")
+    return {"success": True, "ride": _trip_to_dict(trip)}
+
+
+@router.post("/preferred-driver")
+def set_preferred_driver(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+    """Guarda el conductor preferido del cliente (se llama tras escanear el QR del taxi)."""
+    driver_code = (payload.get("driver_code") or "").strip()
+    if not driver_code:
+        raise HTTPException(400, "driver_code requerido")
+    driver = db.query(Driver).filter(Driver.driver_code == driver_code).first()
+    if not driver:
+        raise HTTPException(404, "Conductor no encontrado")
+    current.preferred_driver_id = driver.id
+    db.commit()
+    return {"success": True, "driver": {"name": driver.name, "phone": driver.phone}}
 
 
 @router.get("/rides/{ride_id}")

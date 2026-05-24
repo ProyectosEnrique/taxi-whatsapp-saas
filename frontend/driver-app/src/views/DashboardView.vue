@@ -65,6 +65,19 @@
           👤 Mi Perfil
         </router-link>
         <router-link
+          to="/agenda"
+          class="flex items-center justify-between px-4 py-2 hover:bg-gray-100 text-gray-700"
+          @click="showMenu = false"
+        >
+          <span>📅 Agenda</span>
+          <span
+            v-if="rideStore.myScheduledRides.length"
+            class="bg-yellow-400 text-white text-xs font-bold px-2 py-0.5 rounded-full"
+          >
+            {{ rideStore.myScheduledRides.length }}
+          </span>
+        </router-link>
+        <router-link
           to="/history"
           class="block px-4 py-2 hover:bg-gray-100 text-gray-700"
           @click="showMenu = false"
@@ -338,17 +351,15 @@ const handleLogout = async () => {
 }
 
 onMounted(() => {
-  // Sincronizar estado online del driver guardado en auth
   if (authStore.driver?.is_online && !driverStore.isAvailable) {
     driverStore.status = 'available'
   }
-
-  // Iniciar polling si está disponible
   if (driverStore.isAvailable) {
     rideStore.startPolling()
     driverStore.startPolling()
     driverStore.startLocationTracking()
   }
+  rideStore.fetchScheduledRides()
 })
 
 onUnmounted(() => {

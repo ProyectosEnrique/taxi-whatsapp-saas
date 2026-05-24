@@ -24,7 +24,7 @@ def _format_result(item: dict, index: int) -> dict:
         "name": name,
         "address": item.get("display_name", ""),
         "lat": float(item.get("lat", 0)),
-        "lon": float(item.get("lon", 0)),
+        "lng": float(item.get("lon", 0)),   # lng para consistencia con el resto de la API
     }
 
 

@@ -8,11 +8,14 @@
             <span class="text-2xl">🚕</span>
             <h1 class="text-lg font-bold text-gray-900">Taxi App</h1>
           </div>
-          <div class="flex items-center space-x-3">
-            <router-link to="/history" class="p-2 hover:bg-gray-100 rounded-lg">
+          <div class="flex items-center space-x-2">
+            <router-link to="/scheduled" class="p-2 hover:bg-gray-100 rounded-lg" title="Viajes programados">
+              <span class="text-xl">📅</span>
+            </router-link>
+            <router-link to="/history" class="p-2 hover:bg-gray-100 rounded-lg" title="Historial">
               <span class="text-xl">📜</span>
             </router-link>
-            <router-link to="/profile" class="p-2 hover:bg-gray-100 rounded-lg">
+            <router-link to="/profile" class="p-2 hover:bg-gray-100 rounded-lg" title="Perfil">
               <span class="text-xl">👤</span>
             </router-link>
           </div>
@@ -160,6 +163,14 @@
         >
           <span v-if="!requesting">{{ locationStore.canRequestRide ? '🚕 Solicitar Taxi' : 'Ingresa origen y destino' }}</span>
           <span v-else>Solicitando...</span>
+        </button>
+
+        <!-- Programar viaje -->
+        <button
+          @click="router.push('/schedule')"
+          class="w-full mt-3 bg-white border-2 border-gray-200 hover:border-yellow-400 text-gray-700 font-semibold py-3 rounded-lg transition flex items-center justify-center space-x-2"
+        >
+          <span>📅</span><span>Programar para después</span>
         </button>
 
         <!-- Promo Code -->

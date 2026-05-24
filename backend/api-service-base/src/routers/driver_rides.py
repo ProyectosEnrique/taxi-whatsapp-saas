@@ -67,8 +67,11 @@ def _trip_to_dict(trip: Trip) -> dict:
         "distance_km":      distance,
         "duration_minutes": max(1, round(distance / 0.5)), # ~30 km/h en ciudad
         "expires_in":       30,                            # segundos para aceptar
-        "payment_method":   trip.payment_method,
-        "created_at":       trip.created_at.isoformat() if trip.created_at else None,
+        "payment_method":          trip.payment_method,
+        "created_at":              trip.created_at.isoformat() if trip.created_at else None,
+        "scheduled_at":            trip.scheduled_at.isoformat() if trip.scheduled_at else None,
+        "preferred_driver_name":   trip.preferred_driver_name,
+        "preferred_driver_phone":  trip.preferred_driver_phone,
     }
 
 
@@ -189,6 +192,72 @@ def get_active_ride(current: Driver = Depends(get_current_driver), db: Session =
         .first()
     )
     return {"ride": _trip_to_dict(trip) if trip else None}
+
+
+@router.get("/rides/scheduled")
+def get_scheduled_rides(current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    """
+    Devuelve dos listas:
+    - mine: viajes programados donde el conductor es el asignado
+    - pool: viajes programados sin conductor asignado (disponibles para reservar)
+    """
+    mine = (
+        db.query(Trip)
+        .filter(Trip.driver_phone == current.phone, Trip.status == TripStatus.SCHEDULED)
+        .order_by(Trip.scheduled_at.asc())
+        .all()
+    )
+    pool = (
+        db.query(Trip)
+        .filter(Trip.driver_phone.is_(None), Trip.status == TripStatus.SCHEDULED)
+        .order_by(Trip.scheduled_at.asc())
+        .limit(20)
+        .all()
+    )
+    def _with_flag(trips, is_mine):
+        result = []
+        for t in trips:
+            d = _trip_to_dict(t)
+            d["is_mine"] = is_mine
+            result.append(d)
+        return result
+    return {"mine": _with_flag(mine, True), "pool": _with_flag(pool, False)}
+
+
+@router.post("/rides/{ride_id}/claim")
+def claim_scheduled_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    """Conductor reserva un viaje programado del pool."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    if trip.status != TripStatus.SCHEDULED:
+        raise HTTPException(409, "Este viaje ya no está disponible")
+    if trip.driver_phone:
+        raise HTTPException(409, "Este viaje ya fue reservado por otro conductor")
+    trip.driver_phone           = current.phone
+    trip.driver_name            = current.name
+    trip.preferred_driver_phone = current.phone
+    trip.preferred_driver_name  = current.name
+    db.commit()
+    logger.info(f"[Driver] {current.name} reservó viaje programado {ride_id}")
+    return {"success": True, "ride": _trip_to_dict(trip)}
+
+
+@router.post("/rides/{ride_id}/release")
+def release_scheduled_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    """Conductor libera un viaje programado que tenía reservado — notifica al cliente."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.driver_phone == current.phone).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado o no te pertenece")
+    if trip.status not in (TripStatus.SCHEDULED, TripStatus.CONFIRMED):
+        raise HTTPException(400, "Solo se pueden liberar viajes programados o confirmados")
+    trip.status            = TripStatus.DRIVER_RELEASED
+    trip.driver_phone      = None
+    trip.driver_name       = None
+    trip.driver_released_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info(f"[Driver] {current.name} liberó viaje {ride_id} → notificando al cliente")
+    return {"success": True}
 
 
 @router.get("/rides/{ride_id}")

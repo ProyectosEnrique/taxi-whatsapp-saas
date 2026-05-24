@@ -107,10 +107,8 @@
             </div>
           </div>
 
-          <!-- Mapa (simulado) -->
-          <div class="mt-6 bg-gray-200 rounded-lg h-48 flex items-center justify-center">
-            <p class="text-gray-500">🗺️ Vista de mapa aquí</p>
-          </div>
+          <!-- Mapa Leaflet -->
+          <div ref="mapContainer" class="mt-6 rounded-lg overflow-hidden" style="height:200px;z-index:0"></div>
         </div>
 
         <!-- Detalles del viaje -->
@@ -171,9 +169,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 const router = useRouter()
 const route = useRoute()
@@ -185,11 +185,82 @@ const error = ref(null)
 const submitting = ref(false)
 const timeRemaining = ref(30)
 const countdownInterval = ref(null)
+const mapContainer = ref(null)
+let leafletMap = null
 
 const rideId = computed(() => route.params.rideId)
 
 const getGoogleMapsUrl = (lat, lon) => {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+}
+
+const makeMarkerIcon = (label, color) => L.divIcon({
+  html: `<div style="background:${color};color:white;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)"><span style="transform:rotate(45deg)">${label}</span></div>`,
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 28]
+})
+
+const initMap = async (rideData) => {
+  await nextTick()
+  if (!mapContainer.value) return
+
+  const oLat = rideData.origin?.lat
+  const oLng = rideData.origin?.lng ?? rideData.origin?.lon
+  const dLat = rideData.destination?.lat
+  const dLng = rideData.destination?.lng ?? rideData.destination?.lon
+
+  const centerLat = oLat || 20.5888
+  const centerLng = oLng || -100.3899
+
+  leafletMap = L.map(mapContainer.value, { zoomControl: false })
+    .setView([centerLat, centerLng], 14)
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(leafletMap)
+
+  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
+
+  const bounds = []
+
+  if (oLat && oLng) {
+    L.marker([oLat, oLng], { icon: makeMarkerIcon('A', '#22c55e') })
+      .addTo(leafletMap)
+      .bindPopup(`<b>Origen</b><br>${rideData.origin.address || ''}`)
+    bounds.push([oLat, oLng])
+  }
+
+  if (dLat && dLng) {
+    L.marker([dLat, dLng], { icon: makeMarkerIcon('B', '#ef4444') })
+      .addTo(leafletMap)
+      .bindPopup(`<b>Destino</b><br>${rideData.destination.address || ''}`)
+    bounds.push([dLat, dLng])
+  }
+
+  if (oLat && oLng && dLat && dLng) {
+    try {
+      const resp = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+      )
+      const data = await resp.json()
+      if (data.routes?.[0]) {
+        L.geoJSON(data.routes[0].geometry, {
+          style: { color: '#3b82f6', weight: 4, opacity: 0.85 }
+        }).addTo(leafletMap)
+      }
+    } catch {
+      L.polyline([[oLat, oLng], [dLat, dLng]], {
+        color: '#3b82f6', weight: 3, dashArray: '8,8', opacity: 0.7
+      }).addTo(leafletMap)
+    }
+  }
+
+  if (bounds.length >= 2) {
+    leafletMap.fitBounds(bounds, { padding: [30, 30] })
+  } else if (bounds.length === 1) {
+    leafletMap.setView(bounds[0], 15)
+  }
 }
 
 const loadRideDetails = async () => {
@@ -208,6 +279,10 @@ const loadRideDetails = async () => {
     error.value = 'Error al cargar detalles del viaje'
   } finally {
     loading.value = false
+  }
+
+  if (ride.value) {
+    await initMap(ride.value)
   }
 }
 
@@ -261,6 +336,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (countdownInterval.value) {
     clearInterval(countdownInterval.value)
+  }
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
   }
 })
 </script>

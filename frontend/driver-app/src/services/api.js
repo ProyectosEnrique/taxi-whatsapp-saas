@@ -138,6 +138,26 @@ export const ridesApi = {
   getActiveRide: async () => {
     const response = await api.get('/driver/rides/active')
     return response.data
+  },
+
+  getScheduledRides: async () => {
+    const response = await api.get('/driver/rides/scheduled')
+    return response.data
+  },
+
+  claimScheduledRide: async (rideId) => {
+    const response = await api.post(`/driver/rides/${rideId}/claim`)
+    return response.data
+  },
+
+  releaseScheduledRide: async (rideId) => {
+    const response = await api.post(`/driver/rides/${rideId}/release`)
+    return response.data
+  },
+
+  reportIncident: async (incidentData) => {
+    const response = await api.post('/driver/incidents', incidentData)
+    return response.data
   }
 }
 

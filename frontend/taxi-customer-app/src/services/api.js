@@ -108,6 +108,36 @@ export const ridesApi = {
   estimateFare: async (origin, destination) => {
     const response = await api.post('/customer/rides/estimate', { origin, destination })
     return response.data
+  },
+
+  scheduleRide: async (rideData) => {
+    const response = await api.post('/customer/rides/schedule', rideData)
+    return response.data
+  },
+
+  getScheduledRides: async () => {
+    const response = await api.get('/customer/rides/scheduled')
+    return response.data
+  },
+
+  cancelScheduledRide: async (rideId, reason = 'Cliente canceló') => {
+    const response = await api.post(`/customer/rides/${rideId}/cancel`, { reason })
+    return response.data
+  },
+
+  reassignRide: async (rideId) => {
+    const response = await api.post(`/customer/rides/${rideId}/reassign`)
+    return response.data
+  },
+
+  setPreferredDriver: async (driverCode) => {
+    const response = await api.post('/customer/preferred-driver', { driver_code: driverCode })
+    return response.data
+  },
+
+  reportIncident: async (incidentData) => {
+    const response = await api.post('/customer/incidents', incidentData)
+    return response.data
   }
 }
 

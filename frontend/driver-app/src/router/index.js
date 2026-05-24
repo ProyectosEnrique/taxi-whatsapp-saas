@@ -53,6 +53,12 @@ const routes = [
     name: 'Schedules',
     component: () => import('../views/SchedulesView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/agenda',
+    name: 'Agenda',
+    component: () => import('../views/ScheduledRidesDriverView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

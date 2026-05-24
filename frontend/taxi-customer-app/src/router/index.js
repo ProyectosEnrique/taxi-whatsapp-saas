@@ -47,6 +47,18 @@ const routes = [
     name: 'Profile',
     component: () => import('../views/ProfileView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/schedule',
+    name: 'ScheduleRide',
+    component: () => import('../views/ScheduleRideView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/scheduled',
+    name: 'ScheduledRides',
+    component: () => import('../views/ScheduledRidesView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
