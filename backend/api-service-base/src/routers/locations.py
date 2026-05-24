@@ -29,13 +29,21 @@ def _format_result(item: dict, index: int) -> dict:
 
 
 @router.get("/search")
-async def search_address(q: str = Query(..., min_length=3)):
+async def search_address(
+    q: str = Query(..., min_length=3),
+    lat: float | None = None,
+    lon: float | None = None,
+):
     """Busca direcciones usando Nominatim/OpenStreetMap."""
+    params: dict = {"q": q, "format": "json", "limit": 6, "addressdetails": 0, "countrycodes": "mx"}
+    if lat is not None and lon is not None:
+        delta = 0.4  # ~44 km — prioriza resultados cercanos sin restringirlos
+        params["viewbox"] = f"{lon-delta},{lat-delta},{lon+delta},{lat+delta}"
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
                 f"{NOMINATIM_URL}/search",
-                params={"q": q, "format": "json", "limit": 6, "addressdetails": 0},
+                params=params,
                 headers=HEADERS,
             )
             resp.raise_for_status()

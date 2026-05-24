@@ -66,7 +66,11 @@ export const useLocationStore = defineStore('location', () => {
     error.value = null
 
     try {
-      const response = await locationsApi.searchAddress(query)
+      // Pasa coordenadas actuales para sesgar los resultados al área del usuario
+      const coords = currentLocation.value
+        ? { lat: currentLocation.value.lat, lon: currentLocation.value.lon }
+        : null
+      const response = await locationsApi.searchAddress(query, coords)
       searchResults.value = response.results || []
       return { success: true, results: response.results }
     } catch (err) {

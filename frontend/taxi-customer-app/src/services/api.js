@@ -142,8 +142,10 @@ export const ridesApi = {
 }
 
 export const locationsApi = {
-  searchAddress: async (query) => {
-    const response = await api.get('/locations/search', { params: { q: query } })
+  searchAddress: async (query, coords = null) => {
+    const params = { q: query }
+    if (coords?.lat && coords?.lon) { params.lat = coords.lat; params.lon = coords.lon }
+    const response = await api.get('/locations/search', { params })
     return response.data
   },
 
