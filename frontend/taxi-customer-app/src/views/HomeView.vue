@@ -25,25 +25,20 @@
 
     <!-- Main Content -->
     <div class="flex-1 relative overflow-hidden">
-      <!-- Map Placeholder -->
-      <div class="absolute inset-0 bg-gray-200 flex items-center justify-center">
-        <div class="text-center">
-          <div class="text-6xl mb-4">🗺️</div>
-          <p class="text-gray-600 mb-2">Mapa Interactivo</p>
-          <p class="text-sm text-gray-500">Integración con Google Maps aquí</p>
-        </div>
-      </div>
+      <!-- Leaflet Map -->
+      <div ref="mapContainer" class="absolute inset-0" style="z-index:0"></div>
 
       <!-- Current Location Button -->
       <button
         @click="getCurrentLocation"
         class="absolute top-4 right-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50"
+        style="z-index:800"
       >
         <span class="text-2xl">📍</span>
       </button>
 
       <!-- Location Selection Card -->
-      <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl p-6 max-h-[70vh] overflow-y-auto">
+      <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl p-6 max-h-[70vh] overflow-y-auto" style="z-index:10">
         <!-- Origin Selection -->
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-2">¿Dónde estás?</label>
@@ -201,14 +196,157 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLocationStore } from '../stores/locationStore'
 import { useRideStore } from '../stores/rideStore'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 const router = useRouter()
 const locationStore = useLocationStore()
 const rideStore = useRideStore()
+
+// ── Mapa ─────────────────────────────────────────────────────────────────────
+const mapContainer = ref(null)
+let leafletMap = null
+let originMarker = null
+let destMarker   = null
+let userMarker   = null
+let routeLayer   = null
+
+const DEFAULT_CENTER = [20.5888, -100.3899] // Querétaro
+const DEFAULT_ZOOM   = 13
+
+const makeMarkerIcon = (label, bg) => L.divIcon({
+  html: `<div style="background:${bg};color:#fff;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)"><span style="transform:rotate(45deg)">${label}</span></div>`,
+  className: '', iconSize: [28, 28], iconAnchor: [14, 28]
+})
+
+const userIcon = L.divIcon({
+  html: '<div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 3px rgba(59,130,246,.35)"></div>',
+  className: '', iconSize: [16, 16], iconAnchor: [8, 8]
+})
+
+const initMap = async () => {
+  await nextTick()
+  if (!mapContainer.value || leafletMap) return
+
+  leafletMap = L.map(mapContainer.value, { zoomControl: false })
+    .setView(DEFAULT_CENTER, DEFAULT_ZOOM)
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(leafletMap)
+
+  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
+
+  // Si ya hay ubicación actual, centrar en ella
+  if (locationStore.currentLocation) {
+    const { lat, lng } = locationStore.currentLocation
+    placeUserMarker(lat, lng)
+    leafletMap.setView([lat, lng], 15)
+  }
+  // Si hay origen/destino pre-cargados, pintarlos
+  if (locationStore.origin) placeOriginMarker(locationStore.origin.lat, locationStore.origin.lng)
+  if (locationStore.destination) placeDestMarker(locationStore.destination.lat, locationStore.destination.lng)
+  if (locationStore.origin && locationStore.destination) {
+    await drawRoute(locationStore.origin.lat, locationStore.origin.lng,
+                    locationStore.destination.lat, locationStore.destination.lng)
+  }
+}
+
+const placeUserMarker = (lat, lng) => {
+  if (!leafletMap) return
+  if (userMarker) userMarker.setLatLng([lat, lng])
+  else userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 100 }).addTo(leafletMap)
+}
+
+const placeOriginMarker = (lat, lng) => {
+  if (!leafletMap) return
+  if (originMarker) originMarker.setLatLng([lat, lng])
+  else originMarker = L.marker([lat, lng], { icon: makeMarkerIcon('A', '#22c55e') }).addTo(leafletMap)
+}
+
+const placeDestMarker = (lat, lng) => {
+  if (!leafletMap) return
+  if (destMarker) destMarker.setLatLng([lat, lng])
+  else destMarker = L.marker([lat, lng], { icon: makeMarkerIcon('B', '#ef4444') }).addTo(leafletMap)
+}
+
+const clearMarker = (markerRef) => {
+  if (markerRef && leafletMap) leafletMap.removeLayer(markerRef)
+  return null
+}
+
+const clearRoute = () => {
+  if (routeLayer && leafletMap) {
+    leafletMap.removeLayer(routeLayer)
+    routeLayer = null
+  }
+}
+
+const drawRoute = async (oLat, oLng, dLat, dLng) => {
+  clearRoute()
+  try {
+    const resp = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+    )
+    const data = await resp.json()
+    if (data.routes?.[0]) {
+      routeLayer = L.geoJSON(data.routes[0].geometry, {
+        style: { color: '#3b82f6', weight: 4, opacity: 0.85 }
+      }).addTo(leafletMap)
+    }
+  } catch {
+    routeLayer = L.polyline([[oLat, oLng], [dLat, dLng]], {
+      color: '#3b82f6', weight: 3, dashArray: '8,8', opacity: 0.7
+    }).addTo(leafletMap)
+  }
+  // Ajustar vista para ver toda la ruta
+  const bounds = [[oLat, oLng], [dLat, dLng]]
+  leafletMap.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 })
+}
+
+// Watchers reactivos: origen y destino
+watch(() => locationStore.origin, async (loc) => {
+  if (!leafletMap) return
+  if (loc?.lat && loc?.lng) {
+    placeOriginMarker(loc.lat, loc.lng)
+    if (locationStore.destination) {
+      await drawRoute(loc.lat, loc.lng, locationStore.destination.lat, locationStore.destination.lng)
+    } else {
+      leafletMap.flyTo([loc.lat, loc.lng], 15, { duration: 1 })
+    }
+  } else {
+    originMarker = clearMarker(originMarker)
+    clearRoute()
+  }
+})
+
+watch(() => locationStore.destination, async (loc) => {
+  if (!leafletMap) return
+  if (loc?.lat && loc?.lng) {
+    placeDestMarker(loc.lat, loc.lng)
+    if (locationStore.origin) {
+      await drawRoute(locationStore.origin.lat, locationStore.origin.lng, loc.lat, loc.lng)
+    } else {
+      leafletMap.flyTo([loc.lat, loc.lng], 15, { duration: 1 })
+    }
+  } else {
+    destMarker = clearMarker(destMarker)
+    clearRoute()
+  }
+})
+
+watch(() => locationStore.currentLocation, (loc) => {
+  if (!leafletMap || !loc) return
+  placeUserMarker(loc.lat, loc.lng)
+  if (!locationStore.origin && !locationStore.destination) {
+    leafletMap.flyTo([loc.lat, loc.lng], 15, { duration: 1.2 })
+  }
+})
+// ─────────────────────────────────────────────────────────────────────────────
 
 const originSearch = ref('')
 const destinationSearch = ref('')
@@ -290,7 +428,7 @@ const clearDestination = () => {
 const getCurrentLocation = async () => {
   try {
     await locationStore.getCurrentLocation()
-    alert('Ubicación obtenida')
+    // El watcher de currentLocation mueve el mapa automáticamente
   } catch (err) {
     alert('No se pudo obtener la ubicación')
   }
@@ -345,14 +483,23 @@ const requestRide = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   locationStore.loadFavoriteLocations()
 
-  // Check if there's an active ride
+  // Redirigir si hay viaje activo
   rideStore.fetchActiveRide().then(() => {
     if (rideStore.hasActiveRide) {
       router.push(`/ride/${rideStore.activeRide.ride_id}`)
     }
   })
+
+  await initMap()
+})
+
+onUnmounted(() => {
+  if (leafletMap) {
+    leafletMap.remove()
+    leafletMap = null
+  }
 })
 </script>
