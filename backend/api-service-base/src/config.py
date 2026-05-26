@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     EMERGENCY_PHONE: str = "911"        # número al que llama el botón de pánico
 
     # ==============================================================================
+    # TWILIO SMS (recuperación de contraseña)
+    # ==============================================================================
+
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_SMS_FROM: str = ""           # número Twilio SMS-capable, e.g. "+16204077336"
+
+    # ==============================================================================
     # TELEGRAM
     # ==============================================================================
 

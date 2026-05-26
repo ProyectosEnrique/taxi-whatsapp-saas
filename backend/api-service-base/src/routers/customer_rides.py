@@ -119,22 +119,26 @@ async def forgot_password(payload: dict, db: Session = Depends(get_db)):
     }
 
     customer = db.query(Customer).filter(Customer.phone == phone).first()
-    if customer:
+    if customer and settings.TWILIO_ACCOUNT_SID and settings.TWILIO_SMS_FROM:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 await client.post(
-                    f"{settings.WHATSAPP_GATEWAY_URL}/api/send",
-                    json={
-                        "to": phone,
-                        "message": (
-                            f"🔑 *Código de recuperación — {settings.BUSINESS_NAME}*\n\n"
-                            f"Tu código es: *{code}*\n\n"
-                            f"Válido por {_OTP_TTL_MINUTES} minutos. No lo compartas."
+                    f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Messages.json",
+                    auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN),
+                    data={
+                        "From": settings.TWILIO_SMS_FROM,
+                        "To": phone,
+                        "Body": (
+                            f"{settings.BUSINESS_NAME}: tu código de recuperación es {code}. "
+                            f"Válido {_OTP_TTL_MINUTES} min. No lo compartas."
                         ),
                     },
                 )
+            logger.info(f"[forgot-password] SMS enviado a {phone}")
         except Exception as exc:
-            logger.warning(f"[forgot-password] WhatsApp no disponible para {phone}: {exc}")
+            logger.warning(f"[forgot-password] SMS no enviado a {phone}: {exc}")
+    elif customer:
+        logger.warning(f"[forgot-password] Twilio no configurado — código para {phone}: {code}")
 
     # Misma respuesta exista o no el número (evita enumeración de teléfonos)
     return {"message": "Si el número está registrado recibirás un código por WhatsApp"}
