@@ -13,7 +13,24 @@ _cache: dict = {}
 _cache_ttl   = 60  # segundos
 
 
-def get_fare_config(db: Session) -> FareConfig:
+def _cfg_to_snapshot(cfg: FareConfig) -> dict:
+    """Serializa FareConfig a dict plano para evitar DetachedInstanceError en caché."""
+    return {k: getattr(cfg, k) for k in [
+        "id", "base_fare", "per_km_rate", "per_minute_rate", "minimum_fare",
+        "surge_enabled", "surge_peak_multiplier", "surge_night_multiplier", "surge_weekend_multiplier",
+        "charge_airport_pickup", "charge_airport_dropoff", "charge_extra_passenger",
+        "charge_luggage", "discount_frequent_rider", "discount_corporate", "updated_at",
+    ]}
+
+
+class _FareConfigProxy:
+    """Objeto que imita FareConfig pero vive fuera de la sesión DB."""
+    def __init__(self, snapshot: dict):
+        for k, v in snapshot.items():
+            setattr(self, k, v)
+
+
+def get_fare_config(db: Session) -> "_FareConfigProxy":
     now = time.monotonic()
     if _cache.get("config") and now - _cache.get("ts", 0) < _cache_ttl:
         return _cache["config"]
@@ -25,9 +42,10 @@ def get_fare_config(db: Session) -> FareConfig:
         db.commit()
         db.refresh(cfg)
 
-    _cache["config"] = cfg
+    proxy = _FareConfigProxy(_cfg_to_snapshot(cfg))
+    _cache["config"] = proxy
     _cache["ts"]     = now
-    return cfg
+    return proxy
 
 
 def invalidate_cache():

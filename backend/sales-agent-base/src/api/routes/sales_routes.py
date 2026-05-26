@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Blueprint
 sales_bp = Blueprint('sales', __name__, url_prefix='/api/v1/sales')
 
-# Referencia al FSM (se inyecta desde app_v2.py)
+# Referencia al FSM restaurante (se inyecta desde app_v2.py)
 _fsm = None
 _session_manager = None
 _restaurant_client = None
@@ -79,6 +79,10 @@ async def process_sales_message():
         return jsonify({'error': 'message requerido'}), 400
 
     logger.info(f"[Sales:{channel}] Mensaje de {session_id}: {message[:50]}...")
+
+    # ── Taxi branch ────────────────────────────────────────────────────────────
+    if context.get('tenant_id') == 'taxi':
+        return await _handle_taxi_message(session_id, message, context)
 
     try:
         # Asegurar FSM inicializado
@@ -460,6 +464,27 @@ async def _send_order_to_kitchen(
     except Exception as e:
         logger.error(f"[Sales] Error enviando a cocina: {e}")
         return None
+
+
+async def _handle_taxi_message(session_id: str, message: str, context: Dict[str, Any]) -> Any:
+    """Procesa mensajes del canal de taxis usando TaxiFSM."""
+    try:
+        from src.taxi.fsm import get_taxi_fsm
+        fsm = get_taxi_fsm()
+        result = fsm.process(session_id, message)
+        return jsonify({
+            'response': result.response_text,
+            'text': result.response_text,
+            'state': result.new_state.value,
+            'intent': result.intent,
+        })
+    except Exception as e:
+        logger.error(f"[Taxi] Error: {e}", exc_info=True)
+        return jsonify({
+            'response': 'El servicio de taxi está temporalmente no disponible. Intenta de nuevo.',
+            'text': 'El servicio de taxi está temporalmente no disponible. Intenta de nuevo.',
+            'state': 'error',
+        }), 500
 
 
 async def _handle_fallback(message: str, context: Dict[str, Any]) -> Dict[str, Any]:

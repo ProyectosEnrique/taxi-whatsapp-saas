@@ -113,11 +113,105 @@
       </div>
 
       <div class="bg-white rounded-lg shadow mb-6 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">🔑 Cambiar Contraseña</h3>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña actual</label>
+            <input
+              v-model="passwordForm.current"
+              type="password"
+              placeholder="••••••••"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
+            <input
+              v-model="passwordForm.newPass"
+              type="password"
+              placeholder="Mínimo 6 caracteres"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar nueva contraseña</label>
+            <input
+              v-model="passwordForm.confirm"
+              type="password"
+              placeholder="Repite la nueva contraseña"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            />
+          </div>
+          <p v-if="passwordError" class="text-red-600 text-sm">{{ passwordError }}</p>
+          <p v-if="passwordSaved" class="text-green-600 text-sm">✓ Contraseña actualizada correctamente</p>
+          <button
+            @click="changePassword"
+            :disabled="changingPassword"
+            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
+          >
+            {{ changingPassword ? 'Guardando...' : 'Actualizar Contraseña' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow mb-6 p-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">💳 Pagos</h3>
         <router-link to="/payment" class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
           <span class="text-gray-900">Métodos de pago</span>
           <span class="text-gray-400">→</span>
         </router-link>
+      </div>
+
+      <!-- Contacto de emergencia -->
+      <div class="bg-white rounded-lg shadow mb-6 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">🚨 Contacto de Emergencia</h3>
+        <p class="text-sm text-gray-500 mb-4">
+          Si activas el SOS, esta persona recibirá tu ubicación en tiempo real por Telegram.
+        </p>
+
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <input
+              v-model="emergencyContact.name"
+              type="text"
+              placeholder="Ej: Mamá, Esposo/a"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+            <input
+              v-model="emergencyContact.phone"
+              type="tel"
+              placeholder="+52 1 XXX XXX XXXX"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ID de Telegram</label>
+            <input
+              v-model="emergencyContact.telegram_id"
+              type="text"
+              placeholder="Ej: 123456789"
+              class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-transparent"
+            />
+            <p class="text-xs text-gray-400 mt-1">
+              Tu contacto debe enviar <code class="bg-gray-100 px-1 rounded">/start</code> al bot
+              <a href="https://t.me/userinfobot" target="_blank" class="text-blue-500 underline">@userinfobot</a>
+              para obtener su ID.
+            </p>
+          </div>
+        </div>
+
+        <button
+          @click="saveEmergencyContact"
+          :disabled="savingEmergency"
+          class="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
+        >
+          {{ savingEmergency ? 'Guardando...' : '💾 Guardar Contacto de Emergencia' }}
+        </button>
+        <p v-if="emergencySaved" class="text-green-600 text-sm text-center mt-2">✓ Guardado correctamente</p>
       </div>
 
       <div class="bg-white rounded-lg shadow mb-6 p-6">
@@ -223,6 +317,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import { useLocationStore } from '../stores/locationStore'
+import { ridesApi } from '../services/api'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -236,6 +331,68 @@ const settings = reactive({
   notifications: true,
   saveLocations: true
 })
+
+// Cambiar contraseña
+const passwordForm = reactive({ current: '', newPass: '', confirm: '' })
+const changingPassword = ref(false)
+const passwordSaved = ref(false)
+const passwordError = ref('')
+
+const changePassword = async () => {
+  passwordError.value = ''
+  passwordSaved.value = false
+  if (!passwordForm.current || !passwordForm.newPass || !passwordForm.confirm) {
+    passwordError.value = 'Completa todos los campos.'
+    return
+  }
+  if (passwordForm.newPass.length < 6) {
+    passwordError.value = 'La nueva contraseña debe tener al menos 6 caracteres.'
+    return
+  }
+  if (passwordForm.newPass !== passwordForm.confirm) {
+    passwordError.value = 'Las contraseñas no coinciden.'
+    return
+  }
+  changingPassword.value = true
+  try {
+    await ridesApi.changePassword(passwordForm.current, passwordForm.newPass)
+    passwordSaved.value = true
+    passwordForm.current = ''
+    passwordForm.newPass = ''
+    passwordForm.confirm = ''
+    setTimeout(() => { passwordSaved.value = false }, 4000)
+  } catch (e) {
+    passwordError.value = e?.response?.data?.detail || 'Error al cambiar contraseña. Verifica la contraseña actual.'
+  } finally {
+    changingPassword.value = false
+  }
+}
+
+// Contacto de emergencia
+const emergencyContact = reactive({ name: '', phone: '', telegram_id: '' })
+const savingEmergency = ref(false)
+const emergencySaved = ref(false)
+
+const saveEmergencyContact = async () => {
+  savingEmergency.value = true
+  emergencySaved.value = false
+  try {
+    await ridesApi.setEmergencyContact(emergencyContact)
+    emergencySaved.value = true
+    setTimeout(() => { emergencySaved.value = false }, 3000)
+  } catch (_) {
+    alert('Error al guardar. Intenta de nuevo.')
+  } finally {
+    savingEmergency.value = false
+  }
+}
+
+const loadEmergencyContact = async () => {
+  try {
+    const data = await ridesApi.getEmergencyContact()
+    Object.assign(emergencyContact, data)
+  } catch (_) { /* sin datos previos */ }
+}
 
 const newFavorite = reactive({
   type: 'home',
@@ -281,6 +438,7 @@ const goBack = () => {
 
 onMounted(() => {
   locationStore.loadFavoriteLocations()
+  loadEmergencyContact()
 
   const savedSettings = localStorage.getItem('customer_settings')
   if (savedSettings) {

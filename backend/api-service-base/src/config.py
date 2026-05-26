@@ -68,8 +68,16 @@ class Settings(BaseSettings):
     PUBLIC_URL: str = "https://taxi.nexoai.lat"
     BUSINESS_NAME: str = "Taxi App"
     WHATSAPP_GATEWAY_URL: str = "http://taxi-whatsapp:8000"
+    WHATSAPP_SECRET: str = ""           # clave compartida entre taxi-api y taxi-whatsapp
     WHATSAPP_NUMBER: str = ""           # número de flota, e.g. "+15551234567"
     EMERGENCY_PHONE: str = "911"        # número al que llama el botón de pánico
+
+    # ==============================================================================
+    # TELEGRAM
+    # ==============================================================================
+
+    TELEGRAM_BOT_TOKEN: str = ""        # token del bot (@BotFather)
+    TELEGRAM_ALERT_CHAT_ID: str = ""    # chat_id del grupo/canal del operador
 
     # ==============================================================================
     # CONFIG FROM ENV FILE

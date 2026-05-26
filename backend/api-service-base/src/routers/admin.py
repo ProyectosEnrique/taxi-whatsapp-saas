@@ -76,7 +76,7 @@ def _trip_to_dict(trip: Trip) -> dict:
         "payment_method":    trip.payment_method,
         "requested_at":      trip.created_at.isoformat() if trip.created_at else None,
         "completed_at":      trip.completed_at.isoformat() if trip.completed_at else None,
-        "customer_rating":   None,
+        "customer_rating":   trip.customer_rating,
     }
 
 

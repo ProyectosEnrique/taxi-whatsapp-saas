@@ -62,10 +62,6 @@ class AdminHandler:
         Returns:
             True si es admin, False si no
         """
-        if self.dev_mode:
-            # En desarrollo, todos son admin
-            return True
-
         if not phone:
             return False
 

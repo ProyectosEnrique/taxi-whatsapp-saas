@@ -19,6 +19,12 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('../views/ForgotPasswordView.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/home',
     name: 'Home',
     component: () => import('../views/HomeView.vue'),
@@ -59,6 +65,12 @@ const routes = [
     name: 'ScheduledRides',
     component: () => import('../views/ScheduledRidesView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/track/:incidentId',
+    name: 'EmergencyTracking',
+    component: () => import('../views/EmergencyTrackingView.vue'),
+    meta: { requiresAuth: false }
   }
 ]
 

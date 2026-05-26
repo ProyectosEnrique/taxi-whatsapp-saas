@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,23 @@ from ..auth import hash_password, verify_password, create_token, get_current_dri
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _notify_customer(phone: str, message: str) -> None:
+    """Envía notificación proactiva al cliente vía WhatsApp gateway (fire-and-forget)."""
+    gateway = settings.WHATSAPP_GATEWAY_URL
+    secret = settings.WHATSAPP_SECRET
+    if not gateway or not phone:
+        return
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            client.post(
+                f"{gateway}/notify/customer",
+                json={"phone": phone, "message": message},
+                headers={"X-Taxi-Internal-Key": secret},
+            )
+    except Exception as e:
+        logger.warning(f"[Notify] No se pudo notificar a {phone}: {e}")
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
 
 
@@ -112,6 +130,47 @@ def update_profile(payload: dict, current: Driver = Depends(get_current_driver),
             setattr(current, field, payload[field])
     db.commit()
     return _driver_to_dict(current)
+
+
+@router.get("/profile/emergency-contact")
+def get_emergency_contact(current: Driver = Depends(get_current_driver)):
+    return {
+        "name":        current.emergency_contact_name or "",
+        "phone":       current.emergency_contact_phone or "",
+        "telegram_id": current.emergency_contact_telegram_id or "",
+    }
+
+
+@router.put("/profile/password")
+def change_password(
+    payload: dict,
+    current: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    current_password = payload.get("current_password") or ""
+    new_password     = payload.get("new_password") or ""
+    if not current_password or not new_password:
+        raise HTTPException(400, "current_password y new_password requeridos")
+    if len(new_password) < 6:
+        raise HTTPException(400, "La nueva contraseña debe tener al menos 6 caracteres")
+    if not verify_password(current_password, current.password_hash):
+        raise HTTPException(401, "Contraseña actual incorrecta")
+    current.password_hash = hash_password(new_password)
+    db.commit()
+    return {"success": True}
+
+
+@router.put("/profile/emergency-contact")
+def set_emergency_contact(
+    payload: dict,
+    current: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    current.emergency_contact_name        = (payload.get("name") or "").strip()
+    current.emergency_contact_phone       = (payload.get("phone") or "").strip()
+    current.emergency_contact_telegram_id = (payload.get("telegram_id") or "").strip()
+    db.commit()
+    return {"success": True}
 
 
 # ── Estado y ubicación ────────────────────────────────────────────────────────
@@ -224,6 +283,24 @@ def get_scheduled_rides(current: Driver = Depends(get_current_driver), db: Sessi
     return {"mine": _with_flag(mine, True), "pool": _with_flag(pool, False)}
 
 
+@router.get("/rides/history")
+def get_ride_history(
+    limit: int = 20,
+    offset: int = 0,
+    current: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    trips = (
+        db.query(Trip)
+        .filter(Trip.driver_phone == current.phone, Trip.status == TripStatus.COMPLETED)
+        .order_by(Trip.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {"rides": [_trip_to_dict(t) for t in trips]}
+
+
 @router.post("/rides/{ride_id}/claim")
 def claim_scheduled_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
     """Conductor reserva un viaje programado del pool."""
@@ -280,6 +357,15 @@ def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db:
     trip.status       = TripStatus.CONFIRMED
     db.commit()
     logger.info(f"[Driver] {current.name} aceptó viaje {ride_id}")
+    _notify_customer(
+        trip.customer_phone,
+        f"🚕 *¡Conductor asignado!*\n\n"
+        f"Tu taxi está en camino 🟢\n"
+        f"Conductor: *{current.name}*\n"
+        f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
+        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
+        f"_Escribe *estado* para ver la ubicación o *cancelar* si ya no lo necesitas._",
+    )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 
@@ -300,6 +386,13 @@ def driver_arrived(ride_id: str, current: Driver = Depends(get_current_driver), 
     trip.status = TripStatus.DRIVER_ARRIVED
     db.commit()
     logger.info(f"[Driver] {current.name} llegó al origen del viaje {ride_id}")
+    _notify_customer(
+        trip.customer_phone,
+        f"🚕 *¡Tu taxi llegó!*\n\n"
+        f"Tu conductor *{current.name}* está esperándote.\n"
+        f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
+        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*",
+    )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 
@@ -312,6 +405,13 @@ def start_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: 
         raise HTTPException(400, "El viaje debe estar confirmado o con conductor esperando")
     trip.status = TripStatus.IN_PROGRESS
     db.commit()
+    _notify_customer(
+        trip.customer_phone,
+        f"🚗 *¡Viaje en camino!*\n\n"
+        f"Tu conductor *{current.name}* ha iniciado el trayecto.\n"
+        f"Destino: {trip.destination_address or 'Tu destino'}\n\n"
+        f"_Escribe *estado* en cualquier momento para consultar tu viaje._",
+    )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 
@@ -328,6 +428,14 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
     current.total_earnings = Decimal(str(current.total_earnings or 0)) + Decimal(str(trip.fare or 0))
     db.commit()
     logger.info(f"[Driver] Viaje {ride_id} completado por {current.name}")
+    _notify_customer(
+        trip.customer_phone,
+        f"✅ *¡Llegaste a tu destino!*\n\n"
+        f"Viaje completado con *{current.name}*.\n"
+        f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
+        f"¡Gracias por usar nuestro servicio! 🙌\n"
+        f"¿Deseas pedir otro taxi? Escribe *taxi* cuando quieras.",
+    )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 

@@ -54,6 +54,13 @@
             </div>
           </div>
 
+          <div v-if="passwordResetSuccess" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p class="text-sm text-green-700 flex items-center">
+              <span class="mr-2">✅</span>
+              Contraseña actualizada. Ya puedes iniciar sesión.
+            </p>
+          </div>
+
           <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
             <p class="text-sm text-red-600 flex items-center">
               <span class="mr-2">⚠️</span>
@@ -71,7 +78,16 @@
           </button>
         </form>
 
-        <div class="mt-6 text-center">
+        <div class="mt-4 text-center">
+          <router-link
+            to="/forgot-password"
+            class="text-sm text-gray-500 hover:text-taxi-yellow hover:underline"
+          >
+            ¿Olvidaste tu contraseña?
+          </router-link>
+        </div>
+
+        <div class="mt-4 text-center">
           <p class="text-sm text-gray-600">
             ¿No tienes cuenta?
             <router-link to="/register" class="text-taxi-yellow hover:underline font-semibold">
@@ -90,10 +106,11 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = reactive({
@@ -104,6 +121,7 @@ const form = reactive({
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref(null)
+const passwordResetSuccess = ref(route.query.reset === '1')
 
 const handleLogin = async () => {
   loading.value = true

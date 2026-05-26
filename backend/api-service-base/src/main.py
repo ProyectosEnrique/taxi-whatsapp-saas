@@ -22,7 +22,7 @@ from starlette.responses import Response
 # Importar routers
 from .routers import products, categories, agent, promotions, aliases, upload
 from .routers.payments import router as payments_router, cleanup_expired_pending_payments
-from .models import Trip, TripStatus
+from .models import Trip, TripStatus, Incident
 from .database import SessionLocal
 from .routers.customer_rides import router as customer_router
 from .routers.driver_rides import router as driver_router
@@ -32,6 +32,7 @@ from .routers.incidents import customer_router as incidents_customer_router
 from .routers.incidents import driver_router as incidents_driver_router
 from .routers.incidents import admin_router as incidents_admin_router
 from .routers.admin import router as admin_router
+from .routers.whatsapp import router as whatsapp_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -68,6 +69,53 @@ request_duration = Histogram(
 # ==============================================================================
 # LIFESPAN - Startup/Shutdown Events
 # ==============================================================================
+
+async def _dead_mans_switch():
+    """
+    Cada 2 minutos revisa incidentes activos sin resolver.
+    Si llevan más de 5 min sin escalarse → envía alerta de escalación por Telegram.
+    """
+    from .services.telegram import send_to_operator
+    await asyncio.sleep(30)
+    while True:
+        try:
+            db = SessionLocal()
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+            pending = (
+                db.query(Incident)
+                .filter(
+                    Incident.status == "active",
+                    Incident.escalated == False,
+                    Incident.created_at <= cutoff,
+                )
+                .all()
+            )
+            for inc in pending:
+                maps = (
+                    f"https://maps.google.com/?q={inc.last_location_lat},{inc.last_location_lng}"
+                    if inc.last_location_lat else "Sin ubicación"
+                )
+                track = f"{settings.PUBLIC_URL}/track/{inc.incident_id}"
+                tipo = "Conductor" if inc.reporter_type == "driver" else "Cliente"
+                msg = (
+                    f"⚠️ <b>ESCALACIÓN — SOS sin resolver</b>\n"
+                    f"Han pasado +5 minutos sin respuesta.\n"
+                    f"Tipo: {tipo} | {inc.reporter_name}\n"
+                    f"Tel: {inc.reporter_phone}\n"
+                    f"📍 <a href='{maps}'>Última ubicación</a>\n"
+                    f"🔗 <a href='{track}'>Rastreo</a>\n"
+                    f"⚠️ Considera llamar al {settings.EMERGENCY_PHONE}"
+                )
+                await send_to_operator(msg)
+                inc.escalated = True
+                logger.warning(f"[DeadMansSwitch] Escalado: {inc.incident_id}")
+            if pending:
+                db.commit()
+            db.close()
+        except Exception as exc:
+            logger.error(f"[DeadMansSwitch] Error: {exc}")
+        await asyncio.sleep(120)
+
 
 async def _activate_scheduled_rides():
     """
@@ -135,10 +183,26 @@ async def lifespan(app: FastAPI):
 
     # Migraciones en caliente
     _migrations = [
-        ("trips", "scheduled_at",           "DATETIME"),
-        ("trips", "preferred_driver_phone",  "VARCHAR(30)"),
-        ("trips", "preferred_driver_name",   "VARCHAR(150)"),
-        ("trips", "driver_released_at",      "DATETIME"),
+        ("trips",     "scheduled_at",                    "DATETIME"),
+        ("trips",     "preferred_driver_phone",           "VARCHAR(30)"),
+        ("trips",     "preferred_driver_name",            "VARCHAR(150)"),
+        ("trips",     "driver_released_at",               "DATETIME"),
+        # Emergency contact — customers
+        ("customers", "emergency_contact_name",           "VARCHAR(150)"),
+        ("customers", "emergency_contact_phone",          "VARCHAR(30)"),
+        ("customers", "emergency_contact_telegram_id",    "VARCHAR(50)"),
+        # Emergency contact — drivers
+        ("drivers",   "emergency_contact_name",           "VARCHAR(150)"),
+        ("drivers",   "emergency_contact_phone",          "VARCHAR(30)"),
+        ("drivers",   "emergency_contact_telegram_id",    "VARCHAR(50)"),
+        # Incident enhancements
+        ("incidents", "audio_url",                        "VARCHAR(500)"),
+        ("incidents", "escalated",                        "BOOLEAN DEFAULT 0"),
+        ("incidents", "last_location_lat",                "NUMERIC(10,7)"),
+        ("incidents", "last_location_lng",                "NUMERIC(10,7)"),
+        ("incidents", "last_location_at",                 "DATETIME"),
+        # Rating stored on trip row
+        ("trips",     "customer_rating",                  "INTEGER"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe
@@ -168,6 +232,7 @@ async def lifespan(app: FastAPI):
     # Background tasks
     asyncio.create_task(cleanup_expired_pending_payments())
     asyncio.create_task(_activate_scheduled_rides())
+    asyncio.create_task(_dead_mans_switch())
 
     yield
 
@@ -337,6 +402,7 @@ app.include_router(incidents_customer_router)
 app.include_router(incidents_driver_router)
 app.include_router(incidents_admin_router)
 app.include_router(admin_router)
+app.include_router(whatsapp_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

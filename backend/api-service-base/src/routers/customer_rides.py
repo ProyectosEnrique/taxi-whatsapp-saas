@@ -4,8 +4,11 @@ Rutas: /api/v1/customer/*
 """
 import logging
 import math
+import random
+import string
 from datetime import datetime, timezone, timedelta
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -13,9 +16,14 @@ from ..database import get_db
 from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, PromoCode
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/customer", tags=["customer"])
+
+# OTP temporal en memoria: phone → {code, expires_at}
+_otp_store: dict = {}
+_OTP_TTL_MINUTES = 15
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -37,8 +45,9 @@ def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
         "total_fare":   float(trip.fare or 0),
         "distance_km":  float(trip.distance_km or 0),
         "duration_minutes": max(5, int(float(trip.distance_km or 0) * 2.5)),
-        "payment_method": trip.payment_method,
-        "payment_status": trip.payment_status,
+        "payment_method":  trip.payment_method,
+        "payment_status":  trip.payment_status,
+        "customer_rating": trip.customer_rating,
         "created_at":   trip.created_at.isoformat() if trip.created_at else None,
         "scheduled_at":          trip.scheduled_at.isoformat() if trip.scheduled_at else None,
         "preferred_driver_name": trip.preferred_driver_name,
@@ -97,6 +106,71 @@ def logout():
     return {"status": "ok"}
 
 
+@router.post("/forgot-password")
+async def forgot_password(payload: dict, db: Session = Depends(get_db)):
+    phone = (payload.get("phone") or "").strip()
+    if not phone:
+        raise HTTPException(400, "phone requerido")
+
+    code = "".join(random.choices(string.digits, k=6))
+    _otp_store[phone] = {
+        "code": code,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=_OTP_TTL_MINUTES),
+    }
+
+    customer = db.query(Customer).filter(Customer.phone == phone).first()
+    if customer:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"{settings.WHATSAPP_GATEWAY_URL}/api/send",
+                    json={
+                        "to": phone,
+                        "message": (
+                            f"🔑 *Código de recuperación — {settings.BUSINESS_NAME}*\n\n"
+                            f"Tu código es: *{code}*\n\n"
+                            f"Válido por {_OTP_TTL_MINUTES} minutos. No lo compartas."
+                        ),
+                    },
+                )
+        except Exception as exc:
+            logger.warning(f"[forgot-password] WhatsApp no disponible para {phone}: {exc}")
+
+    # Misma respuesta exista o no el número (evita enumeración de teléfonos)
+    return {"message": "Si el número está registrado recibirás un código por WhatsApp"}
+
+
+@router.post("/reset-password")
+def reset_password(payload: dict, db: Session = Depends(get_db)):
+    phone = (payload.get("phone") or "").strip()
+    code = (payload.get("code") or "").strip()
+    new_password = payload.get("new_password") or ""
+
+    if not phone or not code or not new_password:
+        raise HTTPException(400, "phone, code y new_password requeridos")
+
+    entry = _otp_store.get(phone)
+    if not entry:
+        raise HTTPException(400, "Código inválido o expirado")
+
+    if datetime.now(timezone.utc) > entry["expires_at"]:
+        _otp_store.pop(phone, None)
+        raise HTTPException(400, "El código ha expirado. Solicita uno nuevo")
+
+    if entry["code"] != code:
+        raise HTTPException(400, "Código incorrecto")
+
+    customer = db.query(Customer).filter(Customer.phone == phone).first()
+    if not customer:
+        raise HTTPException(404, "Cliente no encontrado")
+
+    customer.password_hash = hash_password(new_password)
+    db.commit()
+    _otp_store.pop(phone, None)
+
+    return {"message": "Contraseña actualizada correctamente"}
+
+
 @router.get("/verify")
 def verify(current: Customer = Depends(get_current_customer)):
     return {"valid": True, "customer": {"id": current.id, "phone": current.phone, "name": current.name}}
@@ -115,6 +189,47 @@ def update_profile(payload: dict, current: Customer = Depends(get_current_custom
         current.email = payload["email"]
     db.commit()
     return {"id": current.id, "phone": current.phone, "name": current.name, "email": current.email}
+
+
+@router.get("/profile/emergency-contact")
+def get_emergency_contact(current: Customer = Depends(get_current_customer)):
+    return {
+        "name":        current.emergency_contact_name or "",
+        "phone":       current.emergency_contact_phone or "",
+        "telegram_id": current.emergency_contact_telegram_id or "",
+    }
+
+
+@router.put("/profile/password")
+def change_password(
+    payload: dict,
+    current: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    current_password = payload.get("current_password") or ""
+    new_password     = payload.get("new_password") or ""
+    if not current_password or not new_password:
+        raise HTTPException(400, "current_password y new_password requeridos")
+    if len(new_password) < 6:
+        raise HTTPException(400, "La nueva contraseña debe tener al menos 6 caracteres")
+    if not verify_password(current_password, current.password_hash):
+        raise HTTPException(401, "Contraseña actual incorrecta")
+    current.password_hash = hash_password(new_password)
+    db.commit()
+    return {"success": True}
+
+
+@router.put("/profile/emergency-contact")
+def set_emergency_contact(
+    payload: dict,
+    current: Customer = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    current.emergency_contact_name        = (payload.get("name") or "").strip()
+    current.emergency_contact_phone       = (payload.get("phone") or "").strip()
+    current.emergency_contact_telegram_id = (payload.get("telegram_id") or "").strip()
+    db.commit()
+    return {"success": True}
 
 
 # ── Rides ─────────────────────────────────────────────────────────────────────
@@ -398,6 +513,8 @@ def rate_ride(ride_id: str, payload: dict, current: Customer = Depends(get_curre
     stars = max(1, min(5, stars))
     rating = TripRating(trip_id=ride_id, stars=stars, comment=payload.get("comment", ""))
     db.add(rating)
+
+    trip.customer_rating = stars
 
     # Actualizar rating promedio del conductor
     if trip.driver_phone:

@@ -54,7 +54,17 @@ export const authApi = {
   verifyToken: async () => {
     const response = await api.get('/customer/verify')
     return response.data
-  }
+  },
+
+  forgotPassword: async (phone) => {
+    const response = await api.post('/customer/forgot-password', { phone })
+    return response.data
+  },
+
+  resetPassword: async (phone, code, newPassword) => {
+    const response = await api.post('/customer/reset-password', { phone, code, new_password: newPassword })
+    return response.data
+  },
 }
 
 export const customerApi = {
@@ -138,7 +148,37 @@ export const ridesApi = {
   reportIncident: async (incidentData) => {
     const response = await api.post('/customer/incidents', incidentData)
     return response.data
-  }
+  },
+
+  updateIncidentLocation: async (incidentId, payload) => {
+    const response = await api.post(`/customer/incidents/${incidentId}/location`, payload)
+    return response.data
+  },
+
+  uploadIncidentAudio: async (incidentId, formData) => {
+    const response = await api.post(`/customer/incidents/${incidentId}/audio`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  getEmergencyContact: async () => {
+    const response = await api.get('/customer/profile/emergency-contact')
+    return response.data
+  },
+
+  setEmergencyContact: async (data) => {
+    const response = await api.put('/customer/profile/emergency-contact', data)
+    return response.data
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await api.put('/customer/profile/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    return response.data
+  },
 }
 
 export const locationsApi = {

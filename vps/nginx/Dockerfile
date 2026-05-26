@@ -8,7 +8,7 @@ WORKDIR /app
 COPY frontend/admin-panel/package*.json ./
 RUN npm install --legacy-peer-deps
 COPY frontend/admin-panel/ ./
-RUN npm run build
+RUN npm run build -- --base=/admin/
 
 # ── Stage 2: Driver App ───────────────────────────────────────────────────────
 FROM node:20-alpine AS build-driver
@@ -24,7 +24,7 @@ WORKDIR /app
 COPY frontend/taxi-customer-app/package*.json ./
 RUN npm install --legacy-peer-deps
 COPY frontend/taxi-customer-app/ ./
-RUN npm run build -- --base=/cliente/
+RUN npm run build
 
 # ── Stage 4: nginx ────────────────────────────────────────────────────────────
 FROM nginx:alpine

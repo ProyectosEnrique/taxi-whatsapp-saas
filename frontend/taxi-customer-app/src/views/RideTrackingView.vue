@@ -30,8 +30,12 @@
     </header>
 
     <!-- Banner alerta activa -->
-    <div v-if="panicSent" class="bg-red-600 text-white px-4 py-2 text-center text-sm font-semibold">
-      🚨 ALERTA ENVIADA — Ayuda en camino — {{ panicTime }}
+    <div v-if="panicSent" class="bg-red-600 text-white px-4 py-3 text-center">
+      <p class="font-bold text-sm">🚨 ALERTA ENVIADA — Ayuda en camino — {{ panicTime }}</p>
+      <p v-if="panicTrackingUrl" class="text-xs mt-1 opacity-90">
+        Comparte tu rastreo:
+        <button @click="copyTracking" class="underline font-semibold">Copiar link</button>
+      </p>
     </div>
 
     <!-- Loading -->
@@ -352,7 +356,13 @@ const showPanicModal = ref(false)
 const sendingPanic = ref(false)
 const panicSent = ref(false)
 const panicTime = ref('')
+const panicIncidentId = ref(null)
+const panicTrackingUrl = ref(null)
 const cancelReason = ref('')
+
+let gpsWatchId = null
+let mediaRecorder = null
+let audioChunks = []
 const cancelling = ref(false)
 const rating = ref(0)
 const ratingComment = ref('')
@@ -590,7 +600,16 @@ const triggerPanic = async () => {
 
     panicSent.value = true
     panicTime.value = new Date().toLocaleTimeString('es-MX')
+    panicIncidentId.value = result.incident_id || null
+    panicTrackingUrl.value = result.tracking_url || null
     showPanicModal.value = false
+
+    // Iniciar GPS en vivo cada 15s
+    _startGpsTracking(result.incident_id)
+
+    // Grabar audio 30s y subir
+    _startAudioRecording(result.incident_id)
+
     window.open(`tel:${result.emergency_phone || '911'}`)
   } catch (err) {
     window.open('tel:911')
@@ -600,6 +619,43 @@ const triggerPanic = async () => {
   } finally {
     sendingPanic.value = false
   }
+}
+
+const _startGpsTracking = (incidentId) => {
+  if (!incidentId || !navigator.geolocation) return
+  gpsWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      try {
+        await ridesApi.updateIncidentLocation(incidentId, {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        })
+      } catch (_) { /* best-effort */ }
+    },
+    () => {},
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
+  )
+}
+
+const _startAudioRecording = async (incidentId) => {
+  if (!incidentId || !navigator.mediaDevices?.getUserMedia) return
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    audioChunks = []
+    mediaRecorder = new MediaRecorder(stream)
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append('file', blob, `${incidentId}.webm`)
+      try {
+        await ridesApi.uploadIncidentAudio(incidentId, formData)
+      } catch (_) { /* best-effort */ }
+    }
+    mediaRecorder.start()
+    setTimeout(() => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop() }, 30000)
+  } catch (_) { /* sin micrófono o permiso denegado */ }
 }
 
 const retryPayment = async () => {
@@ -632,6 +688,16 @@ const startPaymentPolling = () => {
   }, 3000)
 }
 
+const copyTracking = async () => {
+  if (!panicTrackingUrl.value) return
+  try {
+    await navigator.clipboard.writeText(panicTrackingUrl.value)
+    toastSuccess('Link copiado — compártelo con alguien de confianza')
+  } catch (_) {
+    toastError('No se pudo copiar')
+  }
+}
+
 const goBack = () => router.push('/home')
 const goHome = () => router.push('/home')
 
@@ -651,6 +717,13 @@ onUnmounted(() => {
   if (leafletMap) {
     leafletMap.remove()
     leafletMap = null
+  }
+  if (gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(gpsWatchId)
+    gpsWatchId = null
+  }
+  if (mediaRecorder?.state === 'recording') {
+    mediaRecorder.stop()
   }
 })
 </script>

@@ -497,6 +497,34 @@ def format_hybrid_response(message, provider: str) -> Dict[str, Any]:
 # PROCESAMIENTO DE MENSAJES
 # ==============================================================================
 
+async def _call_taxi_agent(phone: str, message: str, customer_name: str) -> Dict[str, Any]:
+    """Envía el mensaje al sales-agent para que TaxiFSM lo procese."""
+    agent_url = os.getenv("SALES_AGENT_URL", "http://taxi-agent:5000")
+    payload = {
+        "session_id": phone,
+        "message": message,
+        "channel": "whatsapp",
+        "context": {
+            "phone": phone,
+            "customer_name": customer_name,
+            "tenant_id": "taxi",
+        },
+    }
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{agent_url}/api/v1/sales/message",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                data = await resp.json()
+                return {"text": data.get("response") or data.get("text", ""), "buttons": None}
+    except Exception as e:
+        logger.error(f"[TaxiGW] Error llamando al agente: {e}")
+        return {"text": "El servicio de taxi está temporalmente no disponible. Intenta de nuevo."}
+
+
 async def process_incoming_message(
     phone: str,
     message: str,
@@ -539,6 +567,11 @@ async def process_incoming_message(
                 "text": admin_response.get("text"),
                 "buttons": admin_response.get("buttons")
             }
+
+        # TAXI: Rutar al TaxiFSM en el sales-agent
+        if tenant_id == "taxi":
+            logger.info(f"[Gateway] Mensaje de TAXI: {phone}")
+            return await _call_taxi_agent(phone, message, customer_name)
 
         # FLUJO HÍBRIDO: Procesar como cliente con detección inteligente
         logger.info(f"[Gateway] Mensaje de CLIENTE: {phone} | Tenant: {tenant_id}")
@@ -775,6 +808,34 @@ async def send_appropriate_response(phone: str, response: Dict[str, Any]):
 # ==============================================================================
 # API INTERNA
 # ==============================================================================
+
+@app.post("/notify/customer")
+async def notify_customer(request: Request):
+    """
+    Notificación proactiva al cliente por WhatsApp.
+    Llamado por taxi-api cuando cambia el estado de un viaje.
+    Protegido con X-Taxi-Internal-Key.
+    """
+    secret = os.getenv("WHATSAPP_SECRET", "")
+    key = request.headers.get("X-Taxi-Internal-Key", "")
+    if secret and key != secret:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    body = await request.json()
+    phone = (body.get("phone") or "").strip()
+    message = (body.get("message") or "").strip()
+
+    if not phone or not message:
+        raise HTTPException(status_code=400, detail="phone y message son requeridos")
+
+    try:
+        await whatsapp_client.send_message(to=phone, message=message)
+        logger.info(f"[Notify] Notificación enviada a {phone}")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"[Notify] Error enviando a {phone}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/send")
 async def send_message(request: SendMessageRequest):

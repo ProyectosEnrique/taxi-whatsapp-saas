@@ -44,7 +44,11 @@ class TenantDetector:
         "rico-mar-salvatierra": [
             "rico-mar", "ricomar", "mariscos", "salvatierra",
             "aguachiles", "ceviches", "camarones", "pescado", "sushi"
-        ]
+        ],
+        "taxi": [
+            "taxi", "taxista", "cab", "uber", "viaje", "llevar", "llevame",
+            "llévame", "recoger", "chofer", "conductor"
+        ],
     }
 
     # Mapeo de números a tenants (producción)
@@ -56,6 +60,7 @@ class TenantDetector:
         # "+525512345678": "default",
         # "+525587654321": "tenant_pharmacy_001",
         # "+525599998888": "tenant_butchery_001",
+        # "+521XXXXXXXXXX": "taxi",  # Número WhatsApp del taxi cuando se asigne
     }
 
     @staticmethod
@@ -181,7 +186,13 @@ class TenantDetector:
                 "type": "seafood_restaurant",
                 "emoji": "🦐",
                 "greeting": "¡Bienvenido a Rico Mar Salvatierra! 🦐🐟 Los mejores mariscos de la región"
-            }
+            },
+            "taxi": {
+                "name": "Taxi App",
+                "type": "taxi",
+                "emoji": "🚕",
+                "greeting": "¡Hola! Soy tu asistente de taxi 🚕"
+            },
         }
 
         return tenant_info.get(tenant_id, tenant_info["rico-mar-salvatierra"])

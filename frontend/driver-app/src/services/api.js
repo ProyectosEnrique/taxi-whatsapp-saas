@@ -158,7 +158,37 @@ export const ridesApi = {
   reportIncident: async (incidentData) => {
     const response = await api.post('/driver/incidents', incidentData)
     return response.data
-  }
+  },
+
+  updateIncidentLocation: async (incidentId, payload) => {
+    const response = await api.post(`/driver/incidents/${incidentId}/location`, payload)
+    return response.data
+  },
+
+  uploadIncidentAudio: async (incidentId, formData) => {
+    const response = await api.post(`/driver/incidents/${incidentId}/audio`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  getEmergencyContact: async () => {
+    const response = await api.get('/driver/profile/emergency-contact')
+    return response.data
+  },
+
+  setEmergencyContact: async (data) => {
+    const response = await api.put('/driver/profile/emergency-contact', data)
+    return response.data
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await api.put('/driver/profile/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    return response.data
+  },
 }
 
 // ============================================

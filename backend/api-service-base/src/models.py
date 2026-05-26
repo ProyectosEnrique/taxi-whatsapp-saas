@@ -306,6 +306,9 @@ class Trip(Base):
     driver_name = Column(String(150))
     driver_phone = Column(String(30))
 
+    # Calificación del cliente (1-5)
+    customer_rating = Column(Integer, nullable=True)
+
     # Timestamps
     created_at   = Column(DateTime(timezone=True), server_default=func.now())
     updated_at   = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -329,7 +332,13 @@ class Customer(Base):
     password_hash       = Column(String(255), nullable=False)
     is_active           = Column(Boolean, default=True)
     preferred_driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Contacto de emergencia
+    emergency_contact_name        = Column(String(150), nullable=True)
+    emergency_contact_phone       = Column(String(30),  nullable=True)
+    emergency_contact_telegram_id = Column(String(50),  nullable=True)  # chat_id de Telegram
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f"<Customer(phone='{self.phone}', name='{self.name}')>"
@@ -370,6 +379,11 @@ class Driver(Base):
     group_id    = Column(Integer, ForeignKey("taxi_groups.id"), nullable=True)
     group       = relationship("TaxiGroup", back_populates="drivers")
 
+    # Contacto de emergencia
+    emergency_contact_name        = Column(String(150), nullable=True)
+    emergency_contact_phone       = Column(String(30),  nullable=True)
+    emergency_contact_telegram_id = Column(String(50),  nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -394,7 +408,15 @@ class Incident(Base):
     lng            = Column(Numeric(10, 7), nullable=True)
     notes          = Column(Text, nullable=True)
     status         = Column(String(20), default="active")  # active | resolved
-    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Mejoras SOS
+    audio_url           = Column(String(500), nullable=True)   # ruta al audio grabado
+    escalated           = Column(Boolean, default=False)       # si ya se escaló (dead man's switch)
+    last_location_lat   = Column(Numeric(10, 7), nullable=True)  # GPS en vivo
+    last_location_lng   = Column(Numeric(10, 7), nullable=True)
+    last_location_at    = Column(DateTime(timezone=True), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f"<Incident(incident_id='{self.incident_id}', reporter='{self.reporter_phone}')>"

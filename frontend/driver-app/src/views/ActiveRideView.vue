@@ -328,6 +328,11 @@ const showPanicModal = ref(false)
 const sendingPanic = ref(false)
 const panicSent = ref(false)
 const panicTime = ref('')
+const panicTrackingUrl = ref(null)
+
+let gpsWatchId = null
+let mediaRecorder = null
+let audioChunks = []
 
 const rideId = computed(() => route.params.rideId)
 // backend usa 'confirmed' para viaje aceptado, el template espera 'assigned'
@@ -520,11 +525,16 @@ const triggerPanic = async () => {
       trip_id: ride.value?.ride_id || null,
       lat, lng,
       notes: 'Pánico activado desde app del conductor',
-    })
+    }, 'driver')
 
     panicSent.value = true
     panicTime.value = new Date().toLocaleTimeString('es-MX')
+    panicTrackingUrl.value = result.tracking_url || null
     showPanicModal.value = false
+
+    _startGpsTracking(result.incident_id)
+    _startAudioRecording(result.incident_id)
+
     window.open(`tel:${result.emergency_phone || '911'}`)
   } catch (_) {
     window.open('tel:911')
@@ -534,6 +544,43 @@ const triggerPanic = async () => {
   } finally {
     sendingPanic.value = false
   }
+}
+
+const _startGpsTracking = (incidentId) => {
+  if (!incidentId || !navigator.geolocation) return
+  gpsWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      try {
+        await ridesApi.updateIncidentLocation(incidentId, {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }, 'driver')
+      } catch (_) { /* best-effort */ }
+    },
+    () => {},
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
+  )
+}
+
+const _startAudioRecording = async (incidentId) => {
+  if (!incidentId || !navigator.mediaDevices?.getUserMedia) return
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    audioChunks = []
+    mediaRecorder = new MediaRecorder(stream)
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append('file', blob, `${incidentId}.webm`)
+      try {
+        await ridesApi.uploadIncidentAudio(incidentId, formData, 'driver')
+      } catch (_) { /* best-effort */ }
+    }
+    mediaRecorder.start()
+    setTimeout(() => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop() }, 30000)
+  } catch (_) { /* sin micrófono */ }
 }
 
 const navigateToOrigin = () => {
