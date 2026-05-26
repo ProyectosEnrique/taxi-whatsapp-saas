@@ -18,11 +18,57 @@ export const useRideStore = defineStore('ride', () => {
   const hasActiveRide = computed(() => !!activeRide.value)
   const activeRideStatus = computed(() => activeRide.value?.status || null)
 
+  // Notification helpers
+  let _knownRideIds = new Set()
+
+  function _requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }
+
+  function _playAlert() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, ctx.currentTime)
+      gain.gain.setValueAtTime(0.4, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.6)
+    } catch (_) {}
+  }
+
+  function _notifyNewRide(ride) {
+    _playAlert()
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('🚕 Nueva solicitud de viaje', {
+        body: `${ride.customer?.name || 'Pasajero'} → ${ride.destination?.address || 'Destino'}  $${ride.total_fare}`,
+        icon: '/icons/icon-192x192.png',
+        tag: ride.ride_id,
+      })
+    }
+  }
+
   // Actions
   const fetchPendingRequests = async () => {
     try {
       const response = await ridesApi.getPendingRequests()
-      pendingRequests.value = response.rides || []
+      const rides = response.rides || []
+      const newRides = rides.filter(r => !_knownRideIds.has(r.ride_id))
+      newRides.forEach(r => {
+        _knownRideIds.add(r.ride_id)
+        _notifyNewRide(r)
+      })
+      // Clean up ids that are no longer pending
+      const currentIds = new Set(rides.map(r => r.ride_id))
+      _knownRideIds = new Set([...currentIds].filter(id => currentIds.has(id)))
+      pendingRequests.value = rides
     } catch (err) {
       console.error('Error al obtener solicitudes:', err)
     }

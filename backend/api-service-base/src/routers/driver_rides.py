@@ -3,7 +3,7 @@ Endpoints para conductores: auth, estado, ubicación, gestión de viajes.
 Rutas: /api/v1/driver/*
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 import httpx
@@ -209,16 +209,60 @@ def get_stats(current: Driver = Depends(get_current_driver), db: Session = Depen
 
 @router.get("/earnings")
 def get_earnings(period: str = "week", current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    from collections import defaultdict
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "today":
+        period_start = today_start
+    elif period == "week":
+        period_start = today_start - timedelta(days=today_start.weekday())
+    elif period == "month":
+        period_start = today_start.replace(day=1)
+    elif period == "year":
+        period_start = today_start.replace(month=1, day=1)
+    else:
+        period_start = today_start - timedelta(days=7)
+
     trips = db.query(Trip).filter(
         Trip.driver_phone == current.phone,
-        Trip.status == TripStatus.COMPLETED
+        Trip.status == TripStatus.COMPLETED,
+        Trip.completed_at >= period_start,
     ).all()
+
+    today_earnings = sum(float(t.fare or 0) for t in trips if t.completed_at and t.completed_at >= today_start)
+
     total = sum(float(t.fare or 0) for t in trips)
+    total_rides = len(trips)
+    cash_trips = [t for t in trips if (t.payment_method or "cash") == "cash"]
+    card_trips  = [t for t in trips if (t.payment_method or "cash") != "cash"]
+
+    daily: dict = defaultdict(lambda: {"rides": 0, "earnings": 0.0})
+    for t in trips:
+        if t.completed_at:
+            day = t.completed_at.strftime("%Y-%m-%d")
+            daily[day]["rides"] += 1
+            daily[day]["earnings"] += float(t.fare or 0)
+
+    daily_list = [
+        {"date": d, "rides": v["rides"], "earnings": round(v["earnings"], 2)}
+        for d, v in sorted(daily.items())
+    ]
+    best_day = max(daily_list, key=lambda x: x["earnings"]) if daily_list else None
+
     return {
-        "period":   period,
-        "total":    round(total, 2),
-        "currency": "MXN",
-        "trips":    len(trips),
+        "period":           period,
+        "total":            round(total, 2),
+        "total_rides":      total_rides,
+        "average_per_ride": round(total / total_rides, 2) if total_rides else 0,
+        "cash":             round(sum(float(t.fare or 0) for t in cash_trips), 2),
+        "cash_rides":       len(cash_trips),
+        "card":             round(sum(float(t.fare or 0) for t in card_trips), 2),
+        "card_rides":       len(card_trips),
+        "today":            round(today_earnings, 2),
+        "daily_breakdown":  daily_list,
+        "best_day":         best_day,
+        "currency":         "MXN",
     }
 
 

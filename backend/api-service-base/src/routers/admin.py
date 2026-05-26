@@ -4,6 +4,7 @@ No requiere auth (despliegue interno en VPS).
 Rutas: /api/v1/admin/*
 """
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -334,3 +335,91 @@ def delete_promo(code: str, db: Session = Depends(get_db)):
     db.delete(promo)
     db.commit()
     return {"success": True}
+
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+
+@router.get("/reports/drivers")
+def driver_earnings_report(
+    from_date: str = "",
+    to_date: str = "",
+    db: Session = Depends(get_db),
+):
+    """
+    Reporte de ganancias por conductor en un rango de fechas.
+    Parámetros opcionales from_date / to_date en formato YYYY-MM-DD.
+    Por defecto: mes actual.
+    """
+    now = datetime.now(timezone.utc)
+    if from_date:
+        try:
+            start = datetime.fromisoformat(from_date).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(400, "from_date inválido, usa YYYY-MM-DD")
+    else:
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    if to_date:
+        try:
+            end = datetime.fromisoformat(to_date).replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+        except ValueError:
+            raise HTTPException(400, "to_date inválido, usa YYYY-MM-DD")
+    else:
+        end = now
+
+    completed_trips = (
+        db.query(Trip)
+        .filter(
+            Trip.status == TripStatus.COMPLETED,
+            Trip.completed_at >= start,
+            Trip.completed_at <= end,
+            Trip.driver_phone.isnot(None),
+        )
+        .all()
+    )
+
+    by_driver: dict = defaultdict(lambda: {
+        "trips": 0, "earnings": 0.0, "cash": 0.0, "card": 0.0
+    })
+    for t in completed_trips:
+        key = t.driver_phone
+        by_driver[key]["name"]  = t.driver_name or t.driver_phone
+        by_driver[key]["phone"] = t.driver_phone
+        by_driver[key]["trips"] += 1
+        fare = float(t.fare or 0)
+        by_driver[key]["earnings"] += fare
+        if (t.payment_method or "cash") == "cash":
+            by_driver[key]["cash"] += fare
+        else:
+            by_driver[key]["card"] += fare
+
+    # Enrich with rating from Driver table
+    driver_phones = list(by_driver.keys())
+    drivers_db = db.query(Driver).filter(Driver.phone.in_(driver_phones)).all()
+    rating_map = {d.phone: float(d.rating or 5.0) for d in drivers_db}
+
+    rows = []
+    for phone, data in by_driver.items():
+        rows.append({
+            "phone":          phone,
+            "name":           data.get("name", phone),
+            "trips":          data["trips"],
+            "earnings":       round(data["earnings"], 2),
+            "cash_earnings":  round(data["cash"], 2),
+            "card_earnings":  round(data["card"], 2),
+            "rating":         rating_map.get(phone, 5.0),
+        })
+
+    rows.sort(key=lambda x: x["earnings"], reverse=True)
+
+    return {
+        "period": {
+            "from": start.strftime("%Y-%m-%d"),
+            "to":   end.strftime("%Y-%m-%d"),
+        },
+        "drivers":       rows,
+        "total_trips":   len(completed_trips),
+        "total_earnings": round(sum(r["earnings"] for r in rows), 2),
+    }

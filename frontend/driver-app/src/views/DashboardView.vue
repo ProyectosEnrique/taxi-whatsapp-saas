@@ -319,6 +319,9 @@ const currentDate = computed(() => {
 const setStatus = async (status) => {
   const result = await driverStore.updateStatus(status)
   if (result.success && status === 'available') {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
     rideStore.startPolling()
     driverStore.startLocationTracking()
   } else if (result.success && status === 'offline') {
