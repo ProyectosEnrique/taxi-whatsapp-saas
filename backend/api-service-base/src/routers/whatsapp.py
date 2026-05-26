@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Customer, Trip, TripStatus
+from ..models import Customer, Driver, Trip, TripStatus
 from ..auth import hash_password
 from ..fare_service import get_fare_config, calculate_fare
 from ..config import settings
@@ -43,6 +43,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def customer_init(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
     phone = (payload.get("phone") or "").strip()
     name = (payload.get("name") or "Cliente").strip()
+    driver_code = (payload.get("driver_code") or "").strip()
     if not phone:
         raise HTTPException(400, "phone requerido")
     customer = db.query(Customer).filter(Customer.phone == phone).first()
@@ -53,7 +54,20 @@ def customer_init(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)
         db.add(customer)
         db.commit()
         db.refresh(customer)
+    if driver_code:
+        driver = db.query(Driver).filter(Driver.driver_code == driver_code, Driver.is_active == True).first()
+        if driver:
+            customer.preferred_driver_id = driver.id
+            db.commit()
     return {"customer_id": customer.id, "phone": customer.phone, "name": customer.name, "is_new": is_new}
+
+
+@router.get("/driver/{driver_code}")
+def get_driver_by_code(driver_code: str, db: Session = Depends(get_db), _=Depends(_auth)):
+    driver = db.query(Driver).filter(Driver.driver_code == driver_code, Driver.is_active == True).first()
+    if not driver:
+        raise HTTPException(404, "Conductor no encontrado")
+    return {"driver_code": driver.driver_code, "name": driver.name, "phone": driver.phone}
 
 
 @router.get("/geocode")
@@ -139,6 +153,8 @@ def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
         payment_method=payload.get("payment_method", "cash"),
         payment_status="pending",
         status=TripStatus.REQUESTED,
+        preferred_driver_phone=payload.get("preferred_driver_phone") or None,
+        preferred_driver_name=payload.get("preferred_driver_name") or None,
     )
     db.add(trip)
     db.commit()

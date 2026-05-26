@@ -4,6 +4,7 @@ Cada sesión se identifica por el número de teléfono del cliente.
 """
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -22,6 +23,9 @@ class TaxiSession:
     origin_results: list = field(default_factory=list)
     ride_id: Optional[str] = None
     last_fare: Optional[float] = None
+    driver_code: Optional[str] = None
+    preferred_driver_phone: Optional[str] = None
+    preferred_driver_name: Optional[str] = None
 
 
 # ── Respuesta compatible con sales_routes.py ──────────────────────────────────
@@ -86,6 +90,22 @@ class TaxiFSM:
     # ── States ────────────────────────────────────────────────────────────────
 
     def _idle(self, s: TaxiSession, msg: str) -> str:
+        # Extract driver_code from QR-generated messages like "[ABC123]"
+        match = re.search(r'\[([A-Za-z0-9_-]+)\]', msg)
+        if match:
+            code = match.group(1)
+            driver = self._lookup_driver(code)
+            if driver:
+                s.driver_code = code
+                s.preferred_driver_phone = driver.get("phone")
+                s.preferred_driver_name = driver.get("name")
+                self._init_customer(s.phone, driver_code=code)
+                s.state = "ASKING_DESTINATION"
+                return (
+                    f"¡Hola! 👋 Te conectaste con el taxi de *{driver['name']}*.\n\n"
+                    "¿A dónde te llevamos hoy?\n"
+                    "_Escribe el nombre o dirección de tu destino._"
+                )
         self._init_customer(s.phone)
         s.state = "ASKING_DESTINATION"
         return (
@@ -172,11 +192,13 @@ class TaxiFSM:
         s.state = "CONFIRMING"
         orig_name = s.origin["name"] if s.origin else "Tu ubicación"
         dest_name = s.destination["name"] if s.destination else "Destino"
+        driver_line = f"🚕 Conductor: *{s.preferred_driver_name}*\n" if s.preferred_driver_name else ""
         return (
             f"📋 *Resumen del viaje*\n\n"
             f"🟢 Salida: *{orig_name}*\n"
-            f"🔴 Destino: *{dest_name}*\n\n"
-            f"💰 Tarifa estimada: *${fare_info.get('fare', 0):.0f} MXN*\n"
+            f"🔴 Destino: *{dest_name}*\n"
+            f"{driver_line}"
+            f"\n💰 Tarifa estimada: *${fare_info.get('fare', 0):.0f} MXN*\n"
             f"📏 Distancia: ~{fare_info.get('distance_km', 0):.1f} km\n"
             f"⏱ Tiempo: ~{fare_info.get('duration_minutes', 0)} min\n\n"
             "¿Confirmamos el viaje?\n"
@@ -241,16 +263,32 @@ class TaxiFSM:
     def _headers(self) -> dict:
         return {"X-Taxi-Internal-Key": self.key, "Content-Type": "application/json"}
 
-    def _init_customer(self, phone: str):
+    def _init_customer(self, phone: str, driver_code: Optional[str] = None):
         try:
+            payload: dict = {"phone": phone}
+            if driver_code:
+                payload["driver_code"] = driver_code
             with httpx.Client(timeout=4.0) as c:
                 c.post(
                     f"{self.api_base}/api/v1/whatsapp/customer/init",
-                    json={"phone": phone},
+                    json=payload,
                     headers=self._headers(),
                 )
         except Exception as e:
             logger.debug(f"[TaxiFSM] customer/init: {e}")
+
+    def _lookup_driver(self, driver_code: str) -> Optional[dict]:
+        try:
+            with httpx.Client(timeout=4.0) as c:
+                resp = c.get(
+                    f"{self.api_base}/api/v1/whatsapp/driver/{driver_code}",
+                    headers=self._headers(),
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as e:
+            logger.debug(f"[TaxiFSM] lookup_driver: {e}")
+        return None
 
     def _geocode(self, query: str) -> list:
         try:
@@ -283,23 +321,28 @@ class TaxiFSM:
 
     def _create_ride(self, s: TaxiSession) -> Optional[dict]:
         try:
+            payload: dict = {
+                "customer_phone": s.phone,
+                "origin": {
+                    "address": s.origin["address"] if s.origin else "",
+                    "lat": s.origin["lat"] if s.origin else 0,
+                    "lng": s.origin["lng"] if s.origin else 0,
+                },
+                "destination": {
+                    "address": s.destination["address"] if s.destination else "",
+                    "lat": s.destination["lat"] if s.destination else 0,
+                    "lng": s.destination["lng"] if s.destination else 0,
+                },
+                "payment_method": "cash",
+            }
+            if s.preferred_driver_phone:
+                payload["preferred_driver_phone"] = s.preferred_driver_phone
+            if s.preferred_driver_name:
+                payload["preferred_driver_name"] = s.preferred_driver_name
             with httpx.Client(timeout=8.0) as c:
                 resp = c.post(
                     f"{self.api_base}/api/v1/whatsapp/rides/create",
-                    json={
-                        "customer_phone": s.phone,
-                        "origin": {
-                            "address": s.origin["address"] if s.origin else "",
-                            "lat": s.origin["lat"] if s.origin else 0,
-                            "lng": s.origin["lng"] if s.origin else 0,
-                        },
-                        "destination": {
-                            "address": s.destination["address"] if s.destination else "",
-                            "lat": s.destination["lat"] if s.destination else 0,
-                            "lng": s.destination["lng"] if s.destination else 0,
-                        },
-                        "payment_method": "cash",
-                    },
+                    json=payload,
                     headers=self._headers(),
                 )
                 if resp.status_code == 200:
