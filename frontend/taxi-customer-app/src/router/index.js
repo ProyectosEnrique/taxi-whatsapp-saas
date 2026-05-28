@@ -67,6 +67,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/seguimiento/:rideId',
+    name: 'PublicTracking',
+    component: () => import('../views/TrackPublicView.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/track/:incidentId',
     name: 'EmergencyTracking',
     component: () => import('../views/EmergencyTrackingView.vue'),

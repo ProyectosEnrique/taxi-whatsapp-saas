@@ -478,6 +478,41 @@ def set_preferred_driver(payload: dict, current: Customer = Depends(get_current_
     return {"success": True, "driver": {"name": driver.name, "phone": driver.phone}}
 
 
+@router.get("/rides/{ride_id}/public-track")
+def public_track(ride_id: str, db: Session = Depends(get_db)):
+    """Endpoint público (sin auth) para seguimiento de viaje en tiempo real."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    driver = db.query(Driver).filter(Driver.phone == trip.driver_phone).first() if trip.driver_phone else None
+    vehicle = ""
+    if driver:
+        parts = [driver.vehicle_brand or "", driver.vehicle_model or "", driver.vehicle_color or ""]
+        vehicle = " ".join(p for p in parts if p).strip()
+    return {
+        "ride_id": trip.trip_id,
+        "status": trip.status.value if trip.status else "requested",
+        "origin": {
+            "address": trip.origin_address or "",
+            "lat": float(trip.origin_lat or 0),
+            "lng": float(trip.origin_lng or 0),
+        },
+        "destination": {
+            "address": trip.destination_address or "",
+            "lat": float(trip.destination_lat or 0),
+            "lng": float(trip.destination_lng or 0),
+        },
+        "driver": {
+            "name": driver.name,
+            "vehicle": vehicle,
+            "plates": driver.vehicle_plates or "",
+            "lat": float(driver.current_lat or 0),
+            "lng": float(driver.current_lng or 0),
+        } if driver else None,
+        "fare": float(trip.fare or 0),
+    }
+
+
 @router.get("/rides/{ride_id}")
 def get_ride(ride_id: str, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.customer_phone == current.phone).first()

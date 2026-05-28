@@ -408,7 +408,8 @@ def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db:
         f"Conductor: *{current.name}*\n"
         f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
         f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
-        f"📍 Sigue tu viaje: {settings.PUBLIC_URL}/cliente\n\n"
+        f"📍 Sigue tu viaje en tiempo real:\n"
+        f"{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}\n\n"
         f"_Escribe *estado* para más info o *cancelar* si ya no lo necesitas._",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
@@ -436,7 +437,8 @@ def driver_arrived(ride_id: str, current: Driver = Depends(get_current_driver), 
         f"🚕 *¡Tu taxi llegó!*\n\n"
         f"Tu conductor *{current.name}* está esperándote.\n"
         f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
-        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*",
+        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
+        f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
 

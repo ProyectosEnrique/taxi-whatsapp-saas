@@ -135,6 +135,11 @@ export const ridesApi = {
     return response.data
   },
 
+  publicTrack: async (rideId) => {
+    const response = await api.get(`/customer/rides/${rideId}/public-track`)
+    return response.data
+  },
+
   reassignRide: async (rideId) => {
     const response = await api.post(`/customer/rides/${rideId}/reassign`)
     return response.data
