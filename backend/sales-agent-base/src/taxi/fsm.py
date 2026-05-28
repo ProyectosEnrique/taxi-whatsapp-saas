@@ -2,15 +2,23 @@
 TaxiFSM — máquina de estados para el agente de taxis por WhatsApp.
 Cada sesión se identifica por el número de teléfono del cliente.
 """
+import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 _GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
+_SESSION_TTL = 86400  # 24 horas
 
 import httpx
+
+try:
+    import redis as _redis_lib
+    _redis_client = _redis_lib.from_url(os.getenv("REDIS_URL", ""), decode_responses=True) if os.getenv("REDIS_URL") else None
+except Exception:
+    _redis_client = None
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +61,40 @@ class TaxiFSM:
 
     # ── Public interface (matches restaurant FSM) ──────────────────────────────
 
+    # ── Session persistence (Redis → in-memory fallback) ──────────────────────
+
+    def _load_session(self, phone: str) -> TaxiSession:
+        if _redis_client:
+            try:
+                raw = _redis_client.get(f"taxi:session:{phone}")
+                if raw:
+                    return TaxiSession(**json.loads(raw))
+            except Exception as e:
+                logger.warning(f"[TaxiFSM] Redis read error: {e}")
+        return self.sessions.get(phone, TaxiSession(phone=phone))
+
+    def _save_session(self, s: TaxiSession) -> None:
+        if _redis_client:
+            try:
+                _redis_client.setex(f"taxi:session:{s.phone}", _SESSION_TTL, json.dumps(asdict(s)))
+                return
+            except Exception as e:
+                logger.warning(f"[TaxiFSM] Redis write error: {e}")
+        self.sessions[s.phone] = s
+
+    def _delete_session(self, phone: str) -> None:
+        if _redis_client:
+            try:
+                _redis_client.delete(f"taxi:session:{phone}")
+            except Exception:
+                pass
+        self.sessions.pop(phone, None)
+
     def process(self, session_id: str, message: str) -> _FsmResult:
         """session_id == customer phone for WhatsApp taxi sessions."""
-        session = self.sessions.setdefault(session_id, TaxiSession(phone=session_id))
+        session = self._load_session(session_id)
         text = self._dispatch(session, message.strip())
+        self._save_session(session)
         return _FsmResult(text, session.state)
 
     # ── Dispatcher ────────────────────────────────────────────────────────────
@@ -68,7 +106,8 @@ class TaxiFSM:
         if lower in ("cancelar", "cancel", "salir", "restart", "reiniciar") and s.state != "IDLE":
             if s.ride_id and s.state == "RIDE_ACTIVE":
                 self._cancel_ride(s.ride_id)
-            s.__init__(phone=s.phone)
+            phone = s.phone
+            s.__init__(phone=phone)
             return "Entendido, reiniciamos. ¿A dónde te llevamos? 🚕"
 
         if s.state == "IDLE":
@@ -110,8 +149,11 @@ class TaxiFSM:
                 )
         self._init_customer(s.phone)
         s.state = "ASKING_DESTINATION"
+        app_url = os.getenv("CUSTOMER_APP_URL", "")
+        url_line = f"📱 También puedes agendar viajes en: {app_url}\n\n" if app_url else ""
         return (
-            "¡Hola! 👋 Soy tu asistente de taxi.\n\n"
+            f"¡Hola! 👋 Soy tu asistente de taxi.\n\n"
+            f"{url_line}"
             "¿A dónde te llevamos hoy?\n"
             "_Escribe el nombre o dirección de tu destino._"
         )
@@ -265,29 +307,38 @@ class TaxiFSM:
         )
 
     def _ride_active(self, s: TaxiSession, msg: str) -> str:
+        # Auto-reset si el viaje ya terminó (ej. conductor marcó completado/cancelado)
+        if s.ride_id:
+            ride = self._get_ride(s.ride_id)
+            if ride and ride.get("status") in ("completed", "cancelled"):
+                phone = s.phone
+                s.__init__(phone=phone)
+                return self._idle(s, msg)
+
         lower = msg.lower()
         if any(w in lower for w in ("cancelar", "cancel", "cancela")):
             if s.ride_id:
                 self._cancel_ride(s.ride_id)
-            s.__init__(phone=s.phone)
+            phone = s.phone
+            s.__init__(phone=phone)
             return "Tu viaje fue cancelado. ¿Deseas pedir otro taxi? 🚕"
         if any(w in lower for w in ("estado", "status", "donde", "dónde", "cuánto", "cuanto", "info")):
             if s.ride_id:
                 ride = self._get_ride(s.ride_id)
                 if ride:
                     status_map = {
-                        "requested": "🔍 Buscando conductor...",
-                        "confirmed": f"✅ Conductor asignado: {ride.get('driver_name') or 'en camino'}",
+                        "requested":      "🔍 Buscando conductor...",
+                        "confirmed":      f"✅ Conductor asignado: *{ride.get('driver_name') or 'en camino'}*",
                         "driver_arrived": "🚕 ¡Tu conductor llegó al punto de recogida!",
-                        "in_progress": "🚗 Viaje en curso, ¡disfruta el trayecto!",
-                        "completed": "✅ Viaje completado",
-                        "cancelled": "❌ Viaje cancelado",
+                        "in_progress":    "🚗 Viaje en curso, ¡disfruta el trayecto!",
+                        "completed":      "✅ Viaje completado",
+                        "cancelled":      "❌ Viaje cancelado",
                     }
                     return status_map.get(ride.get("status", "requested"), f"Estado: {ride.get('status')}")
         return (
             "Tienes un viaje activo 🚗\n\n"
-            "• Escribe *estado* para ver el progreso\n"
-            "• Escribe *cancelar* para cancelar el viaje"
+            "• Escribe *estado* para ver el progreso del viaje\n"
+            "• Escribe *cancelar* si ya no lo necesitas"
         )
 
     # ── API helpers ───────────────────────────────────────────────────────────

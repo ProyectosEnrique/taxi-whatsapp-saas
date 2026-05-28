@@ -107,8 +107,11 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-groq}
       LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}
       ENVIRONMENT: production
+      REDIS_URL: redis://mandaya_redis:6379/3
+      CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
     networks:
       - taxi_net
+      - mandaya_net      # para alcanzar mandaya_redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s

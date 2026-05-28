@@ -6,7 +6,7 @@ import os
 import time
 import logging
 import xml.etree.ElementTree as ET
-from fastapi import FastAPI, Form, Request, Query
+from fastapi import FastAPI, Form, Header, Request, Query
 from fastapi.responses import Response, PlainTextResponse
 import httpx
 
@@ -38,6 +38,7 @@ META_PHONE_ID        = os.getenv("META_PHONE_NUMBER_ID", "988164724391332")
 TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_WA_NUMBER     = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+16204077336")
+WHATSAPP_SECRET      = os.getenv("WHATSAPP_SECRET", "")
 
 
 # ─── FSM caller ───────────────────────────────────────────────────────────────
@@ -121,6 +122,25 @@ def _twiml(*messages: str) -> Response:
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "taxi-whatsapp-gateway"}
+
+
+# ─── Proactive customer notification (called by taxi-api driver actions) ──────
+
+@app.post("/notify/customer")
+async def notify_customer(
+    request: Request,
+    x_taxi_internal_key: str = Header(...),
+):
+    if WHATSAPP_SECRET and x_taxi_internal_key != WHATSAPP_SECRET:
+        return Response(status_code=403)
+    data = await request.json()
+    phone   = (data.get("phone") or "").strip()
+    message = (data.get("message") or "").strip()
+    if not phone or not message:
+        return {"status": "ignored"}
+    logger.info(f"[TaxiGW] Proactive → {phone}: {message[:60]}...")
+    _send_twilio(phone, message)
+    return {"status": "sent"}
 
 
 # ── Meta webhook verification (GET) ───────────────────────────────────────────

@@ -408,7 +408,8 @@ def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db:
         f"Conductor: *{current.name}*\n"
         f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
         f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
-        f"_Escribe *estado* para ver la ubicación o *cancelar* si ya no lo necesitas._",
+        f"📍 Sigue tu viaje: {settings.PUBLIC_URL}/cliente\n\n"
+        f"_Escribe *estado* para más info o *cancelar* si ya no lo necesitas._",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
@@ -478,7 +479,8 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
         f"Viaje completado con *{current.name}*.\n"
         f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
         f"¡Gracias por usar nuestro servicio! 🙌\n"
-        f"¿Deseas pedir otro taxi? Escribe *taxi* cuando quieras.",
+        f"Para agendar tu próximo viaje escríbeme aquí o visita:\n"
+        f"{settings.PUBLIC_URL}/cliente",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
 
