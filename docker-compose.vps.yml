@@ -72,6 +72,7 @@ services:
       META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
       META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-taxi_verify}
+      WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
       VOICE_ASSISTANT_URL: http://taxi-agent:5000
       SALES_AGENT_URL: http://taxi-agent:5000
       CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
