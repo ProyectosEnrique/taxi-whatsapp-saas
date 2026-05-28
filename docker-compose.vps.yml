@@ -140,6 +140,11 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_SMS_FROM: ${TWILIO_SMS_FROM:-}
+      # Centro geográfico de operación — restringe geocoding a la ciudad
+      # Ajustar con las coords reales de la ciudad del taxi
+      CITY_LAT: ${CITY_LAT:-0.0}
+      CITY_LNG: ${CITY_LNG:-0.0}
+      CITY_BBOX_DEG: ${CITY_BBOX_DEG:-0.3}
     volumes:
       - taxi_db_data:/app/data
     networks:

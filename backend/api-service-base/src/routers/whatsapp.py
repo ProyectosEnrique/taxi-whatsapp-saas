@@ -23,6 +23,17 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 _NOM_HEADERS = {"User-Agent": "TaxiApp/1.0"}
 
 
+def _parse_display_name(display_name: str) -> tuple[str, str]:
+    """Returns (name, short_address) from a Nominatim display_name string."""
+    parts = [p.strip() for p in display_name.split(",") if p.strip()]
+    name = parts[0] if parts else ""
+    # If first part is too short (e.g. "Hola"), combine with second
+    if len(name) < 4 and len(parts) > 1:
+        name = f"{parts[0]}, {parts[1]}"
+    short_address = ", ".join(p for p in parts[1:3] if len(p) > 2)
+    return name, short_address
+
+
 def _auth(x_taxi_internal_key: str = Header(...)):
     if settings.WHATSAPP_SECRET and x_taxi_internal_key != settings.WHATSAPP_SECRET:
         raise HTTPException(403, "Clave interna inválida")
@@ -77,10 +88,15 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
+    # Use provided coords or fall back to configured city center
+    ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
+    ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
+
     params: dict = {"q": q, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
-    if lat is not None and lon is not None:
-        delta = 0.4
-        params["viewbox"] = f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
+    if ref_lat is not None and ref_lon is not None:
+        d = settings.CITY_BBOX_DEG
+        params["viewbox"] = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
+        params["bounded"] = 1
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
@@ -91,13 +107,40 @@ async def geocode_address(
     return {
         "results": [
             {
-                "name": item.get("display_name", "").split(",")[0].strip(),
+                "name": _parse_display_name(item.get("display_name", ""))[0],
+                "short_address": _parse_display_name(item.get("display_name", ""))[1],
                 "address": item.get("display_name", ""),
                 "lat": float(item.get("lat", 0)),
                 "lng": float(item.get("lon", 0)),
             }
             for item in items
         ]
+    }
+
+
+@router.get("/reverse-geocode")
+async def reverse_geocode(
+    lat: float,
+    lon: float,
+    _=Depends(_auth),
+):
+    """Convierte coordenadas GPS a una dirección legible."""
+    params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": 0}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"{NOMINATIM_URL}/reverse", params=params, headers=_NOM_HEADERS)
+            resp.raise_for_status()
+            item = resp.json()
+    except Exception as e:
+        raise HTTPException(503, f"Geocodificación inversa no disponible: {e}")
+    display = item.get("display_name", "")
+    name, short_address = _parse_display_name(display)
+    return {
+        "name": name,
+        "short_address": short_address,
+        "address": display,
+        "lat": lat,
+        "lng": lon,
     }
 
 

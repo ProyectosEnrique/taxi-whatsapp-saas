@@ -45,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Comando de inicio con puerto dinámico para Cloud Run
-CMD exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT}
+CMD exec uvicorn src.main_taxi:app --host 0.0.0.0 --port ${PORT}

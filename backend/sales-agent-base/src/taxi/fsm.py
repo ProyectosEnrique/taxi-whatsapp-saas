@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+_GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -114,8 +116,30 @@ class TaxiFSM:
             "_Escribe el nombre o dirección de tu destino._"
         )
 
+    def _try_gps(self, s: TaxiSession, msg: str, set_destination: bool) -> Optional[str]:
+        m = _GPS_RE.match(msg.strip())
+        if not m:
+            return None
+        lat, lon = float(m.group(1)), float(m.group(2))
+        label = (m.group(3) or "").strip() or "Ubicación compartida"
+        location = {"name": label, "short_address": "", "address": label, "lat": lat, "lng": lon}
+        if set_destination:
+            s.destination = location
+            s.state = "ASKING_ORIGIN"
+            return (
+                f"📍 Destino: *{label}*\n\n"
+                "¿Dónde te recogemos?\n"
+                "_Escribe tu calle, colonia o 📎 comparte tu ubicación._"
+            )
+        else:
+            s.origin = location
+            return self._show_confirmation(s)
+
     def _ask_dest(self, s: TaxiSession, msg: str) -> str:
-        if len(msg) < 3:
+        gps_reply = self._try_gps(s, msg, set_destination=True)
+        if gps_reply:
+            return gps_reply
+        if len(msg) < 4:
             return "Escribe el nombre de tu destino (ej: *Aeropuerto*, *Plaza Galerías*, *Hospital General*)."
         results = self._geocode(msg)
         if not results:
@@ -128,16 +152,19 @@ class TaxiFSM:
         if len(results) == 1:
             s.destination = results[0]
             s.state = "ASKING_ORIGIN"
+            addr = results[0].get("short_address") or results[0]["address"][:80]
             return (
                 f"📍 Destino: *{results[0]['name']}*\n"
-                f"_{results[0]['address'][:100]}_\n\n"
+                f"_{addr}_\n\n"
                 "¿Dónde te recogemos?\n"
-                "_Escribe tu calle, colonia o lugar de recogida._"
+                "_Escribe tu calle, colonia o 📎 comparte tu ubicación._"
             )
-        lines = ["Encontré varias opciones:\n"]
+        _nums = ["1️⃣", "2️⃣", "3️⃣"]
+        lines = ["Encontré varios lugares con ese nombre:\n"]
         for i, r in enumerate(results[:3], 1):
-            lines.append(f"*{i}.* {r['name']}\n_{r['address'][:70]}_\n")
-        lines.append("Responde *1*, *2* o *3* para elegir tu destino.")
+            addr = r.get("short_address") or r["address"][:55]
+            lines.append(f"{_nums[i-1]} *{r['name']}*\n   _{addr}_\n")
+        lines.append("¿Cuál es? Responde *1*, *2* o *3*.")
         s.state = "CHOOSING_DEST"
         return "\n".join(lines)
 
@@ -157,7 +184,10 @@ class TaxiFSM:
         return self._ask_dest(s, msg)
 
     def _ask_origin(self, s: TaxiSession, msg: str) -> str:
-        if len(msg) < 3:
+        gps_reply = self._try_gps(s, msg, set_destination=False)
+        if gps_reply:
+            return gps_reply
+        if len(msg) < 4:
             return "Escribe tu punto de recogida (calle, colonia o lugar conocido)."
         results = self._geocode(msg)
         if not results:
@@ -170,10 +200,12 @@ class TaxiFSM:
         if len(results) == 1:
             s.origin = results[0]
             return self._show_confirmation(s)
+        _nums = ["1️⃣", "2️⃣", "3️⃣"]
         lines = ["¿Dónde exactamente te recogemos?\n"]
         for i, r in enumerate(results[:3], 1):
-            lines.append(f"*{i}.* {r['name']}\n_{r['address'][:70]}_\n")
-        lines.append("Responde *1*, *2* o *3*.")
+            addr = r.get("short_address") or r["address"][:55]
+            lines.append(f"{_nums[i-1]} *{r['name']}*\n   _{addr}_\n")
+        lines.append("¿Cuál? Responde *1*, *2* o *3*.")
         s.state = "CHOOSING_ORIGIN"
         return "\n".join(lines)
 
