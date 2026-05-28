@@ -140,6 +140,7 @@ services:
       PUBLIC_URL: https://taxi.nexoai.lat
       BUSINESS_NAME: ${BUSINESS_NAME:-Taxi App}
       WHATSAPP_GATEWAY_URL: http://taxi-whatsapp:8000
+      WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
       WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:-}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
