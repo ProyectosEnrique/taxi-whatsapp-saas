@@ -12,8 +12,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Driver, Trip, TripStatus, Incident, FareConfig, PromoCode
+from ..models import Driver, Trip, TripStatus, Incident, FareConfig, PromoCode, TaxiGroup
 from ..auth import hash_password
+from ..config import settings as app_settings
 from ..fare_service import get_fare_config, fare_config_to_dict, invalidate_cache
 
 logger = logging.getLogger(__name__)
@@ -335,6 +336,36 @@ def delete_promo(code: str, db: Session = Depends(get_db)):
     db.delete(promo)
     db.commit()
     return {"success": True}
+
+
+# ==============================================================================
+# SETTINGS — número WhatsApp y configuración general del negocio
+# ==============================================================================
+
+@router.get("/settings")
+def get_settings(db: Session = Depends(get_db)):
+    """Devuelve la configuración editable desde el panel de admin."""
+    group = db.query(TaxiGroup).filter(TaxiGroup.is_active == True).first()
+    return {
+        "wa_number": group.whatsapp_number if group else "",
+        "app_url": app_settings.PUBLIC_URL,
+    }
+
+
+@router.put("/settings")
+def update_settings(payload: dict, db: Session = Depends(get_db)):
+    """Actualiza el número WhatsApp del grupo principal."""
+    group = db.query(TaxiGroup).filter(TaxiGroup.is_active == True).first()
+    if not group:
+        raise HTTPException(404, "No hay grupo de taxi configurado")
+    if "wa_number" in payload:
+        wa = (payload.get("wa_number") or "").strip()
+        if not wa:
+            raise HTTPException(400, "wa_number no puede estar vacío")
+        group.whatsapp_number = wa
+    db.commit()
+    logger.info(f"Settings updated — wa_number={group.whatsapp_number}")
+    return {"success": True, "wa_number": group.whatsapp_number}
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

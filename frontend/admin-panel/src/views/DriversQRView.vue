@@ -14,7 +14,7 @@
         <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Número WhatsApp de la empresa</label>
         <input
           v-model="waNumber"
-          @change="save('wa_number_taxi', waNumber)"
+          @change="saveWaNumber(waNumber)"
           placeholder="521XXXXXXXXXX"
           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
         />
@@ -118,6 +118,19 @@ const drivers   = ref([])
 const loading   = ref(true)
 const printDriver = ref(null)
 
+async function saveWaNumber(val) {
+  localStorage.setItem('wa_number_taxi', val)
+  try {
+    await fetch('/api/v1/admin/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wa_number: val }),
+    })
+  } catch (e) {
+    console.warn('saveWaNumber backend error:', e)
+  }
+}
+
 function save(key, val) {
   localStorage.setItem(key, val)
 }
@@ -161,6 +174,21 @@ function doPrint(d) {
   w.document.close()
 }
 
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/v1/admin/settings')
+    if (res.ok) {
+      const data = await res.json()
+      if (data.wa_number) {
+        waNumber.value = data.wa_number
+        localStorage.setItem('wa_number_taxi', data.wa_number)
+      }
+    }
+  } catch (e) {
+    console.warn('loadSettings:', e)
+  }
+}
+
 async function loadDrivers() {
   loading.value = true
   try {
@@ -176,5 +204,8 @@ async function loadDrivers() {
   }
 }
 
-onMounted(loadDrivers)
+onMounted(async () => {
+  await loadSettings()
+  await loadDrivers()
+})
 </script>
