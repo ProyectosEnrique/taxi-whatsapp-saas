@@ -110,6 +110,7 @@ services:
       ENVIRONMENT: production
       REDIS_URL: redis://mandaya_redis:6379/3
       CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
+      WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
     networks:
       - taxi_net
       - mandaya_net      # para alcanzar mandaya_redis
