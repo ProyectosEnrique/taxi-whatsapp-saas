@@ -58,7 +58,8 @@ const today = computed(() =>
 
 const navItems = [
   { to: '/',          icon: '📊', label: 'Dashboard' },
-  { to: '/drivers',   icon: '🚗', label: 'Conductores' },
+  { to: '/drivers',    icon: '🚗', label: 'Conductores' },
+  { to: '/drivers-qr', icon: '📲', label: 'QR Taxis' },
   { to: '/map',       icon: '🗺️', label: 'Mapa de Flota' },
   { to: '/reports',   icon: '📈', label: 'Reportes' },
   { to: '/rides',     icon: '🛣️', label: 'Monitor de Viajes' },

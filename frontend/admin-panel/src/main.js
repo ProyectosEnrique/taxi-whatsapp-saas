@@ -12,6 +12,7 @@ import RidesMonitor from './views/RidesMonitor.vue'
 import IncidentsView from './views/IncidentsView.vue'
 import FareConfiguration from './views/FareConfiguration.vue'
 import PromosManagement from './views/PromosManagement.vue'
+import DriversQRView from './views/DriversQRView.vue'
 
 const basePath = window.location.pathname.startsWith('/admin') ? '/admin' : '/'
 
@@ -20,6 +21,7 @@ const router = createRouter({
   routes: [
     { path: '/',          component: DashboardView },
     { path: '/drivers',   component: DriversManagement },
+    { path: '/drivers-qr', component: DriversQRView },
     { path: '/map',       component: DriversMap },
     { path: '/reports',   component: DriverReports },
     { path: '/rides',     component: RidesMonitor },
