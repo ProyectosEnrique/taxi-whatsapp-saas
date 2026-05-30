@@ -36,12 +36,17 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     return R * 2 * math.asin(math.sqrt(a))
 
 
+def _sf(val):
+    """Return float(val) if val is set, else None — avoids sending 0.0 for missing coords."""
+    return float(val) if val is not None else None
+
+
 def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
     d = {
         "ride_id":      trip.trip_id,
         "status":       trip.status.value if trip.status else "requested",
-        "origin":       {"address": trip.origin_address, "lat": float(trip.origin_lat or 0), "lng": float(trip.origin_lng or 0)},
-        "destination":  {"address": trip.destination_address, "lat": float(trip.destination_lat or 0), "lng": float(trip.destination_lng or 0)},
+        "origin":       {"address": trip.origin_address, "lat": _sf(trip.origin_lat), "lng": _sf(trip.origin_lng)},
+        "destination":  {"address": trip.destination_address, "lat": _sf(trip.destination_lat), "lng": _sf(trip.destination_lng)},
         "total_fare":   float(trip.fare or 0),
         "distance_km":  float(trip.distance_km or 0),
         "duration_minutes": max(5, int(float(trip.distance_km or 0) * 2.5)),
@@ -59,8 +64,8 @@ def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
             "name":   driver.name,
             "phone":  driver.phone,
             "rating": float(driver.rating or 5.0),
-            "current_lat": float(driver.current_lat or 0),
-            "current_lon": float(driver.current_lng or 0),
+            "current_lat": _sf(driver.current_lat),
+            "current_lon": _sf(driver.current_lng),
             "vehicle": {
                 "brand":  driver.vehicle_brand,
                 "model":  driver.vehicle_model,
@@ -494,20 +499,20 @@ def public_track(ride_id: str, db: Session = Depends(get_db)):
         "status": trip.status.value if trip.status else "requested",
         "origin": {
             "address": trip.origin_address or "",
-            "lat": float(trip.origin_lat or 0),
-            "lng": float(trip.origin_lng or 0),
+            "lat": _sf(trip.origin_lat),
+            "lng": _sf(trip.origin_lng),
         },
         "destination": {
             "address": trip.destination_address or "",
-            "lat": float(trip.destination_lat or 0),
-            "lng": float(trip.destination_lng or 0),
+            "lat": _sf(trip.destination_lat),
+            "lng": _sf(trip.destination_lng),
         },
         "driver": {
             "name": driver.name,
             "vehicle": vehicle,
             "plates": driver.vehicle_plates or "",
-            "lat": float(driver.current_lat or 0),
-            "lng": float(driver.current_lng or 0),
+            "lat": _sf(driver.current_lat),
+            "lng": _sf(driver.current_lng),
         } if driver else None,
         "fare": float(trip.fare or 0),
     }

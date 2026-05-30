@@ -76,6 +76,7 @@
 </template>
 
 <script setup>
+import 'leaflet/dist/leaflet.css'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -133,14 +134,13 @@ function initMap(data) {
   const el = document.getElementById('public-map')
   if (!el) return
 
-  // Dynamic Leaflet import — already bundled by the app
   import('leaflet').then(L => {
     const Lm = L.default || L
 
-    // Center on origin or driver, fallback to Celaya
-    const center = data.driver?.lat
+    // Center on driver position, then origin, then city fallback
+    const center = data.driver?.lat != null
       ? [data.driver.lat, data.driver.lng]
-      : data.origin?.lat
+      : data.origin?.lat != null
       ? [data.origin.lat, data.origin.lng]
       : [20.5236, -100.8198]
 
@@ -156,33 +156,32 @@ function initMap(data) {
       className: '',
     })
 
-    if (data.origin?.lat) {
+    const pts = []
+    if (data.origin?.lat != null) {
       originMarker = Lm.marker([data.origin.lat, data.origin.lng], { icon: mkIcon('📍') })
         .bindPopup(`<b>Origen</b><br>${data.origin.address}`)
         .addTo(map)
+      pts.push([data.origin.lat, data.origin.lng])
     }
-    if (data.destination?.lat) {
+    if (data.destination?.lat != null) {
       destMarker = Lm.marker([data.destination.lat, data.destination.lng], { icon: mkIcon('🏁') })
         .bindPopup(`<b>Destino</b><br>${data.destination.address}`)
         .addTo(map)
+      pts.push([data.destination.lat, data.destination.lng])
     }
-    if (data.driver?.lat) {
+    if (data.driver?.lat != null) {
       driverMarker = Lm.marker([data.driver.lat, data.driver.lng], { icon: mkIcon('🚕', 36) })
         .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`)
         .addTo(map)
+      pts.push([data.driver.lat, data.driver.lng])
     }
 
-    // Fit bounds to show route
-    const pts = []
-    if (data.origin?.lat) pts.push([data.origin.lat, data.origin.lng])
-    if (data.destination?.lat) pts.push([data.destination.lat, data.destination.lng])
-    if (data.driver?.lat) pts.push([data.driver.lat, data.driver.lng])
     if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] })
   })
 }
 
 function updateMarkers(data) {
-  if (!map || !data.driver?.lat) return
+  if (!map || data.driver?.lat == null) return
   import('leaflet').then(L => {
     const Lm = L.default || L
     const pos = [data.driver.lat, data.driver.lng]
@@ -198,6 +197,11 @@ function updateMarkers(data) {
       driverMarker = Lm.marker(pos, { icon: mkIcon('🚕', 36) })
         .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`)
         .addTo(map)
+      // Refit bounds to include new driver position
+      const pts = [pos]
+      if (data.origin?.lat != null) pts.push([data.origin.lat, data.origin.lng])
+      if (data.destination?.lat != null) pts.push([data.destination.lat, data.destination.lng])
+      if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] })
     }
   })
 }

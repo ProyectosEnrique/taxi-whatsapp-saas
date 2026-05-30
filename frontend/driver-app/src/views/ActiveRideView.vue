@@ -297,7 +297,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useRideStore } from '../stores/rideStore'
 import { useDriverStore } from '../stores/driverStore'
@@ -324,6 +324,7 @@ const timerInterval = ref(null)
 const startTime = ref(null)
 const mapContainer = ref(null)
 let leafletMap = null
+let driverMarker = null
 const showPanicModal = ref(false)
 const sendingPanic = ref(false)
 const panicSent = ref(false)
@@ -368,20 +369,21 @@ const initMap = async (rideData) => {
   await nextTick()
   if (!mapContainer.value || !rideData) return
 
-  const oLat = rideData.origin.lat
-  const oLng = rideData.origin.lng
-  const dLat = rideData.destination.lat
-  const dLng = rideData.destination.lng
-
-  if (!oLat || !oLng || !dLat || !dLng) return
-
   if (leafletMap) {
     leafletMap.remove()
     leafletMap = null
+    driverMarker = null
   }
 
-  const centerLat = (oLat + dLat) / 2
-  const centerLng = (oLng + dLng) / 2
+  // Convert 0/null to null so falsy checks below work correctly
+  const oLat = rideData.origin?.lat || null
+  const oLng = rideData.origin?.lng || null
+  const dLat = rideData.destination?.lat || null
+  const dLng = rideData.destination?.lng || null
+
+  // Always create the map — use available coords or city fallback as center
+  const centerLat = oLat ?? dLat ?? 20.5236
+  const centerLng = oLng ?? dLng ?? -100.8198
 
   leafletMap = L.map(mapContainer.value).setView([centerLat, centerLng], 13)
 
@@ -403,30 +405,65 @@ const initMap = async (rideData) => {
     iconAnchor: [14, 14],
   })
 
-  L.marker([oLat, oLng], { icon: iconA }).addTo(leafletMap)
-    .bindPopup(`<b>Origen</b><br>${rideData.origin.address}`)
-  L.marker([dLat, dLng], { icon: iconB }).addTo(leafletMap)
-    .bindPopup(`<b>Destino</b><br>${rideData.destination.address}`)
+  const bounds = []
+  if (oLat && oLng) {
+    L.marker([oLat, oLng], { icon: iconA }).addTo(leafletMap)
+      .bindPopup(`<b>Origen</b><br>${rideData.origin.address}`)
+    bounds.push([oLat, oLng])
+  }
+  if (dLat && dLng) {
+    L.marker([dLat, dLng], { icon: iconB }).addTo(leafletMap)
+      .bindPopup(`<b>Destino</b><br>${rideData.destination.address}`)
+    bounds.push([dLat, dLng])
+  }
 
-  leafletMap.fitBounds([[oLat, oLng], [dLat, dLng]], { padding: [40, 40] })
+  if (bounds.length >= 2) {
+    leafletMap.fitBounds(bounds, { padding: [40, 40] })
+  } else if (bounds.length === 1) {
+    leafletMap.setView(bounds[0], 15)
+  }
 
-  // Intentar ruta real con OSRM, fallback a línea recta
-  try {
-    const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
-    )
-    if (res.ok) {
-      const data = await res.json()
-      const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng])
-      L.polyline(coords, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(leafletMap)
-      return
-    }
-  } catch (_) { /* OSRM no disponible, usar línea recta */ }
+  if (oLat && oLng && dLat && dLng) {
+    // Intentar ruta real con OSRM, fallback a línea recta
+    try {
+      const res = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng])
+        L.polyline(coords, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(leafletMap)
+        return
+      }
+    } catch (_) { /* OSRM no disponible, usar línea recta */ }
 
-  L.polyline([[oLat, oLng], [dLat, dLng]], {
-    color: '#3b82f6', weight: 3, opacity: 0.6, dashArray: '8,6'
-  }).addTo(leafletMap)
+    L.polyline([[oLat, oLng], [dLat, dLng]], {
+      color: '#3b82f6', weight: 3, opacity: 0.6, dashArray: '8,6'
+    }).addTo(leafletMap)
+  }
 }
+
+const updateDriverMarker = (lat, lon) => {
+  if (!leafletMap || lat == null || lon == null) return
+  const pos = [lat, lon]
+  if (driverMarker) {
+    driverMarker.setLatLng(pos)
+  } else {
+    const icon = L.divIcon({
+      html: '<span style="font-size:32px;line-height:1">🚕</span>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+      className: '',
+    })
+    driverMarker = L.marker(pos, { icon })
+      .bindPopup('<b>Tu posición actual</b>')
+      .addTo(leafletMap)
+  }
+}
+
+watch(() => driverStore.location, (loc) => {
+  if (loc?.lat != null && loc?.lon != null) updateDriverMarker(loc.lat, loc.lon)
+}, { deep: true })
 
 const loadRideDetails = async () => {
   loading.value = true
@@ -584,24 +621,30 @@ const _startAudioRecording = async (incidentId) => {
 }
 
 const navigateToOrigin = () => {
-  const addr = encodeURIComponent(ride.value.origin.address)
-  window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}&travelmode=driving`, '_blank')
+  const { lat, lng, address } = ride.value.origin
+  const dest = (lat && lng) ? `${lat},${lng}` : encodeURIComponent(address)
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank')
 }
 
 const navigateToDestination = () => {
-  const addr = encodeURIComponent(ride.value.destination.address)
-  window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}&travelmode=driving`, '_blank')
+  const { lat, lng, address } = ride.value.destination
+  const dest = (lat && lng) ? `${lat},${lng}` : encodeURIComponent(address)
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank')
 }
 
 const openGoogleMaps = () => {
-  const origin = encodeURIComponent(ride.value.origin.address)
-  const destination = encodeURIComponent(ride.value.destination.address)
+  const o = ride.value.origin, d = ride.value.destination
+  const origin = (o.lat && o.lng) ? `${o.lat},${o.lng}` : encodeURIComponent(o.address)
+  const destination = (d.lat && d.lng) ? `${d.lat},${d.lng}` : encodeURIComponent(d.address)
   window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`, '_blank')
 }
 
 const openWaze = () => {
-  const destination = encodeURIComponent(ride.value.destination.address)
-  window.open(`https://waze.com/ul?q=${destination}&navigate=yes`, '_blank')
+  const { lat, lng, address } = ride.value.destination
+  const wazeUrl = (lat && lng)
+    ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+    : `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`
+  window.open(wazeUrl, '_blank')
 }
 
 onMounted(() => {
@@ -617,6 +660,7 @@ onUnmounted(() => {
   if (leafletMap) {
     leafletMap.remove()
     leafletMap = null
+    driverMarker = null
   }
 })
 </script>

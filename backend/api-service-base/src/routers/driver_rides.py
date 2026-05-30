@@ -38,6 +38,11 @@ router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _sf(val):
+    """Return float(val) if val is set, else None — avoids sending 0.0 for missing coords."""
+    return float(val) if val is not None else None
+
+
 def _driver_to_dict(driver: Driver) -> dict:
     return {
         "id":        driver.id,
@@ -54,8 +59,8 @@ def _driver_to_dict(driver: Driver) -> dict:
             "year":   driver.vehicle_year,
         },
         "location": {
-            "lat": float(driver.current_lat or 0),
-            "lng": float(driver.current_lng or 0),
+            "lat": _sf(driver.current_lat),
+            "lng": _sf(driver.current_lng),
         },
     }
 
@@ -72,13 +77,13 @@ def _trip_to_dict(trip: Trip) -> dict:
         },
         "origin": {
             "address": trip.origin_address or "",
-            "lat": float(trip.origin_lat or 0),
-            "lng": float(trip.origin_lng or 0),
+            "lat": _sf(trip.origin_lat),
+            "lng": _sf(trip.origin_lng),
         },
         "destination": {
             "address": trip.destination_address or "",
-            "lat": float(trip.destination_lat or 0),
-            "lng": float(trip.destination_lng or 0),
+            "lat": _sf(trip.destination_lat),
+            "lng": _sf(trip.destination_lng),
         },
         "fare":             float(trip.fare or 0),
         "total_fare":       float(trip.fare or 0),        # alias para el frontend
