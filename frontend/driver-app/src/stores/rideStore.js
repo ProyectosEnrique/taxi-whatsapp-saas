@@ -12,6 +12,7 @@ export const useRideStore = defineStore('ride', () => {
   const loading = ref(false)
   const error = ref(null)
   const pollingInterval = ref(null)
+  const scheduledPollingInterval = ref(null)
 
   // Getters
   const hasPendingRequests = computed(() => pendingRequests.value.length > 0)
@@ -223,15 +224,27 @@ export const useRideStore = defineStore('ride', () => {
       fetchActiveRide()
     }, 5000)
 
+    // Actualizar viajes programados cada 30 segundos
+    if (!scheduledPollingInterval.value) {
+      scheduledPollingInterval.value = setInterval(() => {
+        fetchScheduledRides()
+      }, 30000)
+    }
+
     // Obtener inmediatamente
     fetchPendingRequests()
     fetchActiveRide()
+    fetchScheduledRides()
   }
 
   const stopPolling = () => {
     if (pollingInterval.value) {
       clearInterval(pollingInterval.value)
       pollingInterval.value = null
+    }
+    if (scheduledPollingInterval.value) {
+      clearInterval(scheduledPollingInterval.value)
+      scheduledPollingInterval.value = null
     }
   }
 

@@ -162,6 +162,7 @@ def estimate_fare(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)
 
 @router.post("/rides/create")
 def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
+    from datetime import datetime as _dt
     phone = (payload.get("customer_phone") or "").strip()
     if not phone:
         raise HTTPException(400, "customer_phone requerido")
@@ -181,6 +182,17 @@ def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
     cfg = get_fare_config(db)
     fare = calculate_fare(cfg, distance_km)
 
+    # Viaje programado si viene scheduled_at
+    scheduled_at_raw = payload.get("scheduled_at")
+    scheduled_at = None
+    trip_status = TripStatus.REQUESTED
+    if scheduled_at_raw:
+        try:
+            scheduled_at = _dt.fromisoformat(scheduled_at_raw)
+            trip_status = TripStatus.SCHEDULED
+        except ValueError:
+            logger.warning(f"[WA] scheduled_at inválido: {scheduled_at_raw!r} — creando viaje inmediato")
+
     trip = Trip(
         trip_id=f"WA-{uuid.uuid4().hex[:8].upper()}",
         customer_phone=phone,
@@ -195,14 +207,15 @@ def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
         distance_km=distance_km,
         payment_method=payload.get("payment_method", "cash"),
         payment_status="pending",
-        status=TripStatus.REQUESTED,
+        status=trip_status,
+        scheduled_at=scheduled_at,
         preferred_driver_phone=payload.get("preferred_driver_phone") or None,
         preferred_driver_name=payload.get("preferred_driver_name") or None,
     )
     db.add(trip)
     db.commit()
     db.refresh(trip)
-    logger.info(f"[WA] Viaje {trip.trip_id} creado para {phone}")
+    logger.info(f"[WA] Viaje {trip.trip_id} creado para {phone} (status={trip_status.value})")
     return {
         "ride_id": trip.trip_id,
         "status": trip.status.value,
@@ -210,6 +223,7 @@ def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
         "distance_km": round(float(distance_km), 2),
         "origin_address": trip.origin_address,
         "destination_address": trip.destination_address,
+        "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
     }
 
 

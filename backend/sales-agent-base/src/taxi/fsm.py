@@ -7,6 +7,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta
 from typing import Optional
 
 _GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
@@ -22,6 +23,127 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+_DIAS_ES = {
+    "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+    "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+}
+
+
+def _parse_scheduled_at(text: str, now: Optional[datetime] = None) -> Optional[str]:
+    """
+    Interpreta texto en español y devuelve un ISO 8601 datetime string,
+    o 'NOW' si el usuario quiere viaje inmediato, o None si no se pudo parsear.
+    """
+    if now is None:
+        now = datetime.now()
+
+    lower = text.lower().strip()
+
+    # Palabras que significan "inmediato"
+    if re.search(r'\b(ahora|ya|inmediato|inmediatamente|de una vez|ahorita|ya mismo)\b', lower):
+        return "NOW"
+
+    # "en N horas"
+    m = re.search(r'\ben\s+(\d+)\s+(hora|horas)\b', lower)
+    if m:
+        dt = now + timedelta(hours=int(m.group(1)))
+        return dt.strftime("%Y-%m-%dT%H:%M:00")
+
+    # "en N minutos"
+    m = re.search(r'\ben\s+(\d+)\s+(minuto|minutos|min)\b', lower)
+    if m:
+        dt = now + timedelta(minutes=int(m.group(1)))
+        return dt.strftime("%Y-%m-%dT%H:%M:00")
+
+    # ── Parsear hora ──────────────────────────────────────────────────────────
+    hour: Optional[int] = None
+    minute = 0
+
+    # "X de la mañana/tarde/noche"
+    m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*de\s+la\s+(mañana|manana|tarde|noche)', lower)
+    if m:
+        hour = int(m.group(1))
+        minute = int(m.group(2) or 0)
+        period = m.group(3)
+        if period in ("tarde", "noche") and hour < 12:
+            hour += 12
+        elif period in ("mañana", "manana") and hour == 12:
+            hour = 0
+
+    if hour is None:
+        # "3pm" / "3am" / "3:30pm"
+        m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b', lower)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2) or 0)
+            if m.group(3) == "pm" and hour < 12:
+                hour += 12
+            elif m.group(3) == "am" and hour == 12:
+                hour = 0
+
+    if hour is None:
+        # "a las X" / "a la 1"
+        m = re.search(r'a\s+la[s]?\s+(\d{1,2})(?::(\d{2}))?', lower)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2) or 0)
+            if hour < 6:
+                hour += 12  # heurística: si <6 sin am/pm → tarde
+
+    if hour is None:
+        # "15:30" o "9:00"
+        m = re.search(r'\b(\d{1,2}):(\d{2})\b', lower)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2))
+
+    if hour is None or not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+
+    # ── Parsear fecha ─────────────────────────────────────────────────────────
+    base_date = None
+
+    if re.search(r'\bpasado\s+ma[ñn]ana\b', lower):
+        base_date = (now + timedelta(days=2)).date()
+    elif re.search(r'\bma[ñn]ana\b', lower):
+        base_date = (now + timedelta(days=1)).date()
+    elif re.search(r'\bhoy\b', lower):
+        base_date = now.date()
+    else:
+        for dia, weekday in _DIAS_ES.items():
+            if re.search(rf'\b{dia}\b', lower):
+                days_ahead = (weekday - now.weekday()) % 7
+                if days_ahead == 0:
+                    days_ahead = 7  # próximo de ese día
+                base_date = (now + timedelta(days=days_ahead)).date()
+                break
+
+    if base_date is None:
+        # Sin fecha explícita: usar hoy si la hora es futura (>15 min), si no mañana
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now + timedelta(minutes=15):
+            candidate += timedelta(days=1)
+        return candidate.strftime("%Y-%m-%dT%H:%M:00")
+
+    scheduled = datetime.combine(base_date, datetime.min.time().replace(hour=hour, minute=minute))
+    return scheduled.strftime("%Y-%m-%dT%H:%M:00")
+
+
+def _format_scheduled_at(iso: str) -> str:
+    """Formatea '2026-06-11T15:30:00' → 'jueves 11 jun a las 3:30 pm'."""
+    try:
+        dt = datetime.fromisoformat(iso)
+        dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        meses = ["", "ene", "feb", "mar", "abr", "may", "jun",
+                 "jul", "ago", "sep", "oct", "nov", "dic"]
+        dia_sem = dias[dt.weekday()]
+        hora12 = dt.hour % 12 or 12
+        ampm = "pm" if dt.hour >= 12 else "am"
+        minutos = f":{dt.minute:02d}" if dt.minute else ""
+        return f"{dia_sem} {dt.day} {meses[dt.month]} a las {hora12}{minutos} {ampm}"
+    except Exception:
+        return iso
+
 
 @dataclass
 class TaxiSession:
@@ -36,6 +158,7 @@ class TaxiSession:
     driver_code: Optional[str] = None
     preferred_driver_phone: Optional[str] = None
     preferred_driver_name: Optional[str] = None
+    scheduled_at: Optional[str] = None  # ISO 8601, None = viaje inmediato
 
 
 # ── Respuesta compatible con sales_routes.py ──────────────────────────────────
@@ -58,8 +181,6 @@ class TaxiFSM:
         self.api_base = api_base_url.rstrip("/")
         self.key = internal_key
         self.sessions: dict[str, TaxiSession] = {}
-
-    # ── Public interface (matches restaurant FSM) ──────────────────────────────
 
     # ── Session persistence (Redis → in-memory fallback) ──────────────────────
 
@@ -120,6 +241,8 @@ class TaxiFSM:
             return self._ask_origin(s, msg)
         if s.state == "CHOOSING_ORIGIN":
             return self._choose_origin(s, msg)
+        if s.state == "ASKING_WHEN":
+            return self._asking_when(s, msg)
         if s.state == "CONFIRMING":
             return self._confirming(s, msg)
         if s.state == "RIDE_ACTIVE":
@@ -175,7 +298,7 @@ class TaxiFSM:
             )
         else:
             s.origin = location
-            return self._show_confirmation(s)
+            return self._ask_when(s)
 
     def _ask_dest(self, s: TaxiSession, msg: str) -> str:
         gps_reply = self._try_gps(s, msg, set_destination=True)
@@ -241,7 +364,7 @@ class TaxiFSM:
         s.origin_results = results[:3]
         if len(results) == 1:
             s.origin = results[0]
-            return self._show_confirmation(s)
+            return self._ask_when(s)
         _nums = ["1️⃣", "2️⃣", "3️⃣"]
         lines = ["¿Dónde exactamente te recogemos?\n"]
         for i, r in enumerate(results[:3], 1):
@@ -256,9 +379,39 @@ class TaxiFSM:
             idx = int(msg) - 1
             if idx < len(s.origin_results):
                 s.origin = s.origin_results[idx]
-                return self._show_confirmation(s)
+                return self._ask_when(s)
         s.state = "ASKING_ORIGIN"
         return self._ask_origin(s, msg)
+
+    def _ask_when(self, s: TaxiSession) -> str:
+        """Pregunta cuándo quiere el viaje. Retorna el mensaje y pone estado ASKING_WHEN."""
+        s.state = "ASKING_WHEN"
+        return (
+            "🕐 *¿Para cuándo necesitas el taxi?*\n\n"
+            "• *ahora* — lo pedimos de inmediato\n"
+            "• *mañana a las 10am* — programar para más tarde\n"
+            "• *el viernes a las 3pm*\n"
+            "• *en 2 horas*\n\n"
+            "_Escribe cuándo lo necesitas._"
+        )
+
+    def _asking_when(self, s: TaxiSession, msg: str) -> str:
+        result = _parse_scheduled_at(msg)
+        if result is None:
+            return (
+                "No entendí la fecha u hora. 🤔\n\n"
+                "Intenta así:\n"
+                "• *ahora* — viaje inmediato\n"
+                "• *mañana a las 9am*\n"
+                "• *el lunes a las 2pm*\n"
+                "• *hoy a las 6 de la tarde*\n"
+                "• *en 3 horas*"
+            )
+        if result == "NOW":
+            s.scheduled_at = None
+        else:
+            s.scheduled_at = result
+        return self._show_confirmation(s)
 
     def _show_confirmation(self, s: TaxiSession) -> str:
         fare_info = self._estimate(s.origin, s.destination)
@@ -267,16 +420,21 @@ class TaxiFSM:
         orig_name = s.origin["name"] if s.origin else "Tu ubicación"
         dest_name = s.destination["name"] if s.destination else "Destino"
         driver_line = f"🚕 Conductor: *{s.preferred_driver_name}*\n" if s.preferred_driver_name else ""
+        when_line = (
+            f"🗓 Programado: *{_format_scheduled_at(s.scheduled_at)}*\n"
+            if s.scheduled_at else "🕐 Viaje: *inmediato*\n"
+        )
         return (
             f"📋 *Resumen del viaje*\n\n"
             f"🟢 Salida: *{orig_name}*\n"
             f"🔴 Destino: *{dest_name}*\n"
             f"{driver_line}"
+            f"{when_line}"
             f"\n💰 Tarifa estimada: *${fare_info.get('fare', 0):.0f} MXN*\n"
             f"📏 Distancia: ~{fare_info.get('distance_km', 0):.1f} km\n"
             f"⏱ Tiempo: ~{fare_info.get('duration_minutes', 0)} min\n\n"
-            "¿Confirmamos el viaje?\n"
-            "Responde *sí* para pedir tu taxi o *no* para cambiar los datos."
+            "¿Confirmamos?\n"
+            "Responde *sí* para confirmar o *no* para cambiar los datos."
         )
 
     def _confirming(self, s: TaxiSession, msg: str) -> str:
@@ -286,6 +444,16 @@ class TaxiFSM:
             if result:
                 s.ride_id = result["ride_id"]
                 s.state = "RIDE_ACTIVE"
+                if s.scheduled_at:
+                    when_txt = _format_scheduled_at(s.scheduled_at)
+                    return (
+                        f"✅ *¡Viaje programado!*\n\n"
+                        f"🗓 Fecha: *{when_txt}*\n"
+                        f"🔴 Destino: *{s.destination['name']}*\n"
+                        f"💰 Tarifa estimada: *${result['fare']:.0f} MXN*\n\n"
+                        f"Te avisaremos cuando un conductor confirme tu viaje.\n\n"
+                        f"_Escribe *cancelar* si cambias de opinión._"
+                    )
                 return (
                     f"✅ *¡Viaje solicitado!*\n\n"
                     f"🔴 Destino: *{s.destination['name']}*\n"
@@ -299,6 +467,7 @@ class TaxiFSM:
             s.state = "ASKING_DESTINATION"
             s.destination = None
             s.origin = None
+            s.scheduled_at = None
             return "Entendido. ¿A dónde te llevamos? 🚕"
         return (
             "Por favor responde:\n"
@@ -307,7 +476,7 @@ class TaxiFSM:
         )
 
     def _ride_active(self, s: TaxiSession, msg: str) -> str:
-        # Auto-reset si el viaje ya terminó (ej. conductor marcó completado/cancelado)
+        # Auto-reset si el viaje ya terminó
         if s.ride_id:
             ride = self._get_ride(s.ride_id)
             if ride and ride.get("status") in ("completed", "cancelled"):
@@ -327,6 +496,7 @@ class TaxiFSM:
                 ride = self._get_ride(s.ride_id)
                 if ride:
                     status_map = {
+                        "scheduled":      f"🗓 Viaje programado para *{_format_scheduled_at(s.scheduled_at)}*" if s.scheduled_at else "🗓 Viaje programado",
                         "requested":      "🔍 Buscando conductor...",
                         "confirmed":      f"✅ Conductor asignado: *{ride.get('driver_name') or 'en camino'}*",
                         "driver_arrived": "🚕 ¡Tu conductor llegó al punto de recogida!",
@@ -335,6 +505,14 @@ class TaxiFSM:
                         "cancelled":      "❌ Viaje cancelado",
                     }
                     return status_map.get(ride.get("status", "requested"), f"Estado: {ride.get('status')}")
+        if s.scheduled_at:
+            return (
+                f"Tu viaje está programado 🗓\n\n"
+                f"📅 Fecha: *{_format_scheduled_at(s.scheduled_at)}*\n"
+                f"🔴 Destino: *{s.destination['name'] if s.destination else 'N/A'}*\n\n"
+                "• Escribe *estado* para ver el progreso\n"
+                "• Escribe *cancelar* si ya no lo necesitas"
+            )
         return (
             "Tienes un viaje activo 🚗\n\n"
             "• Escribe *estado* para ver el progreso del viaje\n"
@@ -422,6 +600,8 @@ class TaxiFSM:
                 payload["preferred_driver_phone"] = s.preferred_driver_phone
             if s.preferred_driver_name:
                 payload["preferred_driver_name"] = s.preferred_driver_name
+            if s.scheduled_at:
+                payload["scheduled_at"] = s.scheduled_at
             with httpx.Client(timeout=8.0) as c:
                 resp = c.post(
                     f"{self.api_base}/api/v1/whatsapp/rides/create",

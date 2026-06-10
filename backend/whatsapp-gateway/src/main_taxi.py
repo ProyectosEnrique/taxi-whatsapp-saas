@@ -10,6 +10,8 @@ from fastapi import FastAPI, Form, Header, Request, Query
 from fastapi.responses import Response, PlainTextResponse
 import httpx
 
+from .stt_client import get_stt_client
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -117,6 +119,35 @@ def _twiml(*messages: str) -> Response:
     )
 
 
+# ─── Meta media downloader (for audio messages) ──────────────────────────────
+
+async def _download_meta_media(media_id: str) -> bytes | None:
+    """Resolve Meta media_id → URL → download bytes."""
+    if not META_ACCESS_TOKEN:
+        return None
+    headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                f"https://graph.facebook.com/v18.0/{media_id}",
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.error(f"[TaxiGW] Meta media metadata {resp.status_code}: {resp.text[:100]}")
+                return None
+            media_url = resp.json().get("url")
+            if not media_url:
+                return None
+            resp = await client.get(media_url, headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"[TaxiGW] Meta media download {resp.status_code}")
+                return None
+            return resp.content
+    except Exception as e:
+        logger.error(f"[TaxiGW] _download_meta_media error: {e}")
+        return None
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -179,7 +210,7 @@ async def meta_webhook(request: Request):
 
             for msg in messages:
                 msg_type = msg.get("type")
-                if msg_type not in ("text", "location"):
+                if msg_type not in ("text", "location", "audio"):
                     continue
                 msg_id = msg.get("id", "")
                 if msg_id and _is_duplicate(msg_id):
@@ -194,6 +225,25 @@ async def meta_webhook(request: Request):
                     lon = loc.get("longitude", "")
                     label = loc.get("name") or loc.get("address") or "Ubicación compartida"
                     text = f"[GPS:{lat},{lon}:{label}]"
+
+                elif msg_type == "audio":
+                    stt = get_stt_client()
+                    if not stt.is_available:
+                        _send_twilio(phone, "Por el momento no puedo procesar notas de voz. Por favor escríbeme tu mensaje.")
+                        continue
+                    media_id = (msg.get("audio") or {}).get("id")
+                    if not media_id:
+                        continue
+                    audio_bytes = await _download_meta_media(media_id)
+                    if not audio_bytes:
+                        _send_twilio(phone, "No pude descargar tu nota de voz. Por favor escríbeme tu mensaje.")
+                        continue
+                    text = await stt.transcribe_bytes(audio_bytes)
+                    if not text:
+                        _send_twilio(phone, "No entendí tu nota de voz. Por favor escríbeme tu mensaje.")
+                        continue
+                    logger.info(f"[TaxiGW] Meta audio transcribed for {phone}: {text[:80]}")
+
                 else:
                     text = msg.get("text", {}).get("body", "")
 
@@ -231,7 +281,18 @@ async def twilio_webhook(
         return _twiml(*responses)
 
     if int(NumMedia) > 0 and MediaContentType0 and "audio" in MediaContentType0:
-        return _twiml("Por el momento solo proceso mensajes de texto. Escríbeme tu destino.")
+        stt = get_stt_client()
+        if not stt.is_available:
+            return _twiml("Por el momento no puedo procesar notas de voz. Por favor escríbeme tu mensaje.")
+        transcript = await stt.transcribe_audio_url(
+            MediaUrl0,
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID else None,
+        )
+        if not transcript:
+            return _twiml("No entendí tu nota de voz. Por favor escríbeme tu mensaje.")
+        logger.info(f"[TaxiGW] Twilio audio transcribed for {phone}: {transcript[:80]}")
+        responses = await _call_fsm(phone, transcript, customer_name)
+        return _twiml(*responses)
 
     if not Body.strip():
         return _twiml()

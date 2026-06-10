@@ -177,6 +177,19 @@
         </div>
       </div>
 
+      <!-- Banner GPS -->
+      <div v-if="driverStore.isAvailable && driverStore.gpsStatus === 'denied'" class="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
+        <p class="font-semibold text-red-700 mb-2">&#128205; GPS bloqueado en Chrome</p>
+        <p class="text-sm text-red-600 mb-2">En la barra de Chrome escribe esta direccion y presiona Enter:</p>
+        <div class="bg-white border border-red-200 rounded p-2 mb-3 font-mono text-xs text-red-800 break-all select-all">chrome://settings/content/siteDetails?site=https://taxi.nexoai.lat</div>
+        <p class="text-sm text-red-600 mb-3">Cambia <strong>Ubicacion</strong> a <strong>Permitir</strong>, luego vuelve aqui y recarga.</p>
+        <button @click="reloadPage()" class="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg">Recargar pagina</button>
+      </div>
+      <div v-else-if="driverStore.isAvailable && driverStore.gpsStatus !== 'granted'" class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-center justify-between">
+        <p class="text-sm text-yellow-800">&#128205; Activa tu ubicacion para recibir viajes.</p>
+        <button @click="driverStore.requestGPSPermission()" class="ml-3 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-lg whitespace-nowrap">Permitir GPS</button>
+      </div>
+
       <!-- Solicitudes de viaje pendientes -->
       <div v-if="rideStore.hasPendingRequests" class="mb-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Solicitudes de Viaje</h3>
@@ -272,6 +285,69 @@
         <p class="text-gray-500">Te notificaremos cuando haya un nuevo viaje cerca de ti</p>
       </div>
 
+      <!-- ── Viajes Programados ──────────────────────────────────────────────── -->
+      <div v-if="rideStore.myScheduledRides.length || rideStore.poolScheduledRides.length" class="mt-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold text-gray-900">
+            📅 Viajes Programados
+            <span
+              v-if="rideStore.myScheduledRides.length"
+              class="ml-2 bg-yellow-400 text-white text-xs font-bold px-2 py-0.5 rounded-full"
+            >{{ rideStore.myScheduledRides.length }}</span>
+          </h3>
+          <router-link to="/agenda" class="text-sm font-semibold text-yellow-600 hover:underline">
+            Ver agenda →
+          </router-link>
+        </div>
+
+        <!-- Mis reservas (máx 2) -->
+        <div v-if="rideStore.myScheduledRides.length" class="space-y-3 mb-3">
+          <div
+            v-for="ride in rideStore.myScheduledRides.slice(0, 2)"
+            :key="ride.ride_id"
+            class="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-400"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-full">📌 Mi reserva</span>
+              <span class="font-bold text-green-600">${{ ride.total_fare }}</span>
+            </div>
+            <p class="text-sm font-bold text-gray-800 mb-1">{{ formatScheduledDate(ride.scheduled_at) }}</p>
+            <p class="text-xs text-gray-500 truncate">📍 {{ ride.origin?.address }}</p>
+            <p class="text-xs text-gray-500 truncate">🏁 {{ ride.destination?.address }}</p>
+          </div>
+          <p v-if="rideStore.myScheduledRides.length > 2" class="text-xs text-center text-gray-400">
+            +{{ rideStore.myScheduledRides.length - 2 }} más en la agenda
+          </p>
+        </div>
+
+        <!-- Pool disponible (máx 2, solo si no tengo reservas propias para no saturar) -->
+        <div v-if="!rideStore.myScheduledRides.length && rideStore.poolScheduledRides.length" class="space-y-3">
+          <div
+            v-for="ride in rideStore.poolScheduledRides.slice(0, 2)"
+            :key="ride.ride_id"
+            class="bg-white rounded-lg shadow p-4 border-l-4 border-blue-300"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">🔍 Disponible</span>
+              <span class="font-bold text-green-600">${{ ride.total_fare }}</span>
+            </div>
+            <p class="text-sm font-bold text-gray-800 mb-1">{{ formatScheduledDate(ride.scheduled_at) }}</p>
+            <p class="text-xs text-gray-500 truncate">📍 {{ ride.origin?.address }}</p>
+            <p class="text-xs text-gray-500 truncate">🏁 {{ ride.destination?.address }}</p>
+          </div>
+          <p v-if="rideStore.poolScheduledRides.length > 2" class="text-xs text-center text-gray-400">
+            +{{ rideStore.poolScheduledRides.length - 2 }} más disponibles
+          </p>
+        </div>
+
+        <!-- Si tengo reservas Y hay pool: mostrar contador del pool -->
+        <div v-if="rideStore.myScheduledRides.length && rideStore.poolScheduledRides.length" class="mt-1">
+          <router-link to="/agenda" class="block text-center text-xs text-blue-600 hover:underline">
+            {{ rideStore.poolScheduledRides.length }} viaje{{ rideStore.poolScheduledRides.length > 1 ? 's' : '' }} disponibles para reservar →
+          </router-link>
+        </div>
+      </div>
+
       <!-- Resumen semanal -->
       <div class="mt-6 bg-white rounded-lg p-6 shadow">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Resumen de la Semana</h3>
@@ -316,6 +392,11 @@ const currentDate = computed(() => {
   return new Date().toLocaleDateString('es-ES', options)
 })
 
+const formatScheduledDate = (iso) => {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 const setStatus = async (status) => {
   const result = await driverStore.updateStatus(status)
   if (result.success && status === 'available') {
@@ -324,6 +405,8 @@ const setStatus = async (status) => {
     }
     rideStore.startPolling()
     driverStore.startLocationTracking()
+    // Forzar dialogo de permiso GPS inmediatamente
+    driverStore.requestGPSPermission()
   } else if (result.success && status === 'offline') {
     rideStore.stopPolling()
     driverStore.stopLocationTracking()
@@ -361,9 +444,13 @@ onMounted(() => {
     rideStore.startPolling()
     driverStore.startPolling()
     driverStore.startLocationTracking()
+    // Solicitar permiso GPS al arrancar
+    driverStore.requestGPSPermission()
   }
   rideStore.fetchScheduledRides()
 })
+
+const reloadPage = () => { window.location.reload() }
 
 onUnmounted(() => {
   rideStore.stopPolling()
