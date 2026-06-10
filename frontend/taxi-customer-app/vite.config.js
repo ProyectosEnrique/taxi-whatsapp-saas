@@ -34,6 +34,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        navigateFallbackDenylist: [/^\/driver/, /^\/admin/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

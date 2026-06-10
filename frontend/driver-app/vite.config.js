@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
+  base: '/driver/',
   plugins: [
     vue(),
     VitePWA({
@@ -17,8 +18,8 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+        scope: '/driver/',
+        start_url: '/driver/',
         icons: [
           {
             src: '/icons/icon-192x192.png',
