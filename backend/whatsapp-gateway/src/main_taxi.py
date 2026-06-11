@@ -236,7 +236,8 @@ async def meta_webhook(request: Request):
                         continue
                     audio_bytes = await _download_meta_media(media_id)
                     if not audio_bytes:
-                        _send_twilio(phone, "No pude descargar tu nota de voz. Por favor escríbeme tu mensaje.")
+                        # Token expired or unavailable — skip silently; Twilio webhook handles the same message
+                        logger.warning(f"[TaxiGW] Meta audio download failed for {phone} — skipping (token expired?)")
                         continue
                     text = await stt.transcribe_bytes(audio_bytes)
                     if not text:
