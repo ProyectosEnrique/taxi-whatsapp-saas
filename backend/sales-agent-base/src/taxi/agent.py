@@ -355,6 +355,50 @@ def _run_tool(name: str, args: dict, phone: str) -> str:
     return json.dumps({"error": f"Herramienta desconocida: {name}"})
 
 
+# ── Recuperación de tool calls malformados (Groq quirk) ──────────────────────
+
+_FAILED_GEN_RE = re.compile(
+    r"'failed_generation':\s*'<function=(\w+)(\{.*?\})</function>'",
+    re.DOTALL,
+)
+
+
+def _recover_tool_call(err_str: str, messages: list, phone: str) -> Optional[list]:
+    """
+    Groq llama-3.3 sometimes generates tool calls as XML instead of JSON.
+    Error contains 'failed_generation': '<function=name{...}</function>'
+    We parse it, execute the tool, and inject both call + result into messages.
+    """
+    m = _FAILED_GEN_RE.search(err_str)
+    if not m:
+        return None
+    func_name = m.group(1)
+    try:
+        args = json.loads(m.group(2))
+    except Exception:
+        return None
+    import uuid
+    tc_id      = f"call_{uuid.uuid4().hex[:8]}"
+    result_str = _run_tool(func_name, args, phone)
+    logger.info(f"[TaxiAgent] Recovered {func_name}({args}) → {result_str[:80]}")
+    return messages + [
+        {
+            "role":       "assistant",
+            "content":    None,
+            "tool_calls": [{
+                "id":   tc_id,
+                "type": "function",
+                "function": {"name": func_name, "arguments": json.dumps(args)},
+            }],
+        },
+        {
+            "role":         "tool",
+            "tool_call_id": tc_id,
+            "content":      result_str,
+        },
+    ]
+
+
 # ── Resultado compatible con sales_routes.py ──────────────────────────────────
 
 class AgentResult:
@@ -427,9 +471,15 @@ class TaxiAgent:
                 )
             except Exception as e:
                 err_str = str(e)
-                # Groq occasionally generates malformed tool calls — retry as plain text
+                # Groq occasionally generates malformed XML tool calls
                 if "tool_use_failed" in err_str:
-                    logger.warning(f"[TaxiAgent] tool_use_failed, retrying without tools [{phone}]")
+                    # Attempt to parse & execute the malformed tool call
+                    recovered = _recover_tool_call(err_str, messages, phone)
+                    if recovered:
+                        messages = recovered
+                        continue  # let the loop produce a final text response
+                    # Can't recover — fall back to plain-text reply
+                    logger.warning(f"[TaxiAgent] tool_use_failed (no recovery), retrying text [{phone}]")
                     try:
                         resp = self._client.chat.completions.create(
                             model="llama-3.3-70b-versatile",
