@@ -13,6 +13,37 @@ from typing import Optional
 _GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
 _SESSION_TTL = 86400  # 24 horas
 
+# ── Intent / language helpers ─────────────────────────────────────────────────
+
+# Pure greeting with nothing else: "hola", "buenas", "buenos días", etc.
+_GREETING_RE = re.compile(
+    r'^\s*(?:hola+|hey|hi|buenas?|buenos?\s+(?:d[ií]as?|tardes?|noches?)'
+    r'|buen\s+d[ií]a|saludos?)\s*[!.¡]*\s*$',
+    re.IGNORECASE,
+)
+
+# Phrases that mean "start over" anywhere in the message
+_RESET_RE = re.compile(
+    r'\b(nuevo\s+viaje|otro\s+viaje|de\s+nuevo|empezar?\s+de\s+nuevo|'
+    r'volver\s+a\s+empezar|otra\s+vez|reiniciar)\b',
+    re.IGNORECASE,
+)
+
+# Conversational / meta phrases — not address text
+_CONVERSATIONAL_RE = re.compile(
+    r'(\?|¿|\b(?:ayudas?|ayudar|puedes?|podr[ií]as?|quiero|quisiera|'
+    r'necesito|agendar|agenda|programar?|solicitar|pedir|'
+    r'me\s+llevas?|me\s+puedes?|me\s+ayudas?|por\s+favor|gracias)\b)',
+    re.IGNORECASE,
+)
+
+# Extract destination from intent phrase: "quiero ir al X", "llévame a X", etc.
+_DEST_INTENT_RE = re.compile(
+    r'\b(?:ir\s+al?|llevar(?:me)?\s+al?|quiero\s+(?:ir\s+)?al?|'
+    r'voy\s+(?:para\s+)?al?|lleva(?:me)?\s+al?)\s+(.+)',
+    re.IGNORECASE,
+)
+
 import httpx
 
 try:
@@ -158,7 +189,8 @@ class TaxiSession:
     driver_code: Optional[str] = None
     preferred_driver_phone: Optional[str] = None
     preferred_driver_name: Optional[str] = None
-    scheduled_at: Optional[str] = None  # ISO 8601, None = viaje inmediato
+    scheduled_at: Optional[str] = None       # ISO 8601, None = viaje inmediato
+    awaiting_continuation: bool = False      # True mientras esperamos "continuar"/"nuevo"
 
 
 # ── Respuesta compatible con sales_routes.py ──────────────────────────────────
@@ -189,7 +221,9 @@ class TaxiFSM:
             try:
                 raw = _redis_client.get(f"taxi:session:{phone}")
                 if raw:
-                    return TaxiSession(**json.loads(raw))
+                    data = json.loads(raw)
+                    data.setdefault("awaiting_continuation", False)
+                    return TaxiSession(**data)
             except Exception as e:
                 logger.warning(f"[TaxiFSM] Redis read error: {e}")
         return self.sessions.get(phone, TaxiSession(phone=phone))
@@ -221,9 +255,19 @@ class TaxiFSM:
     # ── Dispatcher ────────────────────────────────────────────────────────────
 
     def _dispatch(self, s: TaxiSession, msg: str) -> str:
-        lower = msg.lower()
+        lower = msg.lower().strip()
 
-        # Global cancel / restart
+        # ── 1. Responder elección de continuación ─────────────────────────────
+        if s.awaiting_continuation:
+            s.awaiting_continuation = False
+            if any(w in lower for w in ("continuar", "seguir", "sí", "si", "yes", "ok", "dale", "claro")):
+                return self._resume_session(s)
+            else:
+                phone = s.phone
+                s.__init__(phone=phone)
+                return self._idle(s, msg)
+
+        # ── 2. Reset global (palabra clave exacta) ────────────────────────────
         if lower in ("cancelar", "cancel", "salir", "restart", "reiniciar") and s.state != "IDLE":
             if s.ride_id and s.state == "RIDE_ACTIVE":
                 self._cancel_ride(s.ride_id)
@@ -231,6 +275,33 @@ class TaxiFSM:
             s.__init__(phone=phone)
             return "Entendido, reiniciamos. ¿A dónde te llevamos? 🚕"
 
+        # ── 3. Soft reset ("nuevo viaje", "de nuevo", etc.) ───────────────────
+        if s.state not in ("IDLE", "RIDE_ACTIVE") and _RESET_RE.search(lower):
+            phone = s.phone
+            s.__init__(phone=phone)
+            return (
+                "¡Empezamos de nuevo! 😊\n\n"
+                "¿A dónde te llevamos?\n"
+                "_Escribe el nombre o dirección de tu destino._"
+            )
+
+        # ── 4. Saludo en sesión activa → ofrecer continuación o reinicio ──────
+        if s.state not in ("IDLE", "RIDE_ACTIVE") and _GREETING_RE.match(msg.strip()):
+            if s.destination:
+                dest_name = s.destination.get("name", "tu destino anterior")
+                s.awaiting_continuation = True
+                return (
+                    f"¡Hola de nuevo! 👋\n\n"
+                    f"Tienes un viaje pendiente a *{dest_name}*.\n\n"
+                    f"¿Continuamos con ese viaje o prefieres empezar de nuevo?\n"
+                    f"Responde *continuar* o *nuevo viaje*."
+                )
+            else:
+                phone = s.phone
+                s.__init__(phone=phone)
+                return self._idle(s, msg)
+
+        # ── 5. Ruteo normal por estado ────────────────────────────────────────
         if s.state == "IDLE":
             return self._idle(s, msg)
         if s.state == "ASKING_DESTINATION":
@@ -253,8 +324,31 @@ class TaxiFSM:
 
     # ── States ────────────────────────────────────────────────────────────────
 
+    def _resume_session(self, s: TaxiSession) -> str:
+        """Retoma la sesión desde donde se dejó después del prompt de continuación."""
+        if s.state == "ASKING_DESTINATION":
+            return (
+                "Perfecto 😊\n\n"
+                "¿A dónde te llevamos?\n"
+                "_Escribe el nombre o dirección de tu destino._"
+            )
+        if s.state in ("ASKING_ORIGIN", "CHOOSING_ORIGIN"):
+            dest_name = s.destination.get("name", "tu destino") if s.destination else "tu destino"
+            return (
+                f"Perfecto, continuamos 😊\n\n"
+                f"📍 Destino: *{dest_name}*\n\n"
+                f"¿Dónde te recogemos?\n"
+                f"_Escribe tu calle, colonia o 📎 comparte tu ubicación._"
+            )
+        if s.state in ("ASKING_WHEN", "CONFIRMING"):
+            return self._show_confirmation(s)
+        # Estado inesperado — reiniciar
+        phone = s.phone
+        s.__init__(phone=phone)
+        return self._idle(s, "hola")
+
     def _idle(self, s: TaxiSession, msg: str) -> str:
-        # Extract driver_code from QR-generated messages like "[ABC123]"
+        # Detectar código de conductor QR "[ABC123]"
         match = re.search(r'\[([A-Za-z0-9_-]+)\]', msg)
         if match:
             code = match.group(1)
@@ -270,10 +364,26 @@ class TaxiFSM:
                     "¿A dónde te llevamos hoy?\n"
                     "_Escribe el nombre o dirección de tu destino._"
                 )
+
         self._init_customer(s.phone)
         s.state = "ASKING_DESTINATION"
+
+        # Si el mensaje contiene más que un saludo, intentar extraer destino directamente
+        stripped = msg.strip()
+        if not _GREETING_RE.match(stripped) and len(stripped) > 3:
+            # Intentar extraer destino de frases de intención: "quiero ir al X" → "X"
+            m = _DEST_INTENT_RE.search(msg)
+            dest_text = m.group(1).strip() if m else None
+
+            # Si no hay patrón de intención pero tampoco es conversacional → tratar como dirección
+            if not dest_text and not _CONVERSATIONAL_RE.search(msg) and len(stripped) < 60:
+                dest_text = stripped
+
+            if dest_text:
+                return self._ask_dest(s, dest_text)
+
         app_url = os.getenv("CUSTOMER_APP_URL", "")
-        url_line = f"📱 También puedes agendar viajes en: {app_url}\n\n" if app_url else ""
+        url_line = f"📱 También puedes agendar en: {app_url}\n\n" if app_url else ""
         return (
             f"¡Hola! 👋 Soy tu asistente de taxi.\n\n"
             f"{url_line}"
@@ -306,12 +416,25 @@ class TaxiFSM:
             return gps_reply
         if len(msg) < 4:
             return "Escribe el nombre de tu destino (ej: *Aeropuerto*, *Plaza Galerías*, *Hospital General*)."
+
+        # Detectar frases conversacionales — no geocodificar
+        if _CONVERSATIONAL_RE.search(msg) and len(msg) > 15:
+            return (
+                "¿A dónde te llevamos? 😊\n\n"
+                "Escribe el *nombre o dirección* de tu destino, por ejemplo:\n"
+                "• *Aeropuerto*\n• *Hospital IMSS*\n• *Plaza Las Américas*\n\n"
+                "_O 📎 comparte tu ubicación desde WhatsApp._"
+            )
+
         results = self._geocode(msg)
         if not results:
             return (
-                "No encontré ese destino. 🤔\n"
-                "Intenta con más detalle, por ejemplo:\n"
-                "• *Aeropuerto del Bajío*\n• *Hospital IMSS Irapuato*\n• *Centro de Salamanca*"
+                "No encontré ese lugar. 🤔\n\n"
+                "Intenta agregar el municipio o colonia:\n"
+                "• ✏️ *Hospital General, Irapuato*\n"
+                "• ✏️ *Plaza Mayor, Salamanca*\n"
+                "• ✏️ *Aeropuerto del Bajío, Silao*\n\n"
+                "O 📎 *comparte tu ubicación* desde WhatsApp."
             )
         s.geocode_results = results[:3]
         if len(results) == 1:
@@ -344,7 +467,7 @@ class TaxiFSM:
                     "¿Dónde te recogemos?\n"
                     "_Escribe tu calle, colonia o lugar de recogida._"
                 )
-        # Treat as a new destination search
+        # Tratar como nueva búsqueda de destino
         s.state = "ASKING_DESTINATION"
         return self._ask_dest(s, msg)
 
@@ -357,9 +480,11 @@ class TaxiFSM:
         results = self._geocode(msg)
         if not results:
             return (
-                "No encontré ese punto. 🤔\n"
-                "Intenta con más detalle, por ejemplo:\n"
-                "• *Calle Independencia 25, Centro*\n• *Colonia Las Flores*"
+                "No encontré ese punto. 🤔\n\n"
+                "Intenta ser más específico:\n"
+                "• ✏️ *Calle Juárez 45, Centro*\n"
+                "• ✏️ *Colonia Las Flores, Irapuato*\n\n"
+                "O 📎 *comparte tu ubicación* desde WhatsApp — es lo más preciso."
             )
         s.origin_results = results[:3]
         if len(results) == 1:
@@ -384,7 +509,6 @@ class TaxiFSM:
         return self._ask_origin(s, msg)
 
     def _ask_when(self, s: TaxiSession) -> str:
-        """Pregunta cuándo quiere el viaje. Retorna el mensaje y pone estado ASKING_WHEN."""
         s.state = "ASKING_WHEN"
         return (
             "🕐 *¿Para cuándo necesitas el taxi?*\n\n"
