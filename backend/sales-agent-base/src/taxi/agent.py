@@ -1,0 +1,495 @@
+"""
+TaxiAgent — Agente LLM para reserva de taxis via WhatsApp.
+Usa Groq (llama-3.3-70b) con function calling en lugar de FSM.
+"""
+import json
+import logging
+import os
+import re
+from typing import Optional
+
+import httpx
+
+try:
+    import redis as _redis_lib
+    _redis_client = _redis_lib.from_url(
+        os.getenv("REDIS_URL", ""), decode_responses=True
+    ) if os.getenv("REDIS_URL") else None
+except Exception:
+    _redis_client = None
+
+logger = logging.getLogger(__name__)
+
+_SESSION_TTL  = 86400  # 24 h
+_MAX_HISTORY  = 20     # mensajes a retener por sesión
+_GPS_RE       = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
+
+GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "")
+API_BASE         = os.getenv("MENU_SERVICE_URL", "http://taxi-api:5011")
+WHATSAPP_SECRET  = os.getenv("WHATSAPP_SECRET", "")
+CUSTOMER_APP_URL = os.getenv("CUSTOMER_APP_URL", "https://taxi.nexoai.lat/cliente")
+
+_HEADERS = {"X-Taxi-Internal-Key": WHATSAPP_SECRET} if WHATSAPP_SECRET else {}
+
+
+# ── Llamadas HTTP a taxi-api ───────────────────────────────────────────────────
+
+def _geocode(query: str) -> list:
+    try:
+        with httpx.Client(timeout=8.0) as c:
+            resp = c.get(
+                f"{API_BASE}/api/v1/whatsapp/geocode",
+                params={"q": query},
+                headers=_HEADERS,
+            )
+            return resp.json().get("results", [])
+    except Exception as e:
+        logger.warning(f"[TaxiAgent] geocode error: {e}")
+        return []
+
+
+def _estimate(origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float) -> dict:
+    try:
+        with httpx.Client(timeout=5.0) as c:
+            resp = c.post(
+                f"{API_BASE}/api/v1/whatsapp/rides/estimate",
+                json={
+                    "origin":      {"lat": origin_lat, "lng": origin_lng},
+                    "destination": {"lat": dest_lat,   "lng": dest_lng},
+                },
+                headers=_HEADERS,
+            )
+            return resp.json()
+    except Exception as e:
+        logger.warning(f"[TaxiAgent] estimate error: {e}")
+        return {"fare": 80.0, "distance_km": 5.0, "duration_minutes": 15}
+
+
+def _create_ride(
+    phone: str,
+    origin: dict,
+    destination: dict,
+    scheduled_at: Optional[str] = None,
+) -> Optional[dict]:
+    payload: dict = {
+        "customer_phone": phone,
+        "origin":         origin,
+        "destination":    destination,
+        "payment_method": "cash",
+    }
+    if scheduled_at:
+        payload["scheduled_at"] = scheduled_at
+    try:
+        with httpx.Client(timeout=8.0) as c:
+            resp = c.post(
+                f"{API_BASE}/api/v1/whatsapp/rides/create",
+                json=payload,
+                headers=_HEADERS,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            logger.error(f"[TaxiAgent] create_ride {resp.status_code}: {resp.text}")
+    except Exception as e:
+        logger.error(f"[TaxiAgent] create_ride error: {e}")
+    return None
+
+
+def _cancel_ride(ride_id: str):
+    try:
+        with httpx.Client(timeout=4.0) as c:
+            c.post(
+                f"{API_BASE}/api/v1/whatsapp/rides/{ride_id}/cancel",
+                headers=_HEADERS,
+            )
+    except Exception as e:
+        logger.debug(f"[TaxiAgent] cancel_ride: {e}")
+
+
+def _get_ride(ride_id: str) -> Optional[dict]:
+    try:
+        with httpx.Client(timeout=4.0) as c:
+            resp = c.get(
+                f"{API_BASE}/api/v1/whatsapp/rides/{ride_id}",
+                headers=_HEADERS,
+            )
+            return resp.json()
+    except Exception as e:
+        logger.debug(f"[TaxiAgent] get_ride: {e}")
+    return None
+
+
+def _init_customer(phone: str):
+    try:
+        with httpx.Client(timeout=3.0) as c:
+            c.post(
+                f"{API_BASE}/api/v1/whatsapp/customer/init",
+                json={"phone": phone},
+                headers=_HEADERS,
+            )
+    except Exception:
+        pass
+
+
+# ── Sesión Redis ───────────────────────────────────────────────────────────────
+
+def _session_key(phone: str) -> str:
+    return f"taxi:agent:{phone}"
+
+
+def _load_session(phone: str) -> dict:
+    if not _redis_client:
+        return {"history": [], "context": {}}
+    try:
+        raw = _redis_client.get(_session_key(phone))
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        logger.warning(f"[TaxiAgent] session load: {e}")
+    return {"history": [], "context": {}}
+
+
+def _save_session(phone: str, session: dict):
+    if not _redis_client:
+        return
+    try:
+        if len(session.get("history", [])) > _MAX_HISTORY:
+            session["history"] = session["history"][-_MAX_HISTORY:]
+        _redis_client.setex(_session_key(phone), _SESSION_TTL, json.dumps(session))
+    except Exception as e:
+        logger.warning(f"[TaxiAgent] session save: {e}")
+
+
+# ── Definiciones de herramientas ───────────────────────────────────────────────
+
+_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "buscar_lugar",
+            "description": (
+                "Busca un lugar o dirección y devuelve resultados con coordenadas. "
+                "Úsalo para geocodificar el origen o destino del viaje."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Nombre del lugar o dirección, e.g. 'Plaza Mayor', 'Calle Hidalgo 45'",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "estimar_tarifa",
+            "description": "Estima costo y tiempo de viaje dadas las coordenadas de origen y destino.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "origin_lat": {"type": "number"},
+                    "origin_lng": {"type": "number"},
+                    "dest_lat":   {"type": "number"},
+                    "dest_lng":   {"type": "number"},
+                },
+                "required": ["origin_lat", "origin_lng", "dest_lat", "dest_lng"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "crear_viaje",
+            "description": (
+                "Crea y registra el viaje en el sistema. "
+                "Llama esta función SOLO después de que el cliente confirmó la tarifa."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "origin_address": {"type": "string", "description": "Dirección de origen en texto"},
+                    "origin_lat":     {"type": "number"},
+                    "origin_lng":     {"type": "number"},
+                    "dest_address":   {"type": "string", "description": "Dirección de destino en texto"},
+                    "dest_lat":       {"type": "number"},
+                    "dest_lng":       {"type": "number"},
+                    "scheduled_at": {
+                        "type": "string",
+                        "description": (
+                            "Fecha y hora ISO 8601 para viaje programado, "
+                            "e.g. '2026-06-11T15:30:00'. Omitir para viaje inmediato."
+                        ),
+                    },
+                },
+                "required": [
+                    "origin_address", "origin_lat", "origin_lng",
+                    "dest_address", "dest_lat", "dest_lng",
+                ],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_estado_viaje",
+            "description": "Consulta el estado actual de un viaje por su ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ride_id": {
+                        "type": "string",
+                        "description": "ID del viaje, e.g. 'TRIP-ABC12345'",
+                    }
+                },
+                "required": ["ride_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancelar_viaje",
+            "description": "Cancela un viaje activo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ride_id": {
+                        "type": "string",
+                        "description": "ID del viaje a cancelar",
+                    }
+                },
+                "required": ["ride_id"],
+            },
+        },
+    },
+]
+
+
+# ── System prompt ──────────────────────────────────────────────────────────────
+
+_SYSTEM_PROMPT = f"""Eres TaxiBot, asistente de WhatsApp para reservar taxis. Hablas español de forma amigable y concisa.
+
+FLUJO PARA SOLICITAR TAXI:
+1. Necesitas ORIGEN y DESTINO con coordenadas para continuar.
+2. Si el cliente comparte su GPS (recibirás algo como "Mi ubicación actual es: X (coordenadas: lat, lng)"), úsala como origen.
+3. Si da un nombre de lugar como destino, usa buscar_lugar() para geocodificarlo.
+4. Con ambas coordenadas, llama estimar_tarifa() y muestra el resultado.
+5. Pide confirmación ANTES de crear el viaje.
+6. Solo al confirmar, llama crear_viaje().
+7. Tras crear el viaje, informa el ID y que el link de seguimiento es: {CUSTOMER_APP_URL}
+
+FLUJO PARA CONSULTAR/CANCELAR:
+- Si el cliente pregunta por el estado de su viaje o quiere cancelarlo, usa el ride_id del contexto o pídelo.
+
+REGLAS:
+- Confirmar = "sí", "ok", "dale", "listo", "confirmo", "claro", "de acuerdo" → crea el viaje.
+- Cancelar operación = "no", "cancelar", "otro destino" → no crees el viaje, vuelve a preguntar.
+- Si no encontraste el lugar con buscar_lugar(), pide que sea más específico o comparta GPS.
+- Usa *negritas* para datos clave (destino, tarifa, ID de viaje).
+- Respuestas cortas. Máximo 3 oraciones por mensaje.
+- No preguntes más de una cosa a la vez.
+"""
+
+
+# ── Ejecución de herramientas ──────────────────────────────────────────────────
+
+def _run_tool(name: str, args: dict, phone: str) -> str:
+    if name == "buscar_lugar":
+        results = _geocode(args.get("query", ""))
+        if not results:
+            return json.dumps({"error": "No encontré ese lugar. Pide al cliente que sea más específico o comparta su ubicación GPS."})
+        return json.dumps({"results": results[:3]})
+
+    if name == "estimar_tarifa":
+        est = _estimate(
+            float(args.get("origin_lat", 0)),
+            float(args.get("origin_lng", 0)),
+            float(args.get("dest_lat", 0)),
+            float(args.get("dest_lng", 0)),
+        )
+        return json.dumps(est)
+
+    if name == "crear_viaje":
+        origin = {
+            "address": args.get("origin_address", ""),
+            "lat":     float(args.get("origin_lat", 0)),
+            "lng":     float(args.get("origin_lng", 0)),
+        }
+        dest = {
+            "address": args.get("dest_address", ""),
+            "lat":     float(args.get("dest_lat", 0)),
+            "lng":     float(args.get("dest_lng", 0)),
+        }
+        data = _create_ride(phone, origin, dest, args.get("scheduled_at"))
+        if data:
+            ride    = data.get("ride", data)
+            ride_id = ride.get("ride_id") or ride.get("id") or "desconocido"
+            return json.dumps({
+                "success":      True,
+                "ride_id":      ride_id,
+                "status":       ride.get("status", "requested"),
+                "fare":         ride.get("total_fare"),
+                "tracking_url": CUSTOMER_APP_URL,
+            })
+        return json.dumps({"error": "No se pudo crear el viaje. Intenta de nuevo."})
+
+    if name == "ver_estado_viaje":
+        data = _get_ride(args.get("ride_id", ""))
+        if data:
+            ride = data.get("ride", data)
+            return json.dumps({
+                "ride_id": ride.get("ride_id"),
+                "status":  ride.get("status"),
+                "driver":  ride.get("driver"),
+                "fare":    ride.get("total_fare"),
+            })
+        return json.dumps({"error": "No encontré ese viaje."})
+
+    if name == "cancelar_viaje":
+        _cancel_ride(args.get("ride_id", ""))
+        return json.dumps({"success": True, "message": "Viaje cancelado."})
+
+    return json.dumps({"error": f"Herramienta desconocida: {name}"})
+
+
+# ── Resultado compatible con sales_routes.py ──────────────────────────────────
+
+class AgentResult:
+    def __init__(self, text: str):
+        self.response_text = text
+        self.intent = "llm"
+
+    class _State:
+        value = "llm"
+
+    new_state = _State()
+
+
+# ── Clase principal ────────────────────────────────────────────────────────────
+
+class TaxiAgent:
+    def __init__(self):
+        self._client = None
+        if not GROQ_API_KEY:
+            logger.error("[TaxiAgent] GROQ_API_KEY no configurada")
+            return
+        try:
+            from openai import OpenAI
+            self._client = OpenAI(
+                api_key=GROQ_API_KEY,
+                base_url="https://api.groq.com/openai/v1",
+                timeout=30.0,
+            )
+            logger.info("[TaxiAgent] Cliente Groq inicializado")
+        except Exception as e:
+            logger.error(f"[TaxiAgent] init error: {e}")
+
+    def process(self, phone: str, message: str) -> AgentResult:
+        _init_customer(phone)
+
+        session = _load_session(phone)
+        history = session.get("history", [])
+        ctx     = session.setdefault("context", {})
+
+        # Convertir GPS a texto con coords explícitas para el LLM
+        gps_match = _GPS_RE.match(message.strip())
+        if gps_match:
+            lat   = float(gps_match.group(1))
+            lng   = float(gps_match.group(2))
+            label = gps_match.group(3) or "Mi ubicación"
+            message = f"Mi ubicación actual es: {label} (coordenadas: {lat}, {lng})"
+            ctx["last_gps"] = {"lat": lat, "lng": lng, "label": label}
+
+        history.append({"role": "user", "content": message})
+
+        if not self._client:
+            err = "Servicio temporalmente no disponible. Por favor intenta de nuevo."
+            history.append({"role": "assistant", "content": err})
+            session["history"] = history
+            _save_session(phone, session)
+            return AgentResult(err)
+
+        messages = [{"role": "system", "content": _SYSTEM_PROMPT}] + history
+
+        # Bucle de tool calling (máximo 4 rondas)
+        for round_num in range(4):
+            try:
+                resp = self._client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    tools=_TOOLS,
+                    tool_choice="auto",
+                    max_tokens=600,
+                    temperature=0.3,
+                )
+            except Exception as e:
+                logger.error(f"[TaxiAgent] LLM error [{phone}]: {e}")
+                err = "Lo siento, hubo un error. Por favor intenta de nuevo."
+                history.append({"role": "assistant", "content": err})
+                session["history"] = history
+                _save_session(phone, session)
+                return AgentResult(err)
+
+            choice = resp.choices[0]
+            msg    = choice.message
+
+            if msg.tool_calls:
+                # Agregar respuesta del asistente con tool calls al hilo
+                messages.append({
+                    "role":       "assistant",
+                    "content":    None,
+                    "tool_calls": [
+                        {
+                            "id":       tc.id,
+                            "type":     "function",
+                            "function": {
+                                "name":      tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                })
+
+                for tc in msg.tool_calls:
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except Exception:
+                        args = {}
+                    result_str = _run_tool(tc.function.name, args, phone)
+                    logger.info(f"[TaxiAgent] {tc.function.name} → {result_str[:100]}")
+                    messages.append({
+                        "role":         "tool",
+                        "tool_call_id": tc.id,
+                        "content":      result_str,
+                    })
+                # Continuar bucle para respuesta final
+            else:
+                # Respuesta de texto final
+                final_text = (msg.content or "").strip()
+                history.append({"role": "assistant", "content": final_text})
+                session["history"] = history
+                _save_session(phone, session)
+                return AgentResult(final_text)
+
+        # Fallback si se agotaron rondas
+        fallback = "Perdón, no pude completar la solicitud. ¿Puedes repetirla?"
+        history.append({"role": "assistant", "content": fallback})
+        session["history"] = history
+        _save_session(phone, session)
+        return AgentResult(fallback)
+
+
+# ── Singleton ──────────────────────────────────────────────────────────────────
+
+_instance: Optional[TaxiAgent] = None
+
+
+def get_taxi_agent() -> TaxiAgent:
+    global _instance
+    if _instance is None:
+        _instance = TaxiAgent()
+    return _instance

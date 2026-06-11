@@ -467,11 +467,11 @@ async def _send_order_to_kitchen(
 
 
 async def _handle_taxi_message(session_id: str, message: str, context: Dict[str, Any]) -> Any:
-    """Procesa mensajes del canal de taxis usando TaxiFSM."""
+    """Procesa mensajes del canal de taxis usando TaxiAgent (LLM + function calling)."""
     try:
-        from src.taxi.fsm import get_taxi_fsm
-        fsm = get_taxi_fsm()
-        result = fsm.process(session_id, message)
+        from src.taxi.agent import get_taxi_agent
+        agent = get_taxi_agent()
+        result = agent.process(session_id, message)
         return jsonify({
             'response': result.response_text,
             'text': result.response_text,
