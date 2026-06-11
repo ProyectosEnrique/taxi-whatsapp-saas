@@ -426,12 +426,31 @@ class TaxiAgent:
                     temperature=0.3,
                 )
             except Exception as e:
-                logger.error(f"[TaxiAgent] LLM error [{phone}]: {e}")
-                err = "Lo siento, hubo un error. Por favor intenta de nuevo."
-                history.append({"role": "assistant", "content": err})
-                session["history"] = history
-                _save_session(phone, session)
-                return AgentResult(err)
+                err_str = str(e)
+                # Groq occasionally generates malformed tool calls — retry as plain text
+                if "tool_use_failed" in err_str:
+                    logger.warning(f"[TaxiAgent] tool_use_failed, retrying without tools [{phone}]")
+                    try:
+                        resp = self._client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=messages,
+                            max_tokens=600,
+                            temperature=0.3,
+                        )
+                    except Exception as e2:
+                        logger.error(f"[TaxiAgent] retry error [{phone}]: {e2}")
+                        err = "Lo siento, hubo un error. Por favor intenta de nuevo."
+                        history.append({"role": "assistant", "content": err})
+                        session["history"] = history
+                        _save_session(phone, session)
+                        return AgentResult(err)
+                else:
+                    logger.error(f"[TaxiAgent] LLM error [{phone}]: {e}")
+                    err = "Lo siento, hubo un error. Por favor intenta de nuevo."
+                    history.append({"role": "assistant", "content": err})
+                    session["history"] = history
+                    _save_session(phone, session)
+                    return AgentResult(err)
 
             choice = resp.choices[0]
             msg    = choice.message
