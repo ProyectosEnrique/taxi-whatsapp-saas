@@ -30,6 +30,8 @@ CEREBRAS_API_KEY  = os.getenv("CEREBRAS_API_KEY", "")
 API_BASE          = os.getenv("MENU_SERVICE_URL", "http://taxi-api:5011")
 WHATSAPP_SECRET   = os.getenv("WHATSAPP_SECRET", "")
 CUSTOMER_APP_URL  = os.getenv("CUSTOMER_APP_URL", "https://taxi.nexoai.lat/cliente")
+# Derive base domain for tracking URLs (strip /cliente suffix if present)
+_TRACKING_BASE    = CUSTOMER_APP_URL.replace('/cliente', '').rstrip('/')
 
 _HEADERS = {"X-Taxi-Internal-Key": WHATSAPP_SECRET} if WHATSAPP_SECRET else {}
 
@@ -287,7 +289,8 @@ FLUJO OBLIGATORIO PARA SOLICITAR TAXI (sigue este orden SIEMPRE):
 4. Con ORIGEN y DESTINO confirmados, llama estimar_tarifa() con las coordenadas reales.
 5. Muestra el resumen y pide confirmación.
 6. Solo al confirmar, llama crear_viaje().
-7. Tras crear el viaje exitosamente, responde EXACTAMENTE con este formato:
+7. Tras crear el viaje exitosamente, responde EXACTAMENTE con este formato
+   (usa el campo tracking_url del resultado de crear_viaje):
    ✅ *¡Viaje solicitado!*
 
    🔴 Destino: *<nombre del destino>*
@@ -296,7 +299,7 @@ FLUJO OBLIGATORIO PARA SOLICITAR TAXI (sigue este orden SIEMPRE):
    🔍 Buscando conductor disponible...
    Te avisaremos cuando un conductor acepte tu viaje.
 
-   📍 Sigue tu viaje: {CUSTOMER_APP_URL}
+   📍 Sigue tu viaje: <tracking_url>
 
    _Escribe *cancelar* si cambias de opinión._
 
@@ -362,7 +365,7 @@ def _run_tool(name: str, args: dict, phone: str) -> str:
                 "ride_id":      ride_id,
                 "status":       ride.get("status", "requested"),
                 "fare":         ride.get("total_fare"),
-                "tracking_url": CUSTOMER_APP_URL,
+                "tracking_url": f"{_TRACKING_BASE}/seguimiento/{ride_id}",
             })
         return json.dumps({"error": "No se pudo crear el viaje. Intenta de nuevo."})
 
