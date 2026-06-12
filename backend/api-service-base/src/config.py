@@ -94,6 +94,7 @@ class Settings(BaseSettings):
 
     TELEGRAM_BOT_TOKEN: str = ""        # token del bot (@BotFather)
     TELEGRAM_ALERT_CHAT_ID: str = ""    # chat_id del grupo/canal del operador
+    TELEGRAM_WEBHOOK_SECRET: str = ""   # secret para validar webhooks de Telegram
 
     # ==============================================================================
     # CONFIG FROM ENV FILE

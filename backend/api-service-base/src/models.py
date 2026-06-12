@@ -384,6 +384,9 @@ class Driver(Base):
     emergency_contact_phone       = Column(String(30),  nullable=True)
     emergency_contact_telegram_id = Column(String(50),  nullable=True)
 
+    # Propio Telegram del chofer — para notificaciones de viajes y aceptar vía bot
+    telegram_chat_id = Column(String(50), nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):

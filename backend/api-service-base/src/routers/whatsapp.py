@@ -261,6 +261,13 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     db.refresh(trip)
     logger.info(f"[WA] Viaje {trip.trip_id} creado para {phone} (status={trip_status.value})")
 
+    # Notificar a choferes online por Telegram
+    try:
+        from .telegram_bot import notify_drivers_new_ride
+        await notify_drivers_new_ride(trip, db)
+    except Exception as drv_err:
+        logger.warning(f"[WA] Driver Telegram notify failed: {drv_err}")
+
     # Notificar al operador por Telegram
     try:
         from ..services.telegram import send_to_operator

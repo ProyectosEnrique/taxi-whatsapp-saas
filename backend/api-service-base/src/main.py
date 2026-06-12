@@ -33,6 +33,7 @@ from .routers.incidents import driver_router as incidents_driver_router
 from .routers.incidents import admin_router as incidents_admin_router
 from .routers.admin import router as admin_router
 from .routers.whatsapp import router as whatsapp_router
+from .routers.telegram_bot import router as telegram_bot_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -203,6 +204,8 @@ async def lifespan(app: FastAPI):
         ("incidents", "last_location_at",                 "DATETIME"),
         # Rating stored on trip row
         ("trips",     "customer_rating",                  "INTEGER"),
+        # Telegram bot — propio chat_id del chofer para notificaciones y aceptar viajes
+        ("drivers",   "telegram_chat_id",                 "VARCHAR(50)"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe
@@ -233,6 +236,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(cleanup_expired_pending_payments())
     asyncio.create_task(_activate_scheduled_rides())
     asyncio.create_task(_dead_mans_switch())
+
+    # Registrar webhook del bot de Telegram con Telegram API
+    if settings.TELEGRAM_BOT_TOKEN and settings.PUBLIC_URL:
+        from .services.telegram import set_webhook
+        webhook_url = f"{settings.PUBLIC_URL}/api/v1/telegram/webhook"
+        asyncio.create_task(set_webhook(webhook_url, settings.TELEGRAM_WEBHOOK_SECRET))
 
     yield
 
@@ -403,6 +412,7 @@ app.include_router(incidents_driver_router)
 app.include_router(incidents_admin_router)
 app.include_router(admin_router)
 app.include_router(whatsapp_router)
+app.include_router(telegram_bot_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

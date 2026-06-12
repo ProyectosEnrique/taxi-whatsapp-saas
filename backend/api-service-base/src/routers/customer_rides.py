@@ -345,6 +345,12 @@ async def request_ride(payload: dict, current: Customer = Depends(get_current_cu
     logger.info(f"[Rides] Viaje {trip.trip_id} solicitado por {current.phone}" + (f" promo={promo_used}" if promo_used else ""))
 
     try:
+        from .telegram_bot import notify_drivers_new_ride
+        await notify_drivers_new_ride(trip, db)
+    except Exception as drv_err:
+        logger.warning(f"[Rides] Driver Telegram notify failed: {drv_err}")
+
+    try:
         from ..services.telegram import send_to_operator
         olat = origin.get("lat", 0) or 0
         olng = origin.get("lng") or origin.get("lon") or 0
