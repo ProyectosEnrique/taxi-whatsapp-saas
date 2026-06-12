@@ -287,7 +287,18 @@ FLUJO PARA SOLICITAR TAXI:
 4. Con ambas coordenadas, llama estimar_tarifa() y muestra el resultado.
 5. Pide confirmación ANTES de crear el viaje.
 6. Solo al confirmar, llama crear_viaje().
-7. Tras crear el viaje, informa el ID y que el link de seguimiento es: {CUSTOMER_APP_URL}
+7. Tras crear el viaje exitosamente, responde EXACTAMENTE con este formato (adaptando los valores):
+   ✅ *¡Viaje solicitado!*
+
+   🔴 Destino: *<nombre del destino>*
+   💰 Tarifa: *$<tarifa> MXN*
+
+   🔍 Buscando conductor disponible...
+   Te avisaremos cuando un conductor acepte tu viaje.
+
+   📍 Sigue tu viaje: {CUSTOMER_APP_URL}
+
+   _Escribe *cancelar* si cambias de opinión._
 
 FLUJO PARA CONSULTAR/CANCELAR:
 - Si el cliente pregunta por el estado de su viaje o quiere cancelarlo, usa el ride_id del contexto o pídelo.
