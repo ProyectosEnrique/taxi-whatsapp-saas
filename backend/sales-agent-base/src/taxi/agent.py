@@ -20,8 +20,9 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-_SESSION_TTL  = 86400  # 24 h
-_MAX_HISTORY  = 20     # mensajes a retener por sesión
+_SESSION_TTL           = 1800   # 30 min sin actividad → conversación vence
+_SESSION_TTL_WITH_RIDE = 86400  # 24 h una vez que hay viaje confirmado
+_MAX_HISTORY           = 20     # mensajes a retener por sesión
 _GPS_RE       = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
 
 GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
@@ -334,6 +335,12 @@ def _run_tool(name: str, args: dict, phone: str) -> str:
         if data:
             ride    = data.get("ride", data)
             ride_id = ride.get("ride_id") or ride.get("id") or "desconocido"
+            # Extend session TTL to 24 h now that a ride exists
+            if _redis_client:
+                try:
+                    _redis_client.expire(_session_key(phone), _SESSION_TTL_WITH_RIDE)
+                except Exception:
+                    pass
             return json.dumps({
                 "success":      True,
                 "ride_id":      ride_id,
