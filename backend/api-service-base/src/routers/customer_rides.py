@@ -307,7 +307,7 @@ def estimate_fare(payload: dict, current: Customer = Depends(get_current_custome
 
 
 @router.post("/rides/request")
-def request_ride(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+async def request_ride(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
 
@@ -343,6 +343,26 @@ def request_ride(payload: dict, current: Customer = Depends(get_current_customer
     db.commit()
     db.refresh(trip)
     logger.info(f"[Rides] Viaje {trip.trip_id} solicitado por {current.phone}" + (f" promo={promo_used}" if promo_used else ""))
+
+    try:
+        from ..services.telegram import send_to_operator
+        olat = origin.get("lat", 0) or 0
+        olng = origin.get("lng") or origin.get("lon") or 0
+        dlat = destination.get("lat", 0) or 0
+        dlng = destination.get("lng") or destination.get("lon") or 0
+        maps_orig = f"https://maps.google.com/?q={olat},{olng}" if (olat and olng) else "Sin coords"
+        maps_dest = f"https://maps.google.com/?q={dlat},{dlng}"
+        await send_to_operator(
+            f"🚖 <b>Viaje App</b>\n"
+            f"ID: <code>{trip.trip_id}</code>\n"
+            f"Cliente: {current.name} | <code>{current.phone}</code>\n"
+            f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
+            f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
+            f"💰 Tarifa: ${float(trip.fare):.2f} | {trip.distance_km} km"
+        )
+    except Exception as tg_err:
+        logger.warning(f"[Rides] Telegram notify failed: {tg_err}")
+
     return {"ride": _trip_to_dict(trip)}
 
 

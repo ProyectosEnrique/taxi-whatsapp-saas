@@ -205,7 +205,7 @@ def estimate_fare(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)
 
 
 @router.post("/rides/create")
-def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
+async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
     from datetime import datetime as _dt
     phone = (payload.get("customer_phone") or "").strip()
     if not phone:
@@ -260,6 +260,29 @@ def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)):
     db.commit()
     db.refresh(trip)
     logger.info(f"[WA] Viaje {trip.trip_id} creado para {phone} (status={trip_status.value})")
+
+    # Notificar al operador por Telegram
+    try:
+        from ..services.telegram import send_to_operator
+        maps_orig = (
+            f"https://maps.google.com/?q={olat},{olng}" if (olat and olng) else "Sin coords"
+        )
+        maps_dest = f"https://maps.google.com/?q={dlat},{dlng}"
+        label = "📅 PROGRAMADO" if scheduled_at else "🚖 INMEDIATO"
+        msg = (
+            f"{label} — <b>Viaje WhatsApp</b>\n"
+            f"ID: <code>{trip.trip_id}</code>\n"
+            f"Cliente: {c_name} | <code>{phone}</code>\n"
+            f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
+            f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
+            f"💰 Tarifa: ${fare:.2f} | {round(distance_km, 1)} km"
+        )
+        if scheduled_at:
+            msg += f"\n🕐 Hora: {scheduled_at.strftime('%d/%m %H:%M')}"
+        await send_to_operator(msg)
+    except Exception as tg_err:
+        logger.warning(f"[WA] Telegram notify failed: {tg_err}")
+
     return {
         "ride_id": trip.trip_id,
         "status": trip.status.value,
