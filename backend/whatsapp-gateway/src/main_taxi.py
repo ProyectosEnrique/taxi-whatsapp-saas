@@ -37,6 +37,9 @@ SALES_AGENT_URL      = os.getenv("SALES_AGENT_URL", "http://taxi-agent:5000")
 META_VERIFY_TOKEN    = os.getenv("META_VERIFY_TOKEN", "taxi2026")
 META_ACCESS_TOKEN    = os.getenv("META_ACCESS_TOKEN", "")
 META_PHONE_ID        = os.getenv("META_PHONE_NUMBER_ID", "988164724391332")
+# Set META_WEBHOOK_ENABLED=true only when the Meta Business account is validated.
+# Default is false (Twilio-only mode) to avoid double-processing the same message.
+META_WEBHOOK_ENABLED = os.getenv("META_WEBHOOK_ENABLED", "false").lower() == "true"
 TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_WA_NUMBER     = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+16204077336")
@@ -195,6 +198,11 @@ async def meta_verify(
 async def meta_webhook(request: Request):
     data = await request.json()
     logger.info(f"[TaxiGW] Meta webhook received")
+
+    # Twilio-only mode: acknowledge without processing to avoid duplicate messages.
+    # Enable with META_WEBHOOK_ENABLED=true once Meta Business is validated.
+    if not META_WEBHOOK_ENABLED:
+        return {"status": "ok"}
 
     for entry in data.get("entry", []):
         for change in entry.get("changes", []):
