@@ -147,6 +147,10 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_SMS_FROM: ${TWILIO_SMS_FROM:-}
+      # Telegram — notificaciones al operador + bot para conductores
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       # Centro geográfico de operación — restringe geocoding a la ciudad
       # Ajustar con las coords reales de la ciudad del taxi
       CITY_LAT: ${CITY_LAT:-0.0}
