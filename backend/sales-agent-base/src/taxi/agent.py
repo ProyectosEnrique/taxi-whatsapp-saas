@@ -167,15 +167,21 @@ _TOOLS = [
         "function": {
             "name": "buscar_lugar",
             "description": (
-                "Busca un lugar o dirección y devuelve resultados con coordenadas. "
-                "Úsalo para geocodificar el origen o destino del viaje."
+                "Busca un lugar o dirección por nombre o texto y devuelve resultados con coordenadas. "
+                "Funciona para lugares locales, nombres de sitios conocidos (terminales, hospitales, plazas), "
+                "y direcciones en otras ciudades de México. "
+                "Úsalo siempre que necesites geocodificar el origen o destino del viaje."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Nombre del lugar o dirección, e.g. 'Plaza Mayor', 'Calle Hidalgo 45'",
+                        "description": (
+                            "Nombre del lugar o dirección completa. "
+                            "Ejemplos: 'Central de Autobuses de Morelia', 'Hospital General', "
+                            "'Plaza de la Paz Guanajuato', 'Calle Hidalgo 45 Moroleón'."
+                        ),
                     }
                 },
                 "required": ["query"],

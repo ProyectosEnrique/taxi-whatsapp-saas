@@ -88,22 +88,34 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
-    # Use provided coords or fall back to configured city center
     ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
     ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
 
-    params: dict = {"q": q, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
+    base_params: dict = {"q": q, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
+
+    # Build candidate param sets: first with viewbox as preference hint (no bounded),
+    # then fallback without viewbox (nationwide Mexico search).
+    param_sets = []
     if ref_lat is not None and ref_lon is not None:
         d = settings.CITY_BBOX_DEG
-        params["viewbox"] = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
-        params["bounded"] = 1
+        local_params = dict(base_params)
+        local_params["viewbox"] = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
+        # No bounded=1 — viewbox biases ranking but does NOT exclude out-of-box results
+        param_sets.append(local_params)
+    param_sets.append(base_params)  # nationwide fallback
+
+    items: list = []
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
-            resp.raise_for_status()
-            items = resp.json()
+            for params in param_sets:
+                resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
+                resp.raise_for_status()
+                items = resp.json()
+                if items:
+                    break  # got results — skip fallback
     except Exception as e:
         raise HTTPException(503, f"Geocodificación no disponible: {e}")
+
     return {
         "results": [
             {
