@@ -119,8 +119,8 @@ class Settings(BaseSettings):
         description="Cerebras API key for Llama 3.3 70B (free tier)"
     )
     CEREBRAS_MODEL: str = Field(
-        default="llama-3.3-70b",
-        description="Cerebras model: llama-3.3-70b, llama-3.1-8b"
+        default="llama3.3-70b",
+        description="Cerebras model: llama3.3-70b, llama3.1-70b, llama3.1-8b"
     )
 
     # --- Google Gemini (1.5 Pro) - PREMIUM (NUEVO - reemplaza GPT-4o) ---

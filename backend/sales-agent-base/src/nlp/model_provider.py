@@ -1349,7 +1349,7 @@ def get_model_provider(
 
     # Cerebras (NUEVO - preferido sobre Groq)
     cerebras_api_key = cerebras_api_key or getattr(settings, 'CEREBRAS_API_KEY', None)
-    cerebras_model = cerebras_model or getattr(settings, 'CEREBRAS_MODEL', 'llama-3.3-70b')
+    cerebras_model = cerebras_model or getattr(settings, 'CEREBRAS_MODEL', 'llama3.3-70b')
 
     # Groq (legacy fallback)
     groq_api_key = groq_api_key or getattr(settings, 'GROQ_API_KEY', None)
