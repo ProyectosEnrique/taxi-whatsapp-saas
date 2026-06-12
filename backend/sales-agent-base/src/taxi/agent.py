@@ -452,7 +452,7 @@ class TaxiAgent:
         if self._client:
             providers.append((self._client,   "llama-3.3-70b-versatile", "Groq"))
         if self._fallback:
-            providers.append((self._fallback, "llama3.3-70b",            "Cerebras"))
+            providers.append((self._fallback, "gpt-oss-120b",            "Cerebras"))
 
         last_exc = RuntimeError("Sin proveedores LLM configurados")
         for client, model, name in providers:
