@@ -4,6 +4,7 @@ Protegidos con X-Taxi-Internal-Key.
 """
 import logging
 import math
+import re
 import uuid
 
 import httpx
@@ -21,6 +22,24 @@ router = APIRouter(prefix="/api/v1/whatsapp", tags=["whatsapp-internal"])
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 _NOM_HEADERS = {"User-Agent": "TaxiApp/1.0"}
+
+# Common Spanish place-name aliases that Nominatim doesn't index literally
+_QUERY_SUBS = [
+    (re.compile(r'\bcentral de autobuses\b', re.I), 'terminal autobuses'),
+    (re.compile(r'\bcentral camionera\b', re.I), 'terminal autobuses'),
+    (re.compile(r'\bcamionera central\b', re.I), 'terminal autobuses'),
+    (re.compile(r'\bCAPU\b', re.I), 'terminal autobuses'),
+    (re.compile(r'\baeroporto\b', re.I), 'aeropuerto'),
+    (re.compile(r'\bclinica\b', re.I), 'hospital'),
+    (re.compile(r'\bIMSS\b'), 'Instituto Mexicano del Seguro Social'),
+    (re.compile(r'\bISSTE\b'), 'ISSSTE'),
+]
+
+
+def _normalize_query(q: str) -> str:
+    for pattern, replacement in _QUERY_SUBS:
+        q = pattern.sub(replacement, q)
+    return q.strip()
 
 
 def _parse_display_name(display_name: str) -> tuple[str, str]:
@@ -91,28 +110,41 @@ async def geocode_address(
     ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
     ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
 
-    base_params: dict = {"q": q, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
+    # Build query variants to try in order: original → normalized alias
+    q_normalized = _normalize_query(q)
+    queries = [q]
+    if q_normalized.lower() != q.lower():
+        queries.append(q_normalized)
 
-    # Build candidate param sets: first with viewbox as preference hint (no bounded),
-    # then fallback without viewbox (nationwide Mexico search).
-    param_sets = []
+    viewbox_str = None
     if ref_lat is not None and ref_lon is not None:
         d = settings.CITY_BBOX_DEG
-        local_params = dict(base_params)
-        local_params["viewbox"] = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
-        # No bounded=1 — viewbox biases ranking but does NOT exclude out-of-box results
-        param_sets.append(local_params)
-    param_sets.append(base_params)  # nationwide fallback
+        viewbox_str = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
 
     items: list = []
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            for params in param_sets:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for query_str in queries:
+                # Attempt 1: with viewbox (preference-bias, no hard bound)
+                if viewbox_str:
+                    params: dict = {
+                        "q": query_str, "format": "json", "limit": 4,
+                        "countrycodes": "mx", "addressdetails": 0,
+                        "viewbox": viewbox_str,
+                    }
+                    resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
+                    resp.raise_for_status()
+                    items = resp.json()
+                    if items:
+                        break
+
+                # Attempt 2: nationwide (no viewbox)
+                params = {"q": query_str, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
                 resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
                 resp.raise_for_status()
                 items = resp.json()
                 if items:
-                    break  # got results — skip fallback
+                    break
     except Exception as e:
         raise HTTPException(503, f"Geocodificación no disponible: {e}")
 
