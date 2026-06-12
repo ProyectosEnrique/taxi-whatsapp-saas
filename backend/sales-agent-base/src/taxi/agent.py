@@ -465,7 +465,7 @@ class TaxiAgent:
             logger.error(f"[TaxiAgent] init error: {e}")
 
     def _llm_create(self, messages: list, tools: list | None = None, **kwargs):
-        """Intenta Groq primero; si devuelve 429 cae a Cerebras automáticamente."""
+        """Intenta Groq primero; ante cualquier error cae a Cerebras automáticamente."""
         providers = []
         if self._client:
             providers.append((self._client,   "llama-3.3-70b-versatile", "Groq"))
@@ -483,10 +483,11 @@ class TaxiAgent:
                 return resp, name
             except Exception as e:
                 last_exc = e
-                if "429" in str(e) and name != providers[-1][1]:
-                    logger.warning(f"[TaxiAgent] {name} rate limit — usando fallback Cerebras")
+                is_last = (name == providers[-1][2])
+                if not is_last:
+                    logger.warning(f"[TaxiAgent] {name} error ({type(e).__name__}: {str(e)[:80]}) — usando fallback Cerebras")
                     continue
-                raise
+                raise last_exc
         raise last_exc
 
     def process(self, phone: str, message: str) -> AgentResult:
