@@ -24,10 +24,11 @@ _SESSION_TTL  = 86400  # 24 h
 _MAX_HISTORY  = 20     # mensajes a retener por sesión
 _GPS_RE       = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
 
-GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "")
-API_BASE         = os.getenv("MENU_SERVICE_URL", "http://taxi-api:5011")
-WHATSAPP_SECRET  = os.getenv("WHATSAPP_SECRET", "")
-CUSTOMER_APP_URL = os.getenv("CUSTOMER_APP_URL", "https://taxi.nexoai.lat/cliente")
+GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
+CEREBRAS_API_KEY  = os.getenv("CEREBRAS_API_KEY", "")
+API_BASE          = os.getenv("MENU_SERVICE_URL", "http://taxi-api:5011")
+WHATSAPP_SECRET   = os.getenv("WHATSAPP_SECRET", "")
+CUSTOMER_APP_URL  = os.getenv("CUSTOMER_APP_URL", "https://taxi.nexoai.lat/cliente")
 
 _HEADERS = {"X-Taxi-Internal-Key": WHATSAPP_SECRET} if WHATSAPP_SECRET else {}
 
@@ -422,20 +423,53 @@ class AgentResult:
 
 class TaxiAgent:
     def __init__(self):
-        self._client = None
-        if not GROQ_API_KEY:
-            logger.error("[TaxiAgent] GROQ_API_KEY no configurada")
-            return
+        self._client   = None
+        self._fallback = None
         try:
             from openai import OpenAI
-            self._client = OpenAI(
-                api_key=GROQ_API_KEY,
-                base_url="https://api.groq.com/openai/v1",
-                timeout=30.0,
-            )
-            logger.info("[TaxiAgent] Cliente Groq inicializado")
+            if GROQ_API_KEY:
+                self._client = OpenAI(
+                    api_key=GROQ_API_KEY,
+                    base_url="https://api.groq.com/openai/v1",
+                    timeout=30.0,
+                )
+                logger.info("[TaxiAgent] Groq inicializado")
+            if CEREBRAS_API_KEY:
+                self._fallback = OpenAI(
+                    api_key=CEREBRAS_API_KEY,
+                    base_url="https://api.cerebras.ai/v1",
+                    timeout=30.0,
+                )
+                logger.info("[TaxiAgent] Cerebras fallback inicializado")
+            if not self._client and not self._fallback:
+                logger.error("[TaxiAgent] Sin API keys configuradas (GROQ_API_KEY o CEREBRAS_API_KEY)")
         except Exception as e:
             logger.error(f"[TaxiAgent] init error: {e}")
+
+    def _llm_create(self, messages: list, tools: list | None = None, **kwargs):
+        """Intenta Groq primero; si devuelve 429 cae a Cerebras automáticamente."""
+        providers = []
+        if self._client:
+            providers.append((self._client,   "llama-3.3-70b-versatile", "Groq"))
+        if self._fallback:
+            providers.append((self._fallback, "llama-3.3-70b",           "Cerebras"))
+
+        last_exc = RuntimeError("Sin proveedores LLM configurados")
+        for client, model, name in providers:
+            try:
+                kwargs_merged = {"model": model, "messages": messages, **kwargs}
+                if tools:
+                    kwargs_merged["tools"] = tools
+                    kwargs_merged.setdefault("tool_choice", "auto")
+                resp = client.chat.completions.create(**kwargs_merged)
+                return resp, name
+            except Exception as e:
+                last_exc = e
+                if "429" in str(e) and name != providers[-1][1]:
+                    logger.warning(f"[TaxiAgent] {name} rate limit — usando fallback Cerebras")
+                    continue
+                raise
+        raise last_exc
 
     def process(self, phone: str, message: str) -> AgentResult:
         _init_customer(phone)
@@ -455,7 +489,7 @@ class TaxiAgent:
 
         history.append({"role": "user", "content": message})
 
-        if not self._client:
+        if not self._client and not self._fallback:
             err = "Servicio temporalmente no disponible. Por favor intenta de nuevo."
             history.append({"role": "assistant", "content": err})
             session["history"] = history
@@ -467,11 +501,9 @@ class TaxiAgent:
         # Bucle de tool calling (máximo 4 rondas)
         for round_num in range(4):
             try:
-                resp = self._client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=messages,
+                resp, provider = self._llm_create(
+                    messages,
                     tools=_TOOLS,
-                    tool_choice="auto",
                     max_tokens=600,
                     temperature=0.3,
                 )
@@ -484,15 +516,10 @@ class TaxiAgent:
                     if recovered:
                         messages = recovered
                         continue  # let the loop produce a final text response
-                    # Can't recover — fall back to plain-text reply
+                    # Can't recover — fall back to plain-text reply without tools
                     logger.warning(f"[TaxiAgent] tool_use_failed (no recovery), retrying text [{phone}]")
                     try:
-                        resp = self._client.chat.completions.create(
-                            model="llama-3.3-70b-versatile",
-                            messages=messages,
-                            max_tokens=600,
-                            temperature=0.3,
-                        )
+                        resp, provider = self._llm_create(messages, max_tokens=600, temperature=0.3)
                     except Exception as e2:
                         logger.error(f"[TaxiAgent] retry error [{phone}]: {e2}")
                         err = "Lo siento, hubo un error. Por favor intenta de nuevo."
