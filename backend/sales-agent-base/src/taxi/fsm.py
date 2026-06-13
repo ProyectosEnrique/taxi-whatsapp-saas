@@ -548,17 +548,32 @@ class TaxiFSM:
             f"🗓 Programado: *{_format_scheduled_at(s.scheduled_at)}*\n"
             if s.scheduled_at else "🕐 Viaje: *inmediato*\n"
         )
+        # Links de verificación en Maps para que el cliente confirme las coordenadas
+        dest_lat = s.destination.get("lat") if s.destination else None
+        dest_lng = s.destination.get("lng") if s.destination else None
+        orig_lat = s.origin.get("lat") if s.origin else None
+        orig_lng = s.origin.get("lng") if s.origin else None
+        maps_dest = (
+            f"🗺 Verifica el destino: https://maps.google.com/?q={dest_lat},{dest_lng}\n"
+            if dest_lat and dest_lng else ""
+        )
+        maps_orig = (
+            f"🗺 Verifica el origen: https://maps.google.com/?q={orig_lat},{orig_lng}\n"
+            if orig_lat and orig_lng else ""
+        )
         return (
             f"📋 *Resumen del viaje*\n\n"
             f"🟢 Salida: *{orig_name}*\n"
+            f"{maps_orig}"
             f"🔴 Destino: *{dest_name}*\n"
+            f"{maps_dest}"
             f"{driver_line}"
             f"{when_line}"
             f"\n💰 Tarifa estimada: *${fare_info.get('fare', 0):.0f} MXN*\n"
             f"📏 Distancia: ~{fare_info.get('distance_km', 0):.1f} km\n"
             f"⏱ Tiempo: ~{fare_info.get('duration_minutes', 0)} min\n\n"
             "¿Confirmamos?\n"
-            "Responde *sí* para confirmar o *no* para cambiar los datos."
+            "Responde *sí* para confirmar o *no* para cambiar el destino."
         )
 
     def _confirming(self, s: TaxiSession, msg: str) -> str:

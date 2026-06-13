@@ -287,7 +287,10 @@ FLUJO OBLIGATORIO PARA SOLICITAR TAXI (sigue este orden SIEMPRE):
 2. Una vez tengas destino, pregunta el ORIGEN. Ejemplo: "¿Dónde te recogemos?"
 3. Si el cliente comparte GPS en cualquier momento, úsalo como ORIGEN (su ubicación actual).
 4. Con ORIGEN y DESTINO confirmados, llama estimar_tarifa() con las coordenadas reales.
-5. Muestra el resumen y pide confirmación.
+5. Muestra el resumen y pide confirmación. El resumen DEBE incluir links de Google Maps
+   para que el cliente verifique que las coordenadas son correctas:
+   🗺 Verifica origen: https://maps.google.com/?q=<origin_lat>,<origin_lng>
+   🗺 Verifica destino: https://maps.google.com/?q=<dest_lat>,<dest_lng>
 6. Solo al confirmar, llama crear_viaje().
 7. Tras crear el viaje exitosamente, responde EXACTAMENTE con este formato
    (usa el campo tracking_url del resultado de crear_viaje):
