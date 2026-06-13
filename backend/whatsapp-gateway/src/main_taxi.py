@@ -81,7 +81,8 @@ def _send_twilio(to: str, body: str) -> None:
     try:
         from twilio.rest import Client
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        wa_to = f"whatsapp:+{to}" if not to.startswith("whatsapp:") else to
+        raw = to.replace("whatsapp:", "").lstrip("+")
+        wa_to = f"whatsapp:+{raw}"
         client.messages.create(body=body, from_=TWILIO_WA_NUMBER, to=wa_to)
         logger.info(f"[TaxiGW] Twilio sent to {to}: {body[:60]}...")
     except Exception as e:
