@@ -215,14 +215,22 @@ export const useRideStore = defineStore('ride', () => {
     }
   }
 
+  // Fetch inmediato al volver al frente (mobile background → foreground)
+  const _onVisibilityChange = () => {
+    if (!document.hidden) {
+      fetchPendingRequests()
+      fetchActiveRide()
+    }
+  }
+
   const startPolling = () => {
     if (pollingInterval.value) return
 
-    // Actualizar solicitudes y viaje activo cada 5 segundos
+    // Actualizar solicitudes y viaje activo cada 3 segundos
     pollingInterval.value = setInterval(() => {
       fetchPendingRequests()
       fetchActiveRide()
-    }, 5000)
+    }, 3000)
 
     // Actualizar viajes programados cada 30 segundos
     if (!scheduledPollingInterval.value) {
@@ -230,6 +238,9 @@ export const useRideStore = defineStore('ride', () => {
         fetchScheduledRides()
       }, 30000)
     }
+
+    // Al volver del background: fetch inmediato sin esperar el siguiente tick
+    document.addEventListener('visibilitychange', _onVisibilityChange)
 
     // Obtener inmediatamente
     fetchPendingRequests()
@@ -246,6 +257,7 @@ export const useRideStore = defineStore('ride', () => {
       clearInterval(scheduledPollingInterval.value)
       scheduledPollingInterval.value = null
     }
+    document.removeEventListener('visibilitychange', _onVisibilityChange)
   }
 
   const fetchScheduledRides = async () => {
