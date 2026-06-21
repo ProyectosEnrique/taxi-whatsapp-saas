@@ -292,6 +292,8 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     except Exception as drv_err:
         logger.warning(f"[WA] Driver Telegram notify failed: {drv_err}")
 
+    tracking_url = f"{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
+
     # Notificar al operador por Telegram
     try:
         from ..services.telegram import send_to_operator
@@ -306,7 +308,8 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
             f"Cliente: {c_name} | <code>{phone}</code>\n"
             f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
             f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
-            f"💰 Tarifa: ${fare:.2f} | {round(distance_km, 1)} km"
+            f"💰 Tarifa: ${fare:.2f} | {round(distance_km, 1)} km\n"
+            f"🔍 <a href='{tracking_url}'>Seguimiento en vivo</a>"
         )
         if scheduled_at:
             msg += f"\n🕐 Hora: {scheduled_at.strftime('%d/%m %H:%M')}"
@@ -322,6 +325,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
         "origin_address": trip.origin_address,
         "destination_address": trip.destination_address,
         "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
+        "tracking_url": tracking_url,
     }
 
 
