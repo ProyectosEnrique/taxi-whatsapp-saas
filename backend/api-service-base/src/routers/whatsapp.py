@@ -113,7 +113,15 @@ async def geocode_address(
     # Build query variants: original + alias + simplificaciones progresivas
     import re as _re
     q_normalized = _normalize_query(q)
-    queries = [q]
+    _parts = [p.strip() for p in q.split(",") if p.strip()]
+    queries = []
+    # Variante calle+ciudad sin colonia intermedia — va primero porque Nominatim resuelve
+    # calles específicas mejor sin la colonia en el medio.
+    # Ej: "Rayando el sol 22, col san cristobal, Salvatierra Gto" → "Rayando el sol 22 Salvatierra Gto"
+    if len(_parts) >= 3:
+        q_street_city = f"{_parts[0]} {_parts[-1]}"
+        queries.append(q_street_city)
+    queries.append(q)
     if q_normalized.lower() != q.lower():
         queries.append(q_normalized)
     # Sin numero: "Calle Sol 22, Col Centro" -> "Calle Sol, Col Centro"
@@ -121,7 +129,6 @@ async def geocode_address(
     if q_no_num and q_no_num.lower() != q.lower():
         queries.append(q_no_num)
     # Ultimas partes separadas por coma (colonia+ciudad, solo ciudad)
-    _parts = [p.strip() for p in q.split(",") if p.strip()]
     if len(_parts) >= 2:
         queries.append(", ".join(_parts[-2:]))
     if _parts:
