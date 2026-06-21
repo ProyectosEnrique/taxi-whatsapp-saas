@@ -107,30 +107,44 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
-    ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
-    ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
+    ref_lat = lat if lat is not None else (settings.CITY_LAT if settings.CITY_LAT else None)
+    ref_lon = lon if lon is not None else (settings.CITY_LNG if settings.CITY_LNG else None)
 
-    # Build query variants to try in order: original → normalized alias
+    # Build query variants: original + alias + simplificaciones progresivas
+    import re as _re
     q_normalized = _normalize_query(q)
     queries = [q]
     if q_normalized.lower() != q.lower():
         queries.append(q_normalized)
+    # Sin numero: "Calle Sol 22, Col Centro" -> "Calle Sol, Col Centro"
+    q_no_num = _re.sub("[0-9]+", "", q).strip(" ,")
+    if q_no_num and q_no_num.lower() != q.lower():
+        queries.append(q_no_num)
+    # Ultimas partes separadas por coma (colonia+ciudad, solo ciudad)
+    _parts = [p.strip() for p in q.split(",") if p.strip()]
+    if len(_parts) >= 2:
+        queries.append(", ".join(_parts[-2:]))
+    if _parts:
+        queries.append(_parts[-1])
+    # Deduplicar preservando orden
+    _seen_q: set = set()
+    queries = [x for x in queries if x.lower() not in _seen_q and not _seen_q.add(x.lower())]
 
     viewbox_str = None
     if ref_lat is not None and ref_lon is not None:
-        d = settings.CITY_BBOX_DEG
+        d = settings.CITY_BBOX_DEG or 0.25
         viewbox_str = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
 
     items: list = []
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             for query_str in queries:
-                # Attempt 1: with viewbox (preference-bias, no hard bound)
+                # Attempt 1: viewbox estricto (bounded) — solo dentro de la ciudad de operación
                 if viewbox_str:
                     params: dict = {
                         "q": query_str, "format": "json", "limit": 4,
                         "countrycodes": "mx", "addressdetails": 0,
-                        "viewbox": viewbox_str,
+                        "viewbox": viewbox_str, "bounded": 1,
                     }
                     resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
                     resp.raise_for_status()
@@ -138,7 +152,10 @@ async def geocode_address(
                     if items:
                         break
 
-                # Attempt 2: nationwide (no viewbox)
+                # Attempt 2: búsqueda nacional sin restricción geográfica
+                # Nota: no usamos viewbox "preference" porque sesga hacia calles con nombre
+                # similar al municipio de destino (ej. "Calle Salvatierra" en Celaya
+                # en lugar de la ciudad de Salvatierra, Gto.)
                 params = {"q": query_str, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
                 resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
                 resp.raise_for_status()
