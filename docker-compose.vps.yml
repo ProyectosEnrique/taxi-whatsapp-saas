@@ -134,10 +134,10 @@ services:
     restart: unless-stopped
     environment:
       PORT: "5011"
-      DATABASE_URL: sqlite:////app/data/taxi_demo.db
+      DATABASE_URL: postgresql://mandaya:${POSTGRES_PASSWORD}@mandaya_postgres:5432/taxi_db
       JWT_SECRET: ${JWT_SECRET:-taxi_jwt_secret_cambiar_en_prod}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-taxi_session_secret}
-      ENVIRONMENT: demo
+      ENVIRONMENT: production
       DEBUG: "false"
       CORS_ORIGINS: '["https://taxi.nexoai.lat"]'
       MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
@@ -162,6 +162,7 @@ services:
       - taxi_db_data:/app/data
     networks:
       - taxi_net
+      - mandaya_net      # para alcanzar mandaya_postgres
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5011/health"]
       interval: 30s
