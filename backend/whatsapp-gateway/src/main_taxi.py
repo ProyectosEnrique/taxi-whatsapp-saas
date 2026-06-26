@@ -57,7 +57,7 @@ async def _call_fsm(phone: str, message: str, customer_name: str) -> list[str]:
         "context": {"tenant_id": "taxi", "phone": phone, "customer_name": customer_name},
     }
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -279,34 +279,41 @@ async def twilio_webhook(
     Latitude: str = Form(None),
     Longitude: str = Form(None),
 ):
+    import asyncio as _aio
     phone         = From.replace("whatsapp:", "").strip()
     customer_name = ProfileName or "Cliente"
 
-    # Location share via Twilio
+    # Determinar texto del mensaje antes de lanzar background task
     if Latitude and Longitude:
         label = Body.strip() or "Ubicación compartida"
         text = f"[GPS:{Latitude},{Longitude}:{label}]"
         logger.info(f"[TaxiGW] Twilio location from {phone}: {text}")
-        responses = await _call_fsm(phone, text, customer_name)
-        return _twiml(*responses)
-
-    if int(NumMedia) > 0 and MediaContentType0 and "audio" in MediaContentType0:
+    elif int(NumMedia) > 0 and MediaContentType0 and "audio" in MediaContentType0:
         stt = get_stt_client()
         if not stt.is_available:
-            return _twiml("Por el momento no puedo procesar notas de voz. Por favor escríbeme tu mensaje.")
+            _send_twilio(phone, "Por el momento no puedo procesar notas de voz. Por favor escríbeme tu mensaje.")
+            return _twiml()
         transcript = await stt.transcribe_audio_url(
             MediaUrl0,
             auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID else None,
         )
         if not transcript:
-            return _twiml("No entendí tu nota de voz. Por favor escríbeme tu mensaje.")
+            _send_twilio(phone, "No entendí tu nota de voz. Por favor escríbeme tu mensaje.")
+            return _twiml()
         logger.info(f"[TaxiGW] Twilio audio transcribed for {phone}: {transcript[:80]}")
-        responses = await _call_fsm(phone, transcript, customer_name)
-        return _twiml(*responses)
+        text = transcript
+    else:
+        text = Body.strip()
+        if not text:
+            return _twiml()
+        logger.info(f"[TaxiGW] Twilio msg from {phone} ({customer_name}): {text[:80]}")
 
-    if not Body.strip():
-        return _twiml()
+    # Procesar en background — responder a Twilio inmediatamente para evitar timeout de 15s
+    async def _process():
+        responses = await _call_fsm(phone, text, customer_name)
+        for reply in responses:
+            if reply:
+                _send_twilio(phone, reply)
 
-    logger.info(f"[TaxiGW] Twilio msg from {phone} ({customer_name}): {Body[:80]}")
-    responses = await _call_fsm(phone, Body, customer_name)
-    return _twiml(*responses)
+    _aio.create_task(_process())
+    return _twiml()  # 200 inmediato a Twilio
