@@ -364,11 +364,12 @@ class Driver(Base):
     current_lng  = Column(Numeric(10, 7))
 
     # Vehículo
-    vehicle_brand  = Column(String(100))
-    vehicle_model  = Column(String(100))
-    vehicle_plates = Column(String(20))
-    vehicle_color  = Column(String(50))
-    vehicle_year   = Column(Integer)
+    vehicle_brand     = Column(String(100))
+    vehicle_model     = Column(String(100))
+    vehicle_plates    = Column(String(20))
+    vehicle_color     = Column(String(50))
+    vehicle_year      = Column(Integer)
+    vehicle_photo_url = Column(String(255), nullable=True)
 
     # Estadísticas
     rating         = Column(Numeric(3, 2), default=5.00)

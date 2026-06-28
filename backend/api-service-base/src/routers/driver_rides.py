@@ -3,11 +3,14 @@ Endpoints para conductores: auth, estado, ubicación, gestión de viajes.
 Rutas: /api/v1/driver/*
 """
 import logging
+import os
+import time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -52,11 +55,12 @@ def _driver_to_dict(driver: Driver) -> dict:
         "rating":    float(driver.rating or 5.0),
         "total_trips": driver.total_trips,
         "vehicle": {
-            "brand":  driver.vehicle_brand,
-            "model":  driver.vehicle_model,
-            "plates": driver.vehicle_plates,
-            "color":  driver.vehicle_color,
-            "year":   driver.vehicle_year,
+            "brand":     driver.vehicle_brand,
+            "model":     driver.vehicle_model,
+            "plates":    driver.vehicle_plates,
+            "color":     driver.vehicle_color,
+            "year":      driver.vehicle_year,
+            "photo_url": driver.vehicle_photo_url,
         },
         "location": {
             "lat": _sf(driver.current_lat),
@@ -135,6 +139,44 @@ def update_profile(payload: dict, current: Driver = Depends(get_current_driver),
             setattr(current, field, payload[field])
     db.commit()
     return _driver_to_dict(current)
+
+
+_UPLOAD_DIR = Path("/app/uploads/vehicles")
+_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+@router.post("/profile/vehicle-photo")
+async def upload_vehicle_photo(
+    file: UploadFile = File(...),
+    current: Driver = Depends(get_current_driver),
+    db: Session = Depends(get_db),
+):
+    if file.content_type not in _ALLOWED_TYPES:
+        raise HTTPException(400, "Solo se permiten imágenes JPG, PNG o WebP")
+
+    data = await file.read()
+    if len(data) > _MAX_SIZE:
+        raise HTTPException(400, "La imagen no puede superar 5 MB")
+
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    safe_phone = current.phone.lstrip("+").replace(" ", "")
+    filename = f"{safe_phone}_{int(time.time())}.{ext}"
+    dest = _UPLOAD_DIR / filename
+    dest.write_bytes(data)
+
+    # Borrar foto anterior si existe y es diferente
+    if current.vehicle_photo_url:
+        old_name = current.vehicle_photo_url.rsplit("/", 1)[-1]
+        old_path = _UPLOAD_DIR / old_name
+        if old_path.exists() and old_name != filename:
+            old_path.unlink(missing_ok=True)
+
+    url = f"/uploads/vehicles/{filename}"
+    current.vehicle_photo_url = url
+    db.commit()
+    return {"photo_url": url}
 
 
 @router.get("/profile/emergency-contact")

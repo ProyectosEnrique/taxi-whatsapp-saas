@@ -19,6 +19,7 @@ name: taxi_prod
 
 volumes:
   taxi_db_data:
+  taxi_uploads:
 
 networks:
   taxi_net:
@@ -162,6 +163,7 @@ services:
       CITY_BBOX_DEG: ${CITY_BBOX_DEG:-0.3}
     volumes:
       - taxi_db_data:/app/data
+      - taxi_uploads:/app/uploads
     networks:
       - taxi_net
       - mandaya_net      # para alcanzar mandaya_postgres

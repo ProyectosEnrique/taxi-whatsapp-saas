@@ -189,6 +189,15 @@ export const ridesApi = {
     })
     return response.data
   },
+
+  uploadVehiclePhoto: async (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await api.post('/driver/profile/vehicle-photo', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
 }
 
 // ============================================

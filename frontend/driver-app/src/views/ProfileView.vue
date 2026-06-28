@@ -61,6 +61,33 @@
         </div>
       </div>
 
+      <!-- Foto del vehículo -->
+      <div class="bg-white rounded-lg shadow mb-6 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">📷 Foto del Vehículo</h3>
+        <div class="flex flex-col items-center space-y-3">
+          <div class="w-full max-w-xs h-44 bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed border-gray-300">
+            <img v-if="photoPreview || vehicle?.photo_url"
+              :src="photoPreview || vehicle?.photo_url"
+              alt="Foto del vehículo"
+              class="w-full h-full object-cover"
+            />
+            <span v-else class="text-5xl">🚗</span>
+          </div>
+          <label class="cursor-pointer px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition">
+            {{ uploadingPhoto ? 'Subiendo...' : 'Seleccionar foto' }}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              class="hidden"
+              :disabled="uploadingPhoto"
+              @change="handlePhotoChange"
+            />
+          </label>
+          <p v-if="photoError" class="text-sm text-red-600">{{ photoError }}</p>
+          <p class="text-xs text-gray-400">JPG, PNG o WebP · Máx. 5 MB</p>
+        </div>
+      </div>
+
       <!-- Información del vehículo -->
       <div class="bg-white rounded-lg shadow mb-6 p-6">
         <div class="flex items-center justify-between mb-4">
@@ -356,6 +383,9 @@ const vehicle = computed(() => driver.value?.vehicle || {})
 
 const editingVehicle = ref(false)
 const saving = ref(false)
+const uploadingPhoto = ref(false)
+const photoPreview = ref(null)
+const photoError = ref('')
 
 const vehicleForm = reactive({
   brand: '',
@@ -404,6 +434,25 @@ const changePassword = async () => {
     passwordError.value = e?.response?.data?.detail || 'Error al cambiar contraseña. Verifica la contraseña actual.'
   } finally {
     changingPassword.value = false
+  }
+}
+
+const handlePhotoChange = async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  photoError.value = ''
+  photoPreview.value = URL.createObjectURL(file)
+  uploadingPhoto.value = true
+  try {
+    const res = await driverApi.uploadVehiclePhoto(file)
+    authStore.updateDriverData({ vehicle: { ...vehicle.value, photo_url: res.photo_url } })
+    toastSuccess('Foto actualizada')
+  } catch (err) {
+    photoError.value = err?.response?.data?.detail || 'Error al subir la foto'
+    photoPreview.value = null
+  } finally {
+    uploadingPhoto.value = false
+    e.target.value = ''
   }
 }
 
