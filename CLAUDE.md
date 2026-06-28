@@ -66,6 +66,10 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 | `GOOGLE_MAPS_API_KEY` | taxi-api | Geocoding usa solo Nominatim (OSM) como fallback — POIs pobres en ciudades pequeñas |
 | `CITY_LAT` / `CITY_LNG` | taxi-api | Sin bias geográfico — geocoding puede retornar resultados de otras ciudades |
 
+**Valores VPS actuales (Celaya, Gto.):**
+- `CITY_LAT=20.5236` / `CITY_LNG=-100.8147` / `CITY_BBOX_DEG=0.3`
+- `GOOGLE_MAPS_API_KEY` — activa en VPS, restringida a IP `5.78.200.46`
+
 WhatsApp number: `whatsapp:+16204077336` (Twilio Sandbox)
 
 ## 6. Comandos útiles VPS
