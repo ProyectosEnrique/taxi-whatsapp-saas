@@ -34,6 +34,7 @@ from .routers.incidents import admin_router as incidents_admin_router
 from .routers.admin import router as admin_router
 from .routers.whatsapp import router as whatsapp_router
 from .routers.telegram_bot import router as telegram_bot_router
+from .routers.sse import router as sse_router
 from .database import engine, Base
 from .config import settings
 from fastapi.staticfiles import StaticFiles
@@ -116,6 +117,85 @@ async def _dead_mans_switch():
         except Exception as exc:
             logger.error(f"[DeadMansSwitch] Error: {exc}")
         await asyncio.sleep(120)
+
+
+async def _ride_timeout_monitor():
+    """
+    Cada 60 s revisa viajes REQUESTED sin conductor asignado.
+    - 3 min sin aceptar  → re-notifica por SSE + Telegram (urgencia moderada)
+    - 8 min sin aceptar  → re-notifica con ⚠️ prioridad alta
+    - 12 min sin aceptar → alerta directa al operador para intervención manual
+    Usa la columna last_notified_at para evitar spam.
+    """
+    from .services.telegram import send_to_operator
+    from .routers.sse import broadcast_event
+    from .routers.telegram_bot import notify_drivers_new_ride
+    await asyncio.sleep(90)   # espera que el sistema arranque
+    while True:
+        try:
+            db = SessionLocal()
+            now = datetime.now(timezone.utc)
+            stale = (
+                db.query(Trip)
+                .filter(
+                    Trip.status       == TripStatus.REQUESTED,
+                    Trip.driver_phone.is_(None),
+                    Trip.scheduled_at.is_(None),   # solo viajes inmediatos
+                )
+                .all()
+            )
+            for trip in stale:
+                if not trip.created_at:
+                    continue
+                created = trip.created_at
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                elapsed = (now - created).total_seconds()
+
+                last = trip.last_notified_at
+                if last and last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                # No re-notificar si ya avisamos hace menos de 3 min
+                if last and (now - last).total_seconds() < 180:
+                    continue
+
+                ride_data = {
+                    "ride_id":     trip.trip_id,
+                    "origin":      {"address": trip.origin_address, "lat": float(trip.origin_lat or 0), "lng": float(trip.origin_lng or 0)},
+                    "destination": {"address": trip.destination_address, "lat": float(trip.destination_lat or 0), "lng": float(trip.destination_lng or 0)},
+                    "fare":        float(trip.fare or 0),
+                    "distance_km": float(trip.distance_km or 0),
+                    "customer":    trip.customer_name or "",
+                    "elapsed_min": round(elapsed / 60, 1),
+                }
+
+                if elapsed >= 720:   # 12 min → alerta al operador
+                    maps = f"https://maps.google.com/?q={trip.origin_lat},{trip.origin_lng}"
+                    await send_to_operator(
+                        f"🚨 <b>Viaje sin conductor — +12 min</b>\n"
+                        f"ID: <code>{trip.trip_id}</code> | {trip.customer_name}\n"
+                        f"📍 <a href='{maps}'>Origen</a>: {trip.origin_address}\n"
+                        f"🏁 Destino: {trip.destination_address}\n"
+                        f"💰 ${float(trip.fare or 0):.0f} MXN — Intervención manual requerida."
+                    )
+                    logger.warning(f"[RideMonitor] Viaje {trip.trip_id} sin conductor +12 min — alertando operador")
+                elif elapsed >= 480:   # 8 min → re-broadcast prioridad alta
+                    await broadcast_event("new_ride", {**ride_data, "priority": "high"})
+                    await notify_drivers_new_ride(trip, db)
+                    logger.info(f"[RideMonitor] Re-broadcast ⚠️ {trip.trip_id} ({elapsed/60:.0f} min)")
+                elif elapsed >= 180:   # 3 min → re-broadcast normal
+                    await broadcast_event("new_ride", ride_data)
+                    await notify_drivers_new_ride(trip, db)
+                    logger.info(f"[RideMonitor] Re-broadcast {trip.trip_id} ({elapsed/60:.0f} min)")
+
+                trip.last_notified_at = now
+
+            if stale:
+                db.commit()
+            db.close()
+        except Exception as exc:
+            logger.error(f"[RideMonitor] Error: {exc}")
+        await asyncio.sleep(60)
 
 
 async def _activate_scheduled_rides():
@@ -206,6 +286,8 @@ async def lifespan(app: FastAPI):
         ("trips",     "customer_rating",                  "INTEGER"),
         # Telegram bot — propio chat_id del chofer para notificaciones y aceptar viajes
         ("drivers",   "telegram_chat_id",                 "VARCHAR(50)"),
+        # Ride timeout monitor — última vez que se re-notificó este viaje
+        ("trips",     "last_notified_at",                 "DATETIME"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe
@@ -236,6 +318,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(cleanup_expired_pending_payments())
     asyncio.create_task(_activate_scheduled_rides())
     asyncio.create_task(_dead_mans_switch())
+    asyncio.create_task(_ride_timeout_monitor())
 
     # Registrar webhook del bot de Telegram con Telegram API
     if settings.TELEGRAM_BOT_TOKEN and settings.PUBLIC_URL:
@@ -413,6 +496,7 @@ app.include_router(incidents_admin_router)
 app.include_router(admin_router)
 app.include_router(whatsapp_router)
 app.include_router(telegram_bot_router)
+app.include_router(sse_router)
 
 # ==============================================================================
 # ARCHIVOS ESTÁTICOS - Servir imágenes subidas

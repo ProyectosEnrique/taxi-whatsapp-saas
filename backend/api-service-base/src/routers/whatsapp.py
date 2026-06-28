@@ -359,23 +359,87 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     db.refresh(trip)
     logger.info(f"[WA] Viaje {trip.trip_id} creado para {phone} (status={trip_status.value})")
 
-    # Notificar a choferes online por Telegram
-    try:
-        from .telegram_bot import notify_drivers_new_ride
-        await notify_drivers_new_ride(trip, db)
-    except Exception as drv_err:
-        logger.warning(f"[WA] Driver Telegram notify failed: {drv_err}")
-
     tracking_url = f"{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
 
-    # Notificar al operador por Telegram
+    # ── Asignación inteligente (solo para viajes inmediatos) ──────────────────
+    auto_assigned_driver = None
+    if trip_status == TripStatus.REQUESTED:
+        try:
+            from ..services.ride_assignment import find_best_driver
+            best_driver, dist_km = find_best_driver(
+                db, olat, olng,
+                preferred_phone=payload.get("preferred_driver_phone") or None,
+            )
+            if best_driver:
+                from ..routers.sse import push_event
+                trip.driver_phone = best_driver.phone
+                trip.driver_name  = best_driver.name
+                trip.status       = TripStatus.CONFIRMED
+                db.commit()
+                auto_assigned_driver = best_driver
+                logger.info(
+                    f"[WA] Auto-asignado {trip.trip_id} → {best_driver.name} "
+                    f"({'preferido' if best_driver.phone == payload.get('preferred_driver_phone') else f'{dist_km:.1f} km'})"
+                )
+                # SSE al conductor asignado
+                await push_event(best_driver.phone, "assigned", {
+                    "ride_id":     trip.trip_id,
+                    "origin":      {"address": trip.origin_address, "lat": olat, "lng": olng},
+                    "destination": {"address": trip.destination_address, "lat": dlat, "lng": dlng},
+                    "fare":        round(float(fare), 2),
+                    "distance_km": round(distance_km, 1),
+                    "customer":    c_name,
+                    "tracking_url": tracking_url,
+                })
+                # Telegram solo al conductor asignado
+                if best_driver.telegram_chat_id:
+                    try:
+                        from ..services.telegram import send_message
+                        from .telegram_bot import _maps
+                        maps_o = _maps(olat, olng) or ""
+                        maps_d = _maps(dlat, dlng) or ""
+                        await send_message(
+                            best_driver.telegram_chat_id,
+                            f"🎯 <b>Viaje asignado directamente a ti</b>\n\n"
+                            f"ID: <code>{trip.trip_id}</code>\n"
+                            f"📍 <a href='{maps_o}'>Origen</a>: {trip.origin_address}\n"
+                            f"🏁 <a href='{maps_d}'>Destino</a>: {trip.destination_address}\n"
+                            f"💰 ${float(fare):.0f} MXN | {round(distance_km, 1)} km\n"
+                            f"👤 {c_name}",
+                        )
+                    except Exception:
+                        pass
+        except Exception as assign_err:
+            logger.warning(f"[WA] Auto-assign error: {assign_err}")
+
+    # ── Sin auto-asignación → broadcast al pool ───────────────────────────────
+    if not auto_assigned_driver and trip_status == TripStatus.REQUESTED:
+        ride_data = {
+            "ride_id":     trip.trip_id,
+            "origin":      {"address": trip.origin_address, "lat": olat, "lng": olng},
+            "destination": {"address": trip.destination_address, "lat": dlat, "lng": dlng},
+            "fare":        round(float(fare), 2),
+            "distance_km": round(distance_km, 1),
+            "customer":    c_name,
+        }
+        try:
+            from ..routers.sse import broadcast_event
+            await broadcast_event("new_ride", ride_data)
+        except Exception as sse_err:
+            logger.warning(f"[WA] SSE broadcast error: {sse_err}")
+        try:
+            from .telegram_bot import notify_drivers_new_ride
+            await notify_drivers_new_ride(trip, db)
+        except Exception as drv_err:
+            logger.warning(f"[WA] Driver Telegram notify failed: {drv_err}")
+
+    # ── Notificar al operador ─────────────────────────────────────────────────
     try:
         from ..services.telegram import send_to_operator
-        maps_orig = (
-            f"https://maps.google.com/?q={olat},{olng}" if (olat and olng) else "Sin coords"
-        )
+        maps_orig = f"https://maps.google.com/?q={olat},{olng}" if (olat and olng) else "Sin coords"
         maps_dest = f"https://maps.google.com/?q={dlat},{dlng}"
         label = "📅 PROGRAMADO" if scheduled_at else "🚖 INMEDIATO"
+        asign_note = f"\n🎯 Auto-asignado a: {auto_assigned_driver.name}" if auto_assigned_driver else ""
         msg = (
             f"{label} — <b>Viaje WhatsApp</b>\n"
             f"ID: <code>{trip.trip_id}</code>\n"
@@ -384,6 +448,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
             f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
             f"💰 Tarifa: ${fare:.2f} | {round(distance_km, 1)} km\n"
             f"🔍 <a href='{tracking_url}'>Seguimiento en vivo</a>"
+            f"{asign_note}"
         )
         if scheduled_at:
             msg += f"\n🕐 Hora: {scheduled_at.strftime('%d/%m %H:%M')}"

@@ -395,7 +395,7 @@ def get_ride_detail(ride_id: str, current: Driver = Depends(get_current_driver),
 
 
 @router.post("/rides/{ride_id}/accept")
-def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+async def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
@@ -406,6 +406,14 @@ def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db:
     trip.status       = TripStatus.CONFIRMED
     db.commit()
     logger.info(f"[Driver] {current.name} aceptó viaje {ride_id}")
+
+    # SSE: avisar a todos los demás conductores que este viaje ya no está disponible
+    try:
+        from .sse import broadcast_event
+        await broadcast_event("ride_taken", {"ride_id": ride_id, "by": current.name})
+    except Exception as sse_err:
+        logger.warning(f"[Driver] SSE ride_taken error: {sse_err}")
+
     _notify_customer(
         trip.customer_phone,
         f"🚕 *¡Conductor asignado!*\n\n"

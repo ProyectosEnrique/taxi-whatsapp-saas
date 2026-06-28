@@ -295,6 +295,7 @@ class Trip(Base):
     preferred_driver_phone = Column(String(30),  nullable=True)
     preferred_driver_name  = Column(String(150), nullable=True)
     driver_released_at     = Column(DateTime(timezone=True), nullable=True)
+    last_notified_at       = Column(DateTime(timezone=True), nullable=True)   # ride timeout monitor
 
     # Estado del viaje
     status             = Column(SAEnum(TripStatus), default=TripStatus.REQUESTED, index=True)
