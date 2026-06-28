@@ -303,18 +303,17 @@ async def lifespan(app: FastAPI):
     except Exception as _fc_err:
         logger.debug(f"fare_config seed: {_fc_err}")
 
-    try:
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            for table, col, col_type in _migrations:
-                try:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
-                    conn.commit()
-                    logger.info(f"Migration: {table}.{col} añadida")
-                except Exception:
-                    pass  # columna ya existe
-    except Exception as _mig_err:
-        logger.debug(f"Migration error: {_mig_err}")
+    from sqlalchemy import text
+    for table, col, col_type in _migrations:
+        try:
+            with engine.connect() as _conn:
+                _conn.execute(text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {col_type}"
+                ))
+                _conn.commit()
+                logger.debug(f"Migration ok: {table}.{col}")
+        except Exception as _mig_err:
+            logger.warning(f"Migration failed ({table}.{col}): {_mig_err}")
 
     # Background tasks
     asyncio.create_task(cleanup_expired_pending_payments())
