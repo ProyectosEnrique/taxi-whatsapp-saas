@@ -264,10 +264,10 @@ async def lifespan(app: FastAPI):
 
     # Migraciones en caliente
     _migrations = [
-        ("trips",     "scheduled_at",                    "DATETIME"),
+        ("trips",     "scheduled_at",                    "TIMESTAMP WITH TIME ZONE"),
         ("trips",     "preferred_driver_phone",           "VARCHAR(30)"),
         ("trips",     "preferred_driver_name",            "VARCHAR(150)"),
-        ("trips",     "driver_released_at",               "DATETIME"),
+        ("trips",     "driver_released_at",               "TIMESTAMP WITH TIME ZONE"),
         # Emergency contact — customers
         ("customers", "emergency_contact_name",           "VARCHAR(150)"),
         ("customers", "emergency_contact_phone",          "VARCHAR(30)"),
@@ -281,7 +281,7 @@ async def lifespan(app: FastAPI):
         ("incidents", "escalated",                        "BOOLEAN DEFAULT 0"),
         ("incidents", "last_location_lat",                "NUMERIC(10,7)"),
         ("incidents", "last_location_lng",                "NUMERIC(10,7)"),
-        ("incidents", "last_location_at",                 "DATETIME"),
+        ("incidents", "last_location_at",                 "TIMESTAMP WITH TIME ZONE"),
         # Rating stored on trip row
         ("trips",     "customer_rating",                  "INTEGER"),
         # Telegram bot — propio chat_id del chofer para notificaciones y aceptar viajes
