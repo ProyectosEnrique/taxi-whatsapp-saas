@@ -117,4 +117,4 @@ traefik-public ─── taxi-nginx ─── taxi_net ─┬─ taxi-whatsapp �
 - El HEALTHCHECK del taxi-agent tiene `start-period=20s` (Gunicorn tarda ~10s en cargar el modelo)
 - `parallel_tool_calls=False` es obligatorio en `_llm_create()` — sin esto el agente hace tool calls en paralelo y rompe el flujo de conversación
 - Si taxi-api no conecta a PostgreSQL: verificar que `mandaya_postgres` esté en red `mandaya_net` y que `taxi_db` exista
-- Twilio display name "Taxi" — ticket pendiente con Twilio Support (número +16204077336 aún sin nombre asignado)
+- Twilio display name "Taxi" — ticket #27706680 abierto con Twilio Support (número +16204077336 aún sin nombre asignado, esperando respuesta)
