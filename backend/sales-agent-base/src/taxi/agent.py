@@ -351,8 +351,10 @@ REGLAS ESTRICTAS — NUNCA las violes
 • Si el cliente comparte GPS sin haber dado destino, guárdalo como origen y SIGUE preguntando destino.
 • Si buscar_lugar() devuelve vacío, simplifica la búsqueda (quita número, agrega ciudad).
   Solo si falla dos veces seguidas, pide al cliente que comparta su ubicación GPS.
-• Al llamar buscar_lugar(), usa la dirección TAL COMO la escribió el cliente — NO corrijas
-  ortografía, NO parafrasees. Si el cliente escribe "Rayando el sol 22", pasa exactamente "Rayando el sol 22 Ciudad".
+• Al llamar buscar_lugar(), corrige errores ortográficos/fonéticos obvios del nombre del lugar
+  (ej: "raiando" → "rayando", "salbatierra" → "Salvatierra", "celaia" → "Celaya"),
+  pero NUNCA cambies el número, la colonia ni el sentido de la dirección.
+  Agrega siempre la ciudad si el cliente no la mencionó (ej: "Rayando el sol 22" → "Rayando el sol 22 Salvatierra").
 • Al mostrar origen/destino al cliente, usa el campo `name` o `address` que devolvió buscar_lugar().
   NUNCA re-escribas la dirección de memoria — copia el valor exacto del resultado de la herramienta.
 • Confirmar = sí / ok / dale / listo / confirmo / claro / de acuerdo / va / sip / ándale / perfecto / sale / eso → crea el viaje.
