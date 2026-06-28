@@ -161,6 +161,7 @@ services:
       CITY_LAT: ${CITY_LAT:-0.0}
       CITY_LNG: ${CITY_LNG:-0.0}
       CITY_BBOX_DEG: ${CITY_BBOX_DEG:-0.3}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1234}
     volumes:
       - taxi_db_data:/app/data
       - taxi_uploads:/app/uploads

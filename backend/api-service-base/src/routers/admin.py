@@ -1,13 +1,13 @@
 """
 Admin endpoints — gestión de conductores, viajes y estadísticas.
-No requiere auth (despliegue interno en VPS).
+Requiere header x-admin-key con el valor de ADMIN_PASSWORD.
 Rutas: /api/v1/admin/*
 """
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,18 @@ from ..config import settings as app_settings
 from ..fare_service import get_fare_config, fare_config_to_dict, invalidate_cache
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+def _admin_auth(x_admin_key: str = Header(..., alias="x-admin-key")):
+    if x_admin_key != app_settings.ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Acceso no autorizado")
+
+
+router = APIRouter(
+    prefix="/api/v1/admin",
+    tags=["admin"],
+    dependencies=[Depends(_admin_auth)],
+)
 
 
 def _driver_to_dict(driver: Driver) -> dict:

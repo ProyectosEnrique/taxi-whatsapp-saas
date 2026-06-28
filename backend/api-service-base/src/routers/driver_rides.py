@@ -438,7 +438,9 @@ def get_ride_detail(ride_id: str, current: Driver = Depends(get_current_driver),
 
 @router.post("/rides/{ride_id}/accept")
 async def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
-    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    # with_for_update() bloquea la fila hasta hacer commit — evita que dos
+    # conductores acepten el mismo viaje simultáneamente (race condition)
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).with_for_update().first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
     if trip.status != TripStatus.REQUESTED or trip.driver_phone:
