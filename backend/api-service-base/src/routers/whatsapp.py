@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/whatsapp", tags=["whatsapp-internal"])
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
-_NOM_HEADERS = {"User-Agent": "TaxiApp/1.0"}
+_NOM_HEADERS  = {"User-Agent": "TaxiApp/1.0"}
+GMAPS_URL     = "https://maps.googleapis.com/maps/api/geocode/json"
+GMAPS_REV_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
 # Common Spanish place-name aliases that Nominatim doesn't index literally
 _QUERY_SUBS = [
@@ -116,6 +118,100 @@ def get_driver_by_code(driver_code: str, db: Session = Depends(get_db), _=Depend
     return {"driver_code": driver.driver_code, "name": driver.name, "phone": driver.phone}
 
 
+async def _geocode_google(query: str, client: httpx.AsyncClient) -> list:
+    """Google Maps Geocoding — primario. Devuelve lista de resultados normalizados."""
+    key = settings.GOOGLE_MAPS_API_KEY
+    if not key:
+        return []
+    params = {
+        "address":  query,
+        "key":      key,
+        "language": "es",
+        "region":   "MX",
+        "components": "country:MX",
+    }
+    # Bias de ubicación hacia la ciudad operativa si está configurada
+    if settings.CITY_LAT and settings.CITY_LNG:
+        d = settings.CITY_BBOX_DEG or 0.3
+        params["bounds"] = (
+            f"{settings.CITY_LAT - d},{settings.CITY_LNG - d}"
+            f"|{settings.CITY_LAT + d},{settings.CITY_LNG + d}"
+        )
+    resp = await client.get(GMAPS_URL, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("status") not in ("OK", "ZERO_RESULTS"):
+        logger.warning(f"[Geocode/GMaps] status={data.get('status')} para '{query}'")
+        return []
+    results = []
+    for r in data.get("results", []):
+        loc  = r["geometry"]["location"]
+        name = r.get("name") or r["formatted_address"].split(",")[0]
+        results.append({
+            "name":          name,
+            "short_address": ", ".join(r["formatted_address"].split(",")[:2]),
+            "address":       r["formatted_address"],
+            "lat":           loc["lat"],
+            "lng":           loc["lng"],
+        })
+    return results
+
+
+async def _geocode_nominatim(query: str, client: httpx.AsyncClient,
+                              viewbox: str | None = None) -> list:
+    """Nominatim (OSM) — fallback. Devuelve lista de resultados normalizados."""
+    import re as _re
+    q_norm = _normalize_query(query)
+    parts  = [p.strip() for p in query.split(",") if p.strip()]
+    candidates = []
+    if len(parts) >= 3:
+        candidates.append(f"{parts[0]} {parts[-1]}")
+    candidates.append(query)
+    if q_norm.lower() != query.lower():
+        candidates.append(q_norm)
+    q_no_num = _re.sub(r"[0-9]+", "", query).strip(" ,")
+    if q_no_num and q_no_num.lower() != query.lower():
+        candidates.append(q_no_num)
+    if len(parts) >= 2:
+        candidates.append(", ".join(parts[-2:]))
+    if parts:
+        candidates.append(parts[-1])
+    seen: set = set()
+    candidates = [x for x in candidates if x.lower() not in seen and not seen.add(x.lower())]
+
+    for q_str in candidates:
+        if viewbox:
+            params: dict = {
+                "q": q_str, "format": "json", "limit": 4,
+                "countrycodes": "mx", "addressdetails": 0,
+                "viewbox": viewbox, "bounded": 1,
+            }
+            resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
+            resp.raise_for_status()
+            items = resp.json()
+            if items:
+                return [_nom_to_result(i) for i in items]
+        params = {"q": q_str, "format": "json", "limit": 4,
+                  "countrycodes": "mx", "addressdetails": 0}
+        resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
+        resp.raise_for_status()
+        items = resp.json()
+        if items:
+            return [_nom_to_result(i) for i in items]
+    return []
+
+
+def _nom_to_result(item: dict) -> dict:
+    name, short = _parse_display_name(item.get("display_name", ""))
+    return {
+        "name":          name,
+        "short_address": short,
+        "address":       item.get("display_name", ""),
+        "lat":           float(item.get("lat", 0)),
+        "lng":           float(item.get("lon", 0)),
+    }
+
+
 @router.get("/geocode")
 async def geocode_address(
     q: str,
@@ -123,83 +219,33 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
-    ref_lat = lat if lat is not None else (settings.CITY_LAT if settings.CITY_LAT else None)
-    ref_lon = lon if lon is not None else (settings.CITY_LNG if settings.CITY_LNG else None)
+    q = _normalize_query(q)
+    ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
+    ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
 
-    # Build query variants: original + alias + simplificaciones progresivas
-    import re as _re
-    q_normalized = _normalize_query(q)
-    _parts = [p.strip() for p in q.split(",") if p.strip()]
-    queries = []
-    # Variante calle+ciudad sin colonia intermedia — va primero porque Nominatim resuelve
-    # calles específicas mejor sin la colonia en el medio.
-    # Ej: "Rayando el sol 22, col san cristobal, Salvatierra Gto" → "Rayando el sol 22 Salvatierra Gto"
-    if len(_parts) >= 3:
-        q_street_city = f"{_parts[0]} {_parts[-1]}"
-        queries.append(q_street_city)
-    queries.append(q)
-    if q_normalized.lower() != q.lower():
-        queries.append(q_normalized)
-    # Sin numero: "Calle Sol 22, Col Centro" -> "Calle Sol, Col Centro"
-    q_no_num = _re.sub("[0-9]+", "", q).strip(" ,")
-    if q_no_num and q_no_num.lower() != q.lower():
-        queries.append(q_no_num)
-    # Ultimas partes separadas por coma (colonia+ciudad, solo ciudad)
-    if len(_parts) >= 2:
-        queries.append(", ".join(_parts[-2:]))
-    if _parts:
-        queries.append(_parts[-1])
-    # Deduplicar preservando orden
-    _seen_q: set = set()
-    queries = [x for x in queries if x.lower() not in _seen_q and not _seen_q.add(x.lower())]
+    viewbox = None
+    if ref_lat and ref_lon:
+        d = settings.CITY_BBOX_DEG or 0.3
+        viewbox = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
 
-    viewbox_str = None
-    if ref_lat is not None and ref_lon is not None:
-        d = settings.CITY_BBOX_DEG or 0.25
-        viewbox_str = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
-
-    items: list = []
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            for query_str in queries:
-                # Attempt 1: viewbox estricto (bounded) — solo dentro de la ciudad de operación
-                if viewbox_str:
-                    params: dict = {
-                        "q": query_str, "format": "json", "limit": 4,
-                        "countrycodes": "mx", "addressdetails": 0,
-                        "viewbox": viewbox_str, "bounded": 1,
-                    }
-                    resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
-                    resp.raise_for_status()
-                    items = resp.json()
-                    if items:
-                        break
+            # 1. Google Maps (primario)
+            if settings.GOOGLE_MAPS_API_KEY:
+                results = await _geocode_google(q, client)
+                if results:
+                    logger.info(f"[Geocode] GMaps: '{q}' → {results[0]['name']}")
+                    return {"results": results}
+                logger.warning(f"[Geocode] GMaps sin resultados para '{q}', usando Nominatim")
 
-                # Attempt 2: búsqueda nacional sin restricción geográfica
-                # Nota: no usamos viewbox "preference" porque sesga hacia calles con nombre
-                # similar al municipio de destino (ej. "Calle Salvatierra" en Celaya
-                # en lugar de la ciudad de Salvatierra, Gto.)
-                params = {"q": query_str, "format": "json", "limit": 4, "countrycodes": "mx", "addressdetails": 0}
-                resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
-                resp.raise_for_status()
-                items = resp.json()
-                if items:
-                    break
+            # 2. Nominatim (fallback)
+            results = await _geocode_nominatim(q, client, viewbox)
+            if results:
+                logger.info(f"[Geocode] Nominatim: '{q}' → {results[0]['name']}")
+            return {"results": results}
+
     except Exception as e:
         raise HTTPException(503, f"Geocodificación no disponible: {e}")
-
-    return {
-        "results": [
-            {
-                "name": _parse_display_name(item.get("display_name", ""))[0],
-                "short_address": _parse_display_name(item.get("display_name", ""))[1],
-                "address": item.get("display_name", ""),
-                "lat": float(item.get("lat", 0)),
-                "lng": float(item.get("lon", 0)),
-            }
-            for item in items
-        ]
-    }
 
 
 @router.get("/reverse-geocode")
@@ -208,24 +254,36 @@ async def reverse_geocode(
     lon: float,
     _=Depends(_auth),
 ):
-    """Convierte coordenadas GPS a una dirección legible."""
-    params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": 0}
+    """Coordenadas GPS → dirección legible. Google Maps primario, Nominatim fallback."""
+    key = settings.GOOGLE_MAPS_API_KEY
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{NOMINATIM_URL}/reverse", params=params, headers=_NOM_HEADERS)
+            if key:
+                resp = await client.get(GMAPS_REV_URL, params={
+                    "latlng": f"{lat},{lon}", "key": key,
+                    "language": "es", "result_type": "street_address|route|neighborhood",
+                })
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("status") == "OK" and data.get("results"):
+                    r       = data["results"][0]
+                    address = r["formatted_address"]
+                    name    = address.split(",")[0]
+                    return {"name": name, "short_address": ", ".join(address.split(",")[:2]),
+                            "address": address, "lat": lat, "lng": lon}
+
+            # Fallback Nominatim
+            resp = await client.get(f"{NOMINATIM_URL}/reverse",
+                params={"lat": lat, "lon": lon, "format": "json", "addressdetails": 0},
+                headers=_NOM_HEADERS)
             resp.raise_for_status()
-            item = resp.json()
+            item    = resp.json()
+            display = item.get("display_name", "")
+            name, short = _parse_display_name(display)
+            return {"name": name, "short_address": short, "address": display, "lat": lat, "lng": lon}
+
     except Exception as e:
         raise HTTPException(503, f"Geocodificación inversa no disponible: {e}")
-    display = item.get("display_name", "")
-    name, short_address = _parse_display_name(display)
-    return {
-        "name": name,
-        "short_address": short_address,
-        "address": display,
-        "lat": lat,
-        "lng": lon,
-    }
 
 
 @router.post("/rides/estimate")

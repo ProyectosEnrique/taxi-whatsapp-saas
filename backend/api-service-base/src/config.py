@@ -73,12 +73,13 @@ class Settings(BaseSettings):
     EMERGENCY_PHONE: str = "911"        # número al que llama el botón de pánico
 
     # ==============================================================================
-    # CITY CENTER (geocoding bias — Nominatim viewbox)
+    # GEOCODING
     # ==============================================================================
 
+    GOOGLE_MAPS_API_KEY: str = ""        # Google Maps Geocoding API key (primario)
     CITY_LAT: float = 0.0               # latitud del centro de la ciudad operativa
     CITY_LNG: float = 0.0               # longitud del centro
-    CITY_BBOX_DEG: float = 0.3          # radio del bounding box en grados (~33 km)
+    CITY_BBOX_DEG: float = 0.3          # radio del bounding box en grados (~33 km, fallback Nominatim)
 
     # ==============================================================================
     # TWILIO SMS (recuperación de contraseña)

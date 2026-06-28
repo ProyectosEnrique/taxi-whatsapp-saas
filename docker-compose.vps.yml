@@ -153,6 +153,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Geocoding — Google Maps primario, Nominatim fallback
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       # Centro geográfico de operación — restringe geocoding a la ciudad
       # Ajustar con las coords reales de la ciudad del taxi
       CITY_LAT: ${CITY_LAT:-0.0}
