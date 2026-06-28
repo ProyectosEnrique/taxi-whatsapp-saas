@@ -35,8 +35,24 @@ _QUERY_SUBS = [
     (re.compile(r'\bISSTE\b'), 'ISSSTE'),
 ]
 
+# Preposiciones iniciales que el cliente escribe pero confunden a Nominatim
+# "En veneto 119 Celaya" → "veneto 119 Celaya"
+_LEADING_PREP = re.compile(
+    r'^(en|voy a|me lleva a|llévame a|llevame a|hasta|quiero ir a|ir a|al|a la|a)\s+',
+    re.I,
+)
+# "col san cristobal en Salvatierra" → "col san cristobal, Salvatierra"
+# Convierte " en <Ciudad>" al final de un segmento en ", <Ciudad>" para que el
+# geocodificador pueda activar el shortcut calle+ciudad (requiere ≥ 3 partes).
+_MID_EN = re.compile(r'\s+en\s+', re.I)
+
 
 def _normalize_query(q: str) -> str:
+    # 1. Quitar preposición inicial
+    q = _LEADING_PREP.sub('', q).strip()
+    # 2. Sustituir " en " interno por ", " para crear partes separadas por coma
+    q = _MID_EN.sub(', ', q)
+    # 3. Aliases de nombres de lugares
     for pattern, replacement in _QUERY_SUBS:
         q = pattern.sub(replacement, q)
     return q.strip()
