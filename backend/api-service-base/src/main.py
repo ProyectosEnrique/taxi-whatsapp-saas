@@ -287,7 +287,7 @@ async def lifespan(app: FastAPI):
         # Telegram bot — propio chat_id del chofer para notificaciones y aceptar viajes
         ("drivers",   "telegram_chat_id",                 "VARCHAR(50)"),
         # Ride timeout monitor — última vez que se re-notificó este viaje
-        ("trips",     "last_notified_at",                 "DATETIME"),
+        ("trips",     "last_notified_at",                 "TIMESTAMP WITH TIME ZONE"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe
