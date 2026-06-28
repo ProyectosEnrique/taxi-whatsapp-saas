@@ -14,6 +14,11 @@ export const useRideStore = defineStore('ride', () => {
   const pollingInterval = ref(null)
   const scheduledPollingInterval = ref(null)
 
+  // SSE — módulo-level (no reactivo, no necesita ser ref)
+  let _sseSource = null
+  let _sseReconnectTimer = null
+  let _sseConnected = false
+
   // Getters
   const hasPendingRequests = computed(() => pendingRequests.value.length > 0)
   const hasActiveRide = computed(() => !!activeRide.value)
@@ -220,35 +225,104 @@ export const useRideStore = defineStore('ride', () => {
     if (!document.hidden) {
       fetchPendingRequests()
       fetchActiveRide()
+      // Si SSE se cortó mientras estaba en background, reconectar
+      if (!_sseSource && pollingInterval.value) startSSE()
     }
   }
+
+  // ── SSE ──────────────────────────────────────────────────────────────────
+
+  const _setPollingInterval = (ms) => {
+    if (!pollingInterval.value) return
+    clearInterval(pollingInterval.value)
+    pollingInterval.value = setInterval(() => {
+      fetchPendingRequests()
+      fetchActiveRide()
+    }, ms)
+  }
+
+  const _handleSSEEvent = (type, data) => {
+    if (type === 'new_ride') {
+      // Fetch completo para obtener el formato exacto que espera el frontend
+      fetchPendingRequests()
+    } else if (type === 'ride_taken') {
+      pendingRequests.value = pendingRequests.value.filter(r => r.ride_id !== data.ride_id)
+      _knownRideIds.delete(data.ride_id)
+    } else if (type === 'assigned') {
+      fetchActiveRide()
+      fetchPendingRequests()
+    }
+  }
+
+  const startSSE = () => {
+    if (_sseSource) return
+    const token = localStorage.getItem('driver_token')
+    if (!token) return
+
+    const url = `/api/v1/driver/stream?token=${encodeURIComponent(token)}`
+    _sseSource = new EventSource(url)
+
+    _sseSource.onopen = () => {
+      _sseConnected = true
+      // Con SSE activo el polling es solo fallback de sincronía
+      _setPollingInterval(20000)
+    }
+
+    _sseSource.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        _handleSSEEvent(msg.type, msg.data || {})
+      } catch (_) {}
+    }
+
+    _sseSource.onerror = () => {
+      _sseConnected = false
+      _sseSource?.close()
+      _sseSource = null
+      // Sin SSE: polling rápido como fallback
+      _setPollingInterval(3000)
+      // Reintentar SSE en 5 segundos
+      _sseReconnectTimer = setTimeout(() => {
+        if (pollingInterval.value) startSSE()
+      }, 5000)
+    }
+  }
+
+  const stopSSE = () => {
+    if (_sseReconnectTimer) { clearTimeout(_sseReconnectTimer); _sseReconnectTimer = null }
+    if (_sseSource) { _sseSource.close(); _sseSource = null }
+    _sseConnected = false
+  }
+
+  // ── Polling ──────────────────────────────────────────────────────────────
 
   const startPolling = () => {
     if (pollingInterval.value) return
 
-    // Actualizar solicitudes y viaje activo cada 3 segundos
+    // Inicia con 3s; se reduce a 20s cuando SSE conecta
     pollingInterval.value = setInterval(() => {
       fetchPendingRequests()
       fetchActiveRide()
     }, 3000)
 
-    // Actualizar viajes programados cada 30 segundos
+    // Viajes programados cada 30 segundos
     if (!scheduledPollingInterval.value) {
       scheduledPollingInterval.value = setInterval(() => {
         fetchScheduledRides()
       }, 30000)
     }
 
-    // Al volver del background: fetch inmediato sin esperar el siguiente tick
     document.addEventListener('visibilitychange', _onVisibilityChange)
 
-    // Obtener inmediatamente
+    // Fetch inmediato + abrir SSE
     fetchPendingRequests()
     fetchActiveRide()
     fetchScheduledRides()
+    startSSE()
   }
 
   const stopPolling = () => {
+    stopSSE()
     if (pollingInterval.value) {
       clearInterval(pollingInterval.value)
       pollingInterval.value = null

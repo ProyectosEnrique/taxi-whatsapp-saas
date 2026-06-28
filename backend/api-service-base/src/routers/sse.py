@@ -14,10 +14,13 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 
-from ..auth import get_current_driver
+from ..auth import _decode, bearer
+from ..database import get_db
 from ..models import Driver
 
 logger = logging.getLogger(__name__)
@@ -59,12 +62,25 @@ async def broadcast_event(event_type: str, data: dict) -> None:
 # ── Endpoint ───────────────────────────────────────────────────────────────────
 
 @router.get("/api/v1/driver/stream")
-async def driver_event_stream(current: Driver = Depends(get_current_driver)):
+async def driver_event_stream(
+    token: str | None = Query(None),
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
+):
     """
     SSE stream para la app del conductor.
-    El cliente se conecta una vez y recibe eventos en tiempo real.
-    La app sigue soportando polling como fallback — ambos conviven.
+    Acepta el JWT via header Authorization o ?token= (EventSource no soporta headers).
     """
+    raw = token or (creds.credentials if creds else None)
+    if not raw:
+        raise HTTPException(status_code=401, detail="Token requerido")
+    payload = _decode(raw)
+    if payload.get("role") != "driver":
+        raise HTTPException(status_code=403, detail="No autorizado")
+    current = db.query(Driver).filter(Driver.phone == payload["sub"]).first()
+    if not current or not current.is_active:
+        raise HTTPException(status_code=401, detail="Conductor no encontrado")
+
     q: asyncio.Queue = asyncio.Queue(maxsize=100)
     _connections[current.phone] = q
     logger.info(f"[SSE] {current.name} conectado ({len(_connections)} activos)")
