@@ -52,6 +52,20 @@ def _geocode(query: str) -> list:
         return []
 
 
+def _reverse_geocode(lat: float, lng: float) -> Optional[dict]:
+    try:
+        with httpx.Client(timeout=6.0) as c:
+            resp = c.get(
+                f"{API_BASE}/api/v1/whatsapp/reverse-geocode",
+                params={"lat": lat, "lon": lng},
+                headers=_HEADERS,
+            )
+            return resp.json()
+    except Exception as e:
+        logger.warning(f"[TaxiAgent] reverse_geocode error: {e}")
+        return None
+
+
 def _estimate(origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float) -> dict:
     try:
         with httpx.Client(timeout=5.0) as c:
@@ -351,6 +365,8 @@ REGLAS ESTRICTAS — NUNCA las violes
 • Si el cliente comparte GPS sin haber dado destino, guárdalo como origen y SIGUE preguntando destino.
 • Si buscar_lugar() devuelve vacío, simplifica la búsqueda (quita número, agrega ciudad).
   Solo si falla dos veces seguidas, pide al cliente que comparta su ubicación GPS.
+• NUNCA llames buscar_lugar() con coordenadas numéricas (latitud/longitud). Las coordenadas
+  ya vienen con su dirección resuelta en el mensaje del cliente — úsalas directamente.
 • Al llamar buscar_lugar(), corrige errores ortográficos/fonéticos obvios del nombre del lugar
   (ej: "raiando" → "rayando", "salbatierra" → "Salvatierra", "celaia" → "Celaya"),
   pero NUNCA cambies el número, la colonia ni el sentido de la dirección.
@@ -443,6 +459,11 @@ def _run_tool(name: str, args: dict, phone: str) -> str:
 
 _FAILED_GEN_RE = re.compile(
     r"'failed_generation':\s*'<function=(\w+)(\{.*?\})</function>'",
+    re.DOTALL,
+)
+# Mismo patrón pero para cuando el LLM pone el XML en el contenido de texto (no en el error)
+_CONTENT_FUNC_RE = re.compile(
+    r"<function=(\w+)[(\s]?(\{.*?\})\)?</function>",
     re.DOTALL,
 )
 
@@ -583,14 +604,26 @@ class TaxiAgent:
         history = session.get("history", [])
         ctx     = session.setdefault("context", {})
 
-        # Convertir GPS a texto con coords explícitas para el LLM
+        # Convertir GPS a texto con dirección resuelta para el LLM
+        # Hacemos reverse geocode aquí para que el LLM nunca vea coordenadas crudas
+        # y no intente llamar buscar_lugar() con números de latitud/longitud.
         gps_match = _GPS_RE.match(message.strip())
         if gps_match:
             lat   = float(gps_match.group(1))
             lng   = float(gps_match.group(2))
             label = gps_match.group(3) or "Mi ubicación"
-            message = f"Mi ubicación actual es: {label} (coordenadas: {lat}, {lng})"
-            ctx["last_gps"] = {"lat": lat, "lng": lng, "label": label}
+            rev = _reverse_geocode(lat, lng)
+            if rev and rev.get("name"):
+                address_str = rev.get("short_address") or rev.get("name")
+                message = (
+                    f"Mi ubicación actual es: {address_str} "
+                    f"(coordenadas: {lat}, {lng})"
+                )
+                ctx["last_gps"] = {"lat": lat, "lng": lng, "address": address_str}
+                logger.info(f"[TaxiAgent] GPS resuelto: {address_str} [{lat},{lng}]")
+            else:
+                message = f"Mi ubicación actual es: {label} (coordenadas: {lat}, {lng})"
+                ctx["last_gps"] = {"lat": lat, "lng": lng, "address": label}
 
         history.append({"role": "user", "content": message})
 
@@ -689,6 +722,27 @@ class TaxiAgent:
             else:
                 # Respuesta de texto final
                 final_text = (msg.content or "").strip()
+
+                # Detectar tool calls XML embebidas en el contenido (Groq quirk)
+                xml_m = _CONTENT_FUNC_RE.search(final_text)
+                if xml_m and round_num < 3:
+                    func_name = xml_m.group(1)
+                    try:
+                        args = json.loads(xml_m.group(2))
+                    except Exception:
+                        args = {}
+                    logger.warning(f"[TaxiAgent] XML tool en contenido: {func_name}({args})")
+                    import uuid
+                    tc_id      = f"call_{uuid.uuid4().hex[:8]}"
+                    result_str = _run_tool(func_name, args, phone)
+                    messages.append({
+                        "role": "assistant", "content": None,
+                        "tool_calls": [{"id": tc_id, "type": "function",
+                                        "function": {"name": func_name, "arguments": json.dumps(args)}}],
+                    })
+                    messages.append({"role": "tool", "tool_call_id": tc_id, "content": result_str})
+                    continue  # siguiente ronda para respuesta final limpia
+
                 history.append({"role": "assistant", "content": final_text})
                 session["history"] = history
                 _save_session(phone, session)
