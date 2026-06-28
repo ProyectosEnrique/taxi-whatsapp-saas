@@ -531,7 +531,8 @@ class TaxiAgent:
                 self._openrouter = OpenAI(
                     api_key=_openrouter_key,
                     base_url="https://openrouter.ai/api/v1",
-                    timeout=40.0,
+                    timeout=20.0,
+                    max_retries=0,
                     default_headers={"HTTP-Referer": "https://taxi.nexoai.lat", "X-Title": "TaxiNexoAI"},
                 )
                 logger.info("[TaxiAgent] OpenRouter fallback inicializado")
@@ -548,7 +549,7 @@ class TaxiAgent:
         if self._client:
             providers.append((self._client,   "llama-3.3-70b-versatile", "Groq"))
         if self._fallback:
-            providers.append((self._fallback, "llama-3.3-70b",           "Cerebras"))
+            providers.append((self._fallback, "gpt-oss-120b",           "Cerebras"))
         if getattr(self, "_gemini", None):
             providers.append((self._gemini,   "gemini-2.0-flash",        "Gemini"))
         if getattr(self, "_openrouter", None):
@@ -629,6 +630,18 @@ class TaxiAgent:
                         session["history"] = history
                         _save_session(phone, session)
                         return AgentResult(err)
+                elif "tool call validation failed" in err_str or "400" in err_str:
+                    # Historial corrupto — limpiar y reintentar con solo el mensaje actual
+                    logger.warning(f"[TaxiAgent] Historial corrupto, limpiando sesión [{phone}]")
+                    history = []
+                    messages = [{"role": "system", "content": _SYSTEM_PROMPT}, {"role": "user", "content": message}]
+                    session["history"] = []
+                    _save_session(phone, session)
+                    try:
+                        resp, provider = self._llm_create(messages, tools=_TOOLS, max_tokens=600, temperature=0.3)
+                    except Exception as e2:
+                        logger.error(f"[TaxiAgent] retry after reset error [{phone}]: {e2}")
+                        return AgentResult("Lo siento, hubo un problema. Por favor escríbeme de nuevo.")
                 else:
                     logger.error(f"[TaxiAgent] LLM error [{phone}]: {e}")
                     err = "Lo siento, hubo un error. Por favor intenta de nuevo."

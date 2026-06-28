@@ -44,8 +44,9 @@ Plataforma SaaS de taxi con atención por WhatsApp:
   - Antes era Flask dev server (`python run_auto.py`) — cambiado para soportar ~50 taxis
 - **LLM fallback chain:** Groq → Cerebras → Gemini → OpenRouter
   - `parallel_tool_calls=False` (crítico para flujos secuenciales de tool calling)
-  - Cerebras model: `llama-3.3-70b` (NO `gpt-oss-120b`)
-- **Recovery:** patrón `_FAILED_GEN_RE` para recuperar tool calls fallidos de Groq
+  - Cerebras model: `gpt-oss-120b` — Cerebras retiró todos los modelos Llama (2026-06-28). Únicos disponibles: `gpt-oss-120b`, `zai-glm-4.7`
+  - OpenRouter: `max_retries=0`, `timeout=20s` — evita esperar 60s cuando rate-limited y superar el timeout del gateway
+- **Recovery:** patrón `_FAILED_GEN_RE` para tool calls XML fallidos de Groq; reset de historial cuando Groq retorna 400 ("tool call validation failed")
 - App entry point: `src/api/app_v2.py`
 - Setup inicial: `src/setup_auto.py` (`setup_proyecto()`) — corre una vez al arrancar
 
