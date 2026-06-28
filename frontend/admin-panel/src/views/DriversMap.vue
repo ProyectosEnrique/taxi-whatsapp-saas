@@ -174,7 +174,7 @@ function updateMarkers() {
 
 onMounted(() => {
   const L = window.L
-  map = L.map(mapEl.value).setView([20.6597, -103.3496], 12) // Guadalajara default
+  map = L.map(mapEl.value).setView([20.5236, -100.8147], 13) // Celaya, Gto.
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
