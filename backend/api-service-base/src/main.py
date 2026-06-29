@@ -22,7 +22,7 @@ from starlette.responses import Response
 # Importar routers
 from .routers import products, categories, agent, promotions, aliases, upload
 from .routers.payments import router as payments_router, cleanup_expired_pending_payments
-from .models import Trip, TripStatus, Incident
+from .models import Trip, TripStatus, Incident, LocalPOI  # noqa: F401 — needed for create_all
 from .database import SessionLocal
 from .routers.customer_rides import router as customer_router
 from .routers.driver_rides import router as driver_router

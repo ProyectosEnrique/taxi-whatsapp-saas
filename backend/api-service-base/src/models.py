@@ -492,3 +492,24 @@ class TripRating(Base):
 
     def __repr__(self):
         return f"<TripRating(trip_id='{self.trip_id}', stars={self.stars})>"
+
+
+# ==============================================================================
+# LOCAL POI MODEL
+# ==============================================================================
+
+class LocalPOI(Base):
+    """Lugares locales agregados por conductores/admin que Google Maps no conoce."""
+    __tablename__ = "local_pois"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(200), nullable=False, index=True)   # "El Arco", "La Feria"
+    address    = Column(String(500))
+    lat        = Column(Numeric(10, 7), nullable=False)
+    lng        = Column(Numeric(10, 7), nullable=False)
+    added_by   = Column(String(50), default="admin")               # "driver" | "admin"
+    is_active  = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<LocalPOI(name='{self.name}', lat={self.lat}, lng={self.lng})>"
