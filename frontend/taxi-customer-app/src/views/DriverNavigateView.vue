@@ -212,18 +212,17 @@ async function syncMap(data, driverPos) {
   const s = data.status
 
   if (s === 'confirmed' && oLat != null) {
-    // Ruta conductor → origen (amarillo); usar GPS del nav o última pos del servidor
     const pos = driverPos ?? (data.driver?.lat != null ? [data.driver.lat, data.driver.lng] : null)
     if (pos) {
       const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, pos[0], pos[1]) : Infinity
-      if (moved > 40 || currentTarget !== 'origin') {
+      const firstRender = currentTarget !== 'origin'
+      if (moved > 40 || firstRender) {
         currentTarget = 'origin'
         await drawRoute(pos[0], pos[1], oLat, oLng, '#f59e0b')
-        map.fitBounds([pos, [oLat, oLng]], { padding: [50, 50] })
+        if (firstRender) map.fitBounds([pos, [oLat, oLng]], { padding: [50, 50] })
       }
     }
   } else if (s === 'driver_arrived' && oLat != null && dLat != null) {
-    // Vista estática origen + destino
     if (currentTarget !== 'waiting') {
       currentTarget = 'waiting'
       if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
@@ -231,14 +230,14 @@ async function syncMap(data, driverPos) {
       map.fitBounds([[oLat, oLng], [dLat, dLng]], { padding: [60, 60] })
     }
   } else if (s === 'in_progress' && dLat != null) {
-    // Ruta conductor → destino (azul); usar GPS del nav o última pos del servidor
     const pos = driverPos ?? (data.driver?.lat != null ? [data.driver.lat, data.driver.lng] : null)
     if (pos) {
       const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, pos[0], pos[1]) : Infinity
-      if (moved > 40 || currentTarget !== 'destination') {
+      const firstRender = currentTarget !== 'destination'
+      if (moved > 40 || firstRender) {
         currentTarget = 'destination'
         await drawRoute(pos[0], pos[1], dLat, dLng, '#3b82f6')
-        map.fitBounds([pos, [dLat, dLng]], { padding: [50, 50] })
+        if (firstRender) map.fitBounds([pos, [dLat, dLng]], { padding: [50, 50] })
       }
     }
   } else if (s === 'completed' && oLat != null && dLat != null) {
@@ -268,19 +267,27 @@ async function initMap(centerLat, centerLng) {
 // ── GPS conductor ─────────────────────────────────────────────────────────────
 let driverPos = null
 
+function _placeDriverMarker(pos) {
+  if (!LLeaflet || !map) return
+  if (driverMarker) {
+    driverMarker.setLatLng(pos)
+  } else {
+    driverMarker = LLeaflet.marker(pos, { icon: mkIcon('🚕', 36) })
+      .bindPopup('<b>Tu posición</b>').addTo(map)
+  }
+  // Pan suave para mantener al conductor visible sin re-hacer zoom
+  if (!map.getBounds().contains(pos)) {
+    map.panTo(pos, { animate: true, duration: 0.6 })
+  }
+}
+
 async function startGPS() {
   if (!navigator.geolocation) return
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       gpsGranted.value = true
       driverPos = [pos.coords.latitude, pos.coords.longitude]
-      if (!LLeaflet || !map) return
-      if (driverMarker) {
-        driverMarker.setLatLng(driverPos)
-      } else {
-        driverMarker = LLeaflet.marker(driverPos, { icon: mkIcon('🚕', 36) })
-          .bindPopup('<b>Tu posición</b>').addTo(map)
-      }
+      _placeDriverMarker(driverPos)
       if (ride.value) await syncMap(ride.value, driverPos)
     },
     (e) => console.warn('[GPS]', e.message),
@@ -347,6 +354,10 @@ onMounted(async () => {
     const cLat = data.origin?.lat ?? 20.5236
     const cLng = data.origin?.lng ?? -100.8198
     await initMap(cLat, cLng)
+    // Marcador inicial del conductor desde la última posición del servidor
+    if (data.driver?.lat != null) {
+      _placeDriverMarker([data.driver.lat, data.driver.lng])
+    }
     await syncMap(data, null)
     await startGPS()
 

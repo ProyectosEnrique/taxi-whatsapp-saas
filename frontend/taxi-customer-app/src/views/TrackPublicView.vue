@@ -86,11 +86,13 @@ const rideId = route.params.rideId
 const ride = ref(null)
 const error = ref(null)
 let map = null
+let LLeafletRef = null
 let driverMarker = null
 let originMarker = null
 let destMarker = null
 let routeLayer = null
 let pollTimer = null
+let lastRouteStatus = null
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -153,10 +155,10 @@ function initMap(data) {
   const el = document.getElementById('public-map')
   if (!el) return
 
-  import('leaflet').then(L => {
+  import('leaflet').then(async L => {
     const Lm = L.default || L
+    LLeafletRef = Lm
 
-    // Center on driver position, then origin, then city fallback
     const center = data.driver?.lat != null
       ? [data.driver.lat, data.driver.lng]
       : data.origin?.lat != null
@@ -164,70 +166,76 @@ function initMap(data) {
       : [20.5236, -100.8198]
 
     map = Lm.map(el, { zoomControl: true, attributionControl: false }).setView(center, 14)
-    Lm.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map)
+    Lm.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
 
     const mkIcon = (emoji, size = 32) => Lm.divIcon({
       html: `<span style="font-size:${size}px;line-height:1">${emoji}</span>`,
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2],
-      className: '',
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2], className: '',
     })
 
     const pts = []
     if (data.origin?.lat != null) {
       originMarker = Lm.marker([data.origin.lat, data.origin.lng], { icon: mkIcon('📍') })
-        .bindPopup(`<b>Origen</b><br>${data.origin.address}`)
-        .addTo(map)
+        .bindPopup(`<b>Origen</b><br>${data.origin.address}`).addTo(map)
       pts.push([data.origin.lat, data.origin.lng])
     }
     if (data.destination?.lat != null) {
       destMarker = Lm.marker([data.destination.lat, data.destination.lng], { icon: mkIcon('🏁') })
-        .bindPopup(`<b>Destino</b><br>${data.destination.address}`)
-        .addTo(map)
+        .bindPopup(`<b>Destino</b><br>${data.destination.address}`).addTo(map)
       pts.push([data.destination.lat, data.destination.lng])
     }
     if (data.driver?.lat != null) {
       driverMarker = Lm.marker([data.driver.lat, data.driver.lng], { icon: mkIcon('🚕', 36) })
-        .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`)
-        .addTo(map)
+        .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`).addTo(map)
       pts.push([data.driver.lat, data.driver.lng])
     }
 
     if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] })
-
-    // Dibujar trayecto entre origen y destino
-    if (data.origin?.lat != null && data.destination?.lat != null) {
-      drawRoute(Lm, data.origin.lat, data.origin.lng, data.destination.lat, data.destination.lng)
-    }
+    await _updateRoute(data)
   })
 }
 
-function updateMarkers(data) {
-  if (!map || data.driver?.lat == null) return
-  import('leaflet').then(L => {
-    const Lm = L.default || L
+async function _updateRoute(data) {
+  if (!map || !LLeafletRef) return
+  const Lm = LLeafletRef
+  const s  = data.status
+  const oLat = data.origin?.lat, oLng = data.origin?.lng
+  const dLat = data.destination?.lat, dLng = data.destination?.lng
+  const drLat = data.driver?.lat, drLng = data.driver?.lng
+
+  // Solo redibujar cuando cambia el estado
+  if (s === lastRouteStatus) return
+  lastRouteStatus = s
+
+  if (s === 'confirmed' && drLat != null && oLat != null) {
+    // Taxi en camino al cliente — ruta amarilla conductor→origen
+    await drawRoute(Lm, drLat, drLng, oLat, oLng)
+    if (routeLayer) routeLayer.setStyle({ color: '#f59e0b', dashArray: '8,6' })
+  } else if (s === 'in_progress' && drLat != null && dLat != null) {
+    // Viaje en curso — ruta azul conductor→destino
+    await drawRoute(Lm, drLat, drLng, dLat, dLng)
+  } else if (oLat != null && dLat != null) {
+    // Resto de estados — trayecto completo origen→destino
+    await drawRoute(Lm, oLat, oLng, dLat, dLng)
+  }
+}
+
+async function updateMarkers(data) {
+  if (!map || !LLeafletRef) return
+  const Lm = LLeafletRef
+
+  if (data.driver?.lat != null) {
     const pos = [data.driver.lat, data.driver.lng]
     if (driverMarker) {
       driverMarker.setLatLng(pos)
-    } else {
-      const mkIcon = (emoji, size = 36) => Lm.divIcon({
-        html: `<span style="font-size:${size}px;line-height:1">${emoji}</span>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-        className: '',
-      })
-      driverMarker = Lm.marker(pos, { icon: mkIcon('🚕', 36) })
-        .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`)
-        .addTo(map)
-      // Refit bounds to include new driver position
-      const pts = [pos]
-      if (data.origin?.lat != null) pts.push([data.origin.lat, data.origin.lng])
-      if (data.destination?.lat != null) pts.push([data.destination.lat, data.destination.lng])
-      if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] })
+      // Pan suave para mantener al conductor visible
+      if (!map.getBounds().contains(pos)) {
+        map.panTo(pos, { animate: true, duration: 0.6 })
+      }
     }
-  })
+  }
+
+  await _updateRoute(data)
 }
 
 onMounted(() => {
