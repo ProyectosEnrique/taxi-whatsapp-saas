@@ -78,7 +78,7 @@
 
 <script setup>
 import 'leaflet/dist/leaflet.css'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route    = useRoute()
@@ -306,7 +306,7 @@ async function doAction() {
   }
   actioning.value = true
   try {
-    const resp = await fetch(`${API_BASE}/rides/${rideId}/driver-action`, {
+    const resp = await fetch(`${API_BASE}/driver/rides/${rideId}/driver-action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, driver_phone: driverPhone }),
@@ -336,6 +336,7 @@ onMounted(async () => {
     const data = await resp.json()
     ride.value   = data
     status.value = data.status
+    await nextTick()  // esperar a que v-else-if="ride" renderice #driver-map
 
     const cLat = data.origin?.lat ?? 20.5236
     const cLng = data.origin?.lng ?? -100.8198
