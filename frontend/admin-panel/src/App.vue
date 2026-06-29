@@ -97,6 +97,7 @@ const navItems = [
   { to: '/incidents', icon: '🚨', label: 'Incidentes' },
   { to: '/fares',     icon: '💰', label: 'Tarifas' },
   { to: '/promos',    icon: '🏷️', label: 'Promociones' },
+  { to: '/pois',      icon: '📍', label: 'Lugares Locales' },
 ]
 
 // Parchea window.fetch globalmente para inyectar x-admin-key en

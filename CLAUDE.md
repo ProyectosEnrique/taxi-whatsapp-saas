@@ -124,3 +124,82 @@ traefik-public ─── taxi-nginx ─── taxi_net ─┬─ taxi-whatsapp �
 - `parallel_tool_calls=False` es obligatorio en `_llm_create()` — sin esto el agente hace tool calls en paralelo y rompe el flujo de conversación
 - Si taxi-api no conecta a PostgreSQL: verificar que `mandaya_postgres` esté en red `mandaya_net` y que `taxi_db` exista
 - Twilio display name "Taxi" — ticket #27706680 abierto con Twilio Support (número +16204077336 aún sin nombre asignado, esperando respuesta)
+
+## 10. Geocoding — arquitectura
+
+Módulo: `backend/api-service-base/src/routers/locations.py`
+
+**Prioridad de búsqueda (`GET /api/v1/locations/search?q=...`):**
+1. POIs locales (`local_pois` table en PostgreSQL) — sin latencia de red
+2. Google Maps Geocoding API (`_google_search()`) — primario, entiende lenguaje natural en español
+3. Nominatim/OSM (`_nom_search()`) — fallback gratuito
+
+**Filtro de distancia (`_in_city()`):**
+- Todas las respuestas pasan por `_in_city(lat, lng)` que rechaza resultados fuera del radio `CITY_BBOX_DEG * 111 * 1.5 km` (~50 km para Celaya)
+- Sin este filtro, geocoding podía retornar la terminal de Querétaro (~55 km) cuando se pedía la "central de autobuses de Celaya"
+
+**Dos funciones de normalización (en `routers/whatsapp.py`):**
+- `_clean_query(q)`: solo limpa preposiciones iniciales — para Google Maps (que entiende "Central de Autobuses" nativamente)
+- `_normalize_query(q)`: aplica además alias `_QUERY_SUBS` — solo para Nominatim (que necesita términos exactos de OSM)
+- ⚠️ No usar `_QUERY_SUBS` con Google Maps — las sustituciones pueden empeorar los resultados
+
+**POIs locales (`local_pois`):**
+- Tabla gestionada por `LocalPOI` model en `models.py`
+- Soft delete (`is_active = False`)
+- API: `GET /pois?q=nombre`, `POST /pois`, `DELETE /pois/{id}`
+- Útil para lugares que Google Maps no indexa bien (colonias locales, referencias informales, "El Arco", "La Feria")
+
+**Google Maps API Key:**
+- `GOOGLE_MAPS_API_KEY` en `.env` — restringida por IP `5.78.200.46` en GCP Console
+- Sin esta key, el sistema cae directamente a Nominatim (cobertura más pobre en ciudades pequeñas)
+
+**Bias geográfico con `bounds`:**
+- Google Maps recibe `bounds="{lat-d},{lng-d}|{lat+d},{lng+d}"` donde `d = CITY_BBOX_DEG`
+- Nominatim recibe `viewbox` + `bounded=1`
+
+## 11. Mapas Leaflet — patrones y lecciones
+
+**Mapa negro al cargar (`DriverNavigateView.vue`):**
+- Causa: `initMap()` se llamaba antes de que Vue renderizara el `<div id="driver-map">` (que está dentro de `v-else-if="ride"`)
+- Fix: `await nextTick()` después de asignar `ride.value = data` y antes de llamar `initMap()`
+- Regla: cualquier `document.getElementById()` sobre elementos en `v-if/v-else-if` necesita `nextTick()`
+
+**Ruta sin GPS disponible:**
+- Problema: la ruta no se dibujaba si el GPS del navegador (`driverPos`) era null al cargar
+- Fix: usar la posición del servidor como fallback:
+  ```javascript
+  const pos = driverPos ?? (data.driver?.lat != null ? [data.driver.lat, data.driver.lng] : null)
+  ```
+
+**Marcador del conductor con pan suave:**
+```javascript
+function _placeDriverMarker(pos) {
+  if (driverMarker) {
+    driverMarker.setLatLng(pos)
+  } else {
+    driverMarker = L.marker(pos, { icon: mkIcon('🚕', 36) }).addTo(map)
+  }
+  if (!map.getBounds().contains(pos)) {
+    map.panTo(pos, { animate: true, duration: 0.6 })
+  }
+}
+```
+- No usar `fitBounds` en cada tick de GPS — solo en el primer render de cada fase → flag `firstRender`
+- `fitBounds` en cada tick hace que el mapa salte constantemente; `panTo` es suave y no intrusivo
+
+**Ruta dinámica por estado (`TrackPublicView.vue`):**
+- `confirmed` → ruta amarilla conductor→origen (taxi en camino)
+- `in_progress` → ruta azul conductor→destino
+- Resto → trayecto completo origen→destino
+- Solo se redibuja cuando `data.status` cambia (`lastRouteStatus` guard)
+
+**URL del endpoint de acción del conductor:**
+- Correcto: `POST /api/v1/driver/rides/{id}/driver-action`
+- Error común: omitir el prefijo `/driver/` → 404
+
+## 12. App conductor (`/driver/`)
+
+- Ruta en frontend: `/conductor/viaje/{ride_id}?p=<phone_base64>` (Vue Router)
+- `?p=` es el teléfono del conductor en Base64 — autenticación sin login completo
+- Mapa: `<div id="driver-map">` dentro de `v-else-if="ride"` → necesita `nextTick()` antes de `initMap()`
+- `watchPosition()` actualiza marcador 🚕 del conductor cada movimiento GPS real

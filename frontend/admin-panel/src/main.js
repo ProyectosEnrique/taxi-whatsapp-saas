@@ -13,6 +13,7 @@ import IncidentsView from './views/IncidentsView.vue'
 import FareConfiguration from './views/FareConfiguration.vue'
 import PromosManagement from './views/PromosManagement.vue'
 import DriversQRView from './views/DriversQRView.vue'
+import LocalPoisView from './views/LocalPoisView.vue'
 
 const basePath = window.location.pathname.startsWith('/admin') ? '/admin' : '/'
 
@@ -28,6 +29,7 @@ const router = createRouter({
     { path: '/incidents', component: IncidentsView },
     { path: '/fares',     component: FareConfiguration },
     { path: '/promos',    component: PromosManagement },
+    { path: '/pois',      component: LocalPoisView },
   ]
 })
 
