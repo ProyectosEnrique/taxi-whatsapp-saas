@@ -212,6 +212,31 @@ def _nom_to_result(item: dict) -> dict:
     }
 
 
+_STOP_WORDS = {"de", "del", "la", "el", "los", "las", "en", "y", "a",
+               "con", "por", "para", "al", "calle", "avenida", "av", "c",
+               "col", "colonia", "fracc", "fraccionamiento", "numero", "num"}
+
+def _query_words(q: str) -> set:
+    """Extrae palabras significativas del query (>2 chars, sin stopwords, sin números puros)."""
+    tokens = re.sub(r"[^\w\s]", " ", q.lower()).split()
+    return {t for t in tokens if len(t) > 2 and t not in _STOP_WORDS and not t.isdigit()}
+
+def _result_matches_query(result: dict, query: str) -> bool:
+    """
+    Verifica que el resultado geocodificado tenga relación con el query original.
+    Retorna False si ninguna palabra significativa del query aparece en la dirección resultado.
+    Esto evita que Google/Nominatim devuelva una calle cercana-pero-incorrecta.
+    """
+    q_words = _query_words(query)
+    if not q_words:
+        return True  # query muy corto — aceptar
+    # Usar solo name+short_address; el address completo incluye ciudad/pais que daria falsos positivos
+    local_text = (result.get("name", "") + " " + result.get("short_address", "")).lower()
+    matches = sum(1 for w in q_words if w in local_text)
+    # Al menos 1 palabra significativa debe coincidir
+    return matches > 0
+
+
 @router.get("/geocode")
 async def geocode_address(
     q: str,
@@ -233,15 +258,21 @@ async def geocode_address(
             # 1. Google Maps (primario)
             if settings.GOOGLE_MAPS_API_KEY:
                 results = await _geocode_google(q, client)
+                # Filtrar resultados que no tienen relación con el query original
+                results = [r for r in results if _result_matches_query(r, q)]
                 if results:
                     logger.info(f"[Geocode] GMaps: '{q}' → {results[0]['name']}")
                     return {"results": results}
-                logger.warning(f"[Geocode] GMaps sin resultados para '{q}', usando Nominatim")
+                logger.warning(f"[Geocode] GMaps sin resultados relevantes para '{q}', usando Nominatim")
 
             # 2. Nominatim (fallback)
             results = await _geocode_nominatim(q, client, viewbox)
+            # Filtrar resultados sin relación con el query
+            results = [r for r in results if _result_matches_query(r, q)]
             if results:
                 logger.info(f"[Geocode] Nominatim: '{q}' → {results[0]['name']}")
+            else:
+                logger.warning(f"[Geocode] Sin resultados relevantes para '{q}' — cliente debe compartir GPS")
             return {"results": results}
 
     except Exception as e:
@@ -374,7 +405,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
                 from ..routers.sse import push_event
                 trip.driver_phone = best_driver.phone
                 trip.driver_name  = best_driver.name
-                trip.status       = TripStatus.CONFIRMED
+                # status se mantiene REQUESTED — conductor debe aceptar explícitamente
                 db.commit()
                 auto_assigned_driver = best_driver
                 logger.info(
@@ -394,11 +425,11 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
                 # Telegram solo al conductor asignado
                 if best_driver.telegram_chat_id:
                     try:
-                        from ..services.telegram import send_message
+                        from ..services.telegram import send_message, send_with_buttons
                         from .telegram_bot import _maps
                         maps_o = _maps(olat, olng) or ""
                         maps_d = _maps(dlat, dlng) or ""
-                        await send_message(
+                        await send_with_buttons(
                             best_driver.telegram_chat_id,
                             f"🎯 <b>Viaje asignado directamente a ti</b>\n\n"
                             f"ID: <code>{trip.trip_id}</code>\n"
@@ -406,6 +437,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
                             f"🏁 <a href='{maps_d}'>Destino</a>: {trip.destination_address}\n"
                             f"💰 ${float(fare):.0f} MXN | {round(distance_km, 1)} km\n"
                             f"👤 {c_name}",
+                            [[{"text": "✅ Aceptar viaje", "callback_data": f"accept_{trip.trip_id}"}]],
                         )
                     except Exception:
                         pass

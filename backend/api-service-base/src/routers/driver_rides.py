@@ -594,3 +594,62 @@ def seed_demo_drivers(db: Session = Depends(get_db)):
         "group": group.name,
         "landing_pages": links,
     }
+
+
+# ── Acción de conductor desde página web (sin JWT, validado por driver_phone) ─
+from pydantic import BaseModel as _BM
+
+class _DriverActionBody(_BM):
+    action: str        # arrived | start | complete
+    driver_phone: str
+
+@router.post("/rides/{ride_id}/driver-action")
+async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session = Depends(get_db)):
+    """Transición de estado desde la página web del conductor (sin login)."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    if trip.driver_phone != body.driver_phone:
+        raise HTTPException(403, "No autorizado")
+
+    driver = db.query(Driver).filter(Driver.phone == body.driver_phone).first()
+
+    valid = {
+        "arrived":  ([TripStatus.CONFIRMED],                                  TripStatus.DRIVER_ARRIVED),
+        "start":    ([TripStatus.CONFIRMED, TripStatus.DRIVER_ARRIVED],       TripStatus.IN_PROGRESS),
+        "complete": ([TripStatus.IN_PROGRESS],                                TripStatus.COMPLETED),
+    }
+    if body.action not in valid:
+        raise HTTPException(400, "Acción inválida")
+
+    allowed_from, to_status = valid[body.action]
+    if trip.status not in allowed_from:
+        raise HTTPException(400, f"Estado actual no permite esta acción: {trip.status.value}")
+
+    trip.status = to_status
+    if to_status == TripStatus.COMPLETED:
+        trip.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info(f"[WebAction] {body.action} viaje {ride_id} por {body.driver_phone}")
+
+    # Notificar cliente WhatsApp
+    if driver and trip.customer_phone:
+        try:
+            from .telegram_bot import _notify_customer_wa
+            event_map = {"arrived": "arrived", "start": "started", "complete": "completed"}
+            _notify_customer_wa(trip.customer_phone, driver, trip, event_map[body.action])
+        except Exception as e:
+            logger.warning(f"[WebAction] notify WA failed: {e}")
+
+    # Notificar operador Telegram
+    try:
+        from ..services.telegram import send_to_operator
+        labels = {"arrived": "llegó al origen", "start": "inició el viaje", "complete": "completó el viaje"}
+        name = driver.name if driver else body.driver_phone
+        import asyncio
+        msg = f"Conductor {name} {labels[body.action]} - Viaje {ride_id}"
+        asyncio.create_task(send_to_operator(msg))
+    except Exception:
+        pass
+
+    return {"status": to_status.value, "ok": True}

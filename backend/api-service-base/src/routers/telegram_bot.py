@@ -286,8 +286,13 @@ async def telegram_webhook(
             if not driver or not trip:
                 await answer_callback(cq_id, "❌ Viaje no encontrado", alert=True)
                 return {"ok": True}
-            if trip.status != TripStatus.REQUESTED or trip.driver_phone:
+            # Conductor diferente ya lo tomó
+            if trip.driver_phone and trip.driver_phone != driver.phone:
                 await answer_callback(cq_id, "⚠️ Este viaje ya fue tomado por otro conductor", alert=True)
+                return {"ok": True}
+            # Viaje ya no está disponible (confirmado por otro medio)
+            if trip.status != TripStatus.REQUESTED:
+                await answer_callback(cq_id, "⚠️ Este viaje ya no está disponible", alert=True)
                 return {"ok": True}
 
             trip.driver_phone = driver.phone
@@ -414,12 +419,18 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
     maps_dest = _maps(trip.destination_lat, trip.destination_lng)
 
     if trip.status == TripStatus.CONFIRMED:
-        orig_line = f"\n\n📍 <a href='{maps_orig}'>Abrir origen en Maps</a>" if maps_orig else ""
+        nl = chr(10)
+        orig_line = (nl*2 + chr(0x1f4cd) + " <a href='" + maps_orig + "'>Abrir en Maps</a>") if maps_orig else ""
+        import base64 as _b64
+        _p = _b64.urlsafe_b64encode((trip.driver_phone or "").encode()).decode().rstrip("=")
+        nav_url = f"{settings.PUBLIC_URL}/conductor/viaje/{trip.trip_id}?p={_p}"
+        nav_line = nl*2 + chr(0x1f5fa) + " Navegar al origen: " + nav_url
+        msg = (chr(0x2705) + " <b>Viaje aceptado " + chr(0x2014) + " en camino al origen</b>" +
+               nl*2 + _trip_summary(trip) + orig_line + nav_line)
         await send_with_buttons(
             chat_id,
-            f"✅ <b>Viaje aceptado — en camino al origen</b>\n\n"
-            f"{_trip_summary(trip)}{orig_line}",
-            [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
+            msg,
+            [[{"text": chr(0x1f7e2) + " Llegue al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:

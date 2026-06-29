@@ -89,6 +89,7 @@ let map = null
 let driverMarker = null
 let originMarker = null
 let destMarker = null
+let routeLayer = null
 let pollTimer = null
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -127,6 +128,24 @@ async function fetchRide() {
   } catch (e) {
     console.error('[TrackPublic] fetch error:', e)
   }
+}
+
+async function drawRoute(Lm, oLat, oLng, dLat, dLng) {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`
+    const resp = await fetch(url)
+    const data = await resp.json()
+    if (data.routes?.[0]) {
+      routeLayer = Lm.geoJSON(data.routes[0].geometry, {
+        style: { color: '#3b82f6', weight: 4, opacity: 0.8 },
+      }).addTo(map)
+      return
+    }
+  } catch (_) { /* fallback */ }
+  routeLayer = Lm.polyline([[oLat, oLng], [dLat, dLng]], {
+    color: '#3b82f6', weight: 3, opacity: 0.7, dashArray: '8,6',
+  }).addTo(map)
 }
 
 function initMap(data) {
@@ -177,6 +196,11 @@ function initMap(data) {
     }
 
     if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] })
+
+    // Dibujar trayecto entre origen y destino
+    if (data.origin?.lat != null && data.destination?.lat != null) {
+      drawRoute(Lm, data.origin.lat, data.origin.lng, data.destination.lat, data.destination.lng)
+    }
   })
 }
 

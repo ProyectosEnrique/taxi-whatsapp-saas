@@ -67,6 +67,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/conductor/viaje/:rideId',
+    name: 'DriverNavigate',
+    component: () => import('../views/DriverNavigateView.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/seguimiento/:rideId',
     name: 'PublicTracking',
     component: () => import('../views/TrackPublicView.vue'),
