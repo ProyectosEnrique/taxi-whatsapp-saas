@@ -211,13 +211,16 @@ async function syncMap(data, driverPos) {
 
   const s = data.status
 
-  if (s === 'confirmed' && driverPos && oLat != null) {
-    // Ruta conductor → origen (amarillo)
-    const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, driverPos[0], driverPos[1]) : Infinity
-    if (moved > 40 || currentTarget !== 'origin') {
-      currentTarget = 'origin'
-      await drawRoute(driverPos[0], driverPos[1], oLat, oLng, '#f59e0b')
-      map.fitBounds([driverPos, [oLat, oLng]], { padding: [50, 50] })
+  if (s === 'confirmed' && oLat != null) {
+    // Ruta conductor → origen (amarillo); usar GPS del nav o última pos del servidor
+    const pos = driverPos ?? (data.driver?.lat != null ? [data.driver.lat, data.driver.lng] : null)
+    if (pos) {
+      const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, pos[0], pos[1]) : Infinity
+      if (moved > 40 || currentTarget !== 'origin') {
+        currentTarget = 'origin'
+        await drawRoute(pos[0], pos[1], oLat, oLng, '#f59e0b')
+        map.fitBounds([pos, [oLat, oLng]], { padding: [50, 50] })
+      }
     }
   } else if (s === 'driver_arrived' && oLat != null && dLat != null) {
     // Vista estática origen + destino
@@ -227,13 +230,16 @@ async function syncMap(data, driverPos) {
       eta.value = null
       map.fitBounds([[oLat, oLng], [dLat, dLng]], { padding: [60, 60] })
     }
-  } else if (s === 'in_progress' && driverPos && dLat != null) {
-    // Ruta conductor → destino (azul)
-    const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, driverPos[0], driverPos[1]) : Infinity
-    if (moved > 40 || currentTarget !== 'destination') {
-      currentTarget = 'destination'
-      await drawRoute(driverPos[0], driverPos[1], dLat, dLng, '#3b82f6')
-      map.fitBounds([driverPos, [dLat, dLng]], { padding: [50, 50] })
+  } else if (s === 'in_progress' && dLat != null) {
+    // Ruta conductor → destino (azul); usar GPS del nav o última pos del servidor
+    const pos = driverPos ?? (data.driver?.lat != null ? [data.driver.lat, data.driver.lng] : null)
+    if (pos) {
+      const moved = lastRouteLat != null ? haversineM(lastRouteLat, lastRouteLng, pos[0], pos[1]) : Infinity
+      if (moved > 40 || currentTarget !== 'destination') {
+        currentTarget = 'destination'
+        await drawRoute(pos[0], pos[1], dLat, dLng, '#3b82f6')
+        map.fitBounds([pos, [dLat, dLng]], { padding: [50, 50] })
+      }
     }
   } else if (s === 'completed' && oLat != null && dLat != null) {
     if (currentTarget !== 'done') {
