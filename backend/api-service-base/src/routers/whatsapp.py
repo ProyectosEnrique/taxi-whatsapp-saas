@@ -49,15 +49,29 @@ _LEADING_PREP = re.compile(
 _MID_EN = re.compile(r'\s+en\s+', re.I)
 
 
-def _normalize_query(q: str) -> str:
-    # 1. Quitar preposición inicial
+def _clean_query(q: str) -> str:
+    """Limpieza basica del query para Google Maps (no aplica aliases de POIs)."""
     q = _LEADING_PREP.sub('', q).strip()
-    # 2. Sustituir " en " interno por ", " para crear partes separadas por coma
     q = _MID_EN.sub(', ', q)
-    # 3. Aliases de nombres de lugares
+    return q.strip()
+
+
+def _normalize_query(q: str) -> str:
+    """Limpieza + aliases de nombres de lugares. Solo para Nominatim."""
+    q = _clean_query(q)
     for pattern, replacement in _QUERY_SUBS:
         q = pattern.sub(replacement, q)
     return q.strip()
+
+
+def _within_city_radius(result: dict) -> bool:
+    """Rechaza resultados fuera del radio operativo (CITY_BBOX_DEG x 111 x 1.5 km)."""
+    if not (settings.CITY_LAT and settings.CITY_LNG):
+        return True
+    d = settings.CITY_BBOX_DEG or 0.3
+    max_km = d * 111 * 1.5
+    km = _haversine_km(settings.CITY_LAT, settings.CITY_LNG, result['lat'], result['lng'])
+    return km <= max_km
 
 
 def _parse_display_name(display_name: str) -> tuple[str, str]:
@@ -244,7 +258,8 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
-    q = _normalize_query(q)
+    q_google = _clean_query(q)     # Google Maps: sin aliases, entiende POIs nativamente
+    q_nom    = _normalize_query(q)  # Nominatim: con aliases (terminal, hospital, etc.)
     ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
     ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
 
@@ -255,24 +270,24 @@ async def geocode_address(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Google Maps (primario)
+            # 1. Google Maps (primario) - query sin aliases para no confundir POIs
             if settings.GOOGLE_MAPS_API_KEY:
-                results = await _geocode_google(q, client)
-                # Filtrar resultados que no tienen relación con el query original
-                results = [r for r in results if _result_matches_query(r, q)]
+                results = await _geocode_google(q_google, client)
+                results = [r for r in results
+                           if _result_matches_query(r, q_google) and _within_city_radius(r)]
                 if results:
-                    logger.info(f"[Geocode] GMaps: '{q}' → {results[0]['name']}")
+                    logger.info(f"[Geocode] GMaps: '{q_google}' → {results[0]['name']}")
                     return {"results": results}
-                logger.warning(f"[Geocode] GMaps sin resultados relevantes para '{q}', usando Nominatim")
+                logger.warning(f"[Geocode] GMaps sin resultados en radio para '{q_google}', usando Nominatim")
 
-            # 2. Nominatim (fallback)
-            results = await _geocode_nominatim(q, client, viewbox)
-            # Filtrar resultados sin relación con el query
-            results = [r for r in results if _result_matches_query(r, q)]
+            # 2. Nominatim (fallback) - query con aliases de nombres de lugares
+            results = await _geocode_nominatim(q_nom, client, viewbox)
+            results = [r for r in results
+                       if _result_matches_query(r, q_nom) and _within_city_radius(r)]
             if results:
-                logger.info(f"[Geocode] Nominatim: '{q}' → {results[0]['name']}")
+                logger.info(f"[Geocode] Nominatim: '{q_nom}' → {results[0]['name']}")
             else:
-                logger.warning(f"[Geocode] Sin resultados relevantes para '{q}' — cliente debe compartir GPS")
+                logger.warning(f"[Geocode] Sin resultados en radio para '{q_nom}' — cliente debe compartir GPS")
             return {"results": results}
 
     except Exception as e:
