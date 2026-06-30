@@ -165,6 +165,13 @@ def create_driver(payload: dict, db: Session = Depends(get_db)):
     if db.query(Driver).filter(Driver.phone == phone).first():
         raise HTTPException(409, "Teléfono ya registrado")
 
+    import re as _re, uuid as _uuid
+    raw_code = payload.get("driver_code") or ""
+    if not raw_code:
+        slug = _re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+        raw_code = f"{slug}-{_uuid.uuid4().hex[:4]}"
+    driver_code = raw_code.lower().strip()
+
     driver = Driver(
         phone          = phone,
         name           = name,
@@ -174,6 +181,7 @@ def create_driver(payload: dict, db: Session = Depends(get_db)):
         vehicle_plates = payload.get("vehicle_plates", ""),
         vehicle_color  = payload.get("vehicle_color", ""),
         vehicle_year   = payload.get("vehicle_year"),
+        driver_code    = driver_code,
         is_active      = True,
         is_online      = False,
     )
@@ -188,7 +196,7 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.phone == phone).first()
     if not driver:
         raise HTTPException(404, "Conductor no encontrado")
-    for field in ("name", "vehicle_brand", "vehicle_model", "vehicle_plates", "vehicle_color", "vehicle_year"):
+    for field in ("name", "vehicle_brand", "vehicle_model", "vehicle_plates", "vehicle_color", "vehicle_year", "driver_code"):
         if field in payload:
             setattr(driver, field, payload[field])
     if "is_active" in payload:
