@@ -76,7 +76,7 @@ services:
       WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
       VOICE_ASSISTANT_URL: http://taxi-agent:5000
       SALES_AGENT_URL: http://taxi-agent:5000
-      CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
+      CUSTOMER_APP_URL: https://taxi.nexoai.lat/
       REDIS_URL: redis://mandaya_redis:6379/3
       LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -113,7 +113,7 @@ services:
       LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}
       ENVIRONMENT: production
       REDIS_URL: redis://mandaya_redis:6379/3
-      CUSTOMER_APP_URL: https://taxi.nexoai.lat/cliente
+      CUSTOMER_APP_URL: https://taxi.nexoai.lat/
       WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
     networks:
       - taxi_net
