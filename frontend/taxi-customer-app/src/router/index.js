@@ -83,6 +83,13 @@ const routes = [
     name: 'EmergencyTracking',
     component: () => import('../views/EmergencyTrackingView.vue'),
     meta: { requiresAuth: false }
+  },
+  {
+    // Cualquier ruta no reconocida (ej. /cliente si el Service Worker la
+    // sirve desde caché antes de que nginx redirija) → inicio en vez de
+    // <router-view> vacío.
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
 

@@ -34,7 +34,12 @@ export default defineConfig({
         ]
       },
       workbox: {
-        navigateFallbackDenylist: [/^\/driver/, /^\/admin/],
+        // /cliente no es una ruta de Vue Router: es un alias que nginx
+        // redirige a "/" (link legacy compartido por WhatsApp). Sin este
+        // denylist, el SW intercepta la navegación con el index.html
+        // cacheado antes de que nginx pueda redirigir — Vue Router no
+        // encuentra ruta para /cliente y <router-view> queda vacío.
+        navigateFallbackDenylist: [/^\/driver/, /^\/admin/, /^\/cliente$/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
