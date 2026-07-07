@@ -92,14 +92,22 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
+  try {
+    const authStore = useAuthStore()
 
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+      next('/login')
+    } else if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
+      next('/home')
+    } else {
+      next()
+    }
+  } catch (err) {
+    // Si el guard falla (ej. datos corruptos en localStorage) no dejar la
+    // navegación colgada con <router-view> vacío — ir a login sin sesión.
+    localStorage.removeItem('customer_token')
+    localStorage.removeItem('customer_data')
     next('/login')
-  } else if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
-    next('/home')
-  } else {
-    next()
   }
 })
 

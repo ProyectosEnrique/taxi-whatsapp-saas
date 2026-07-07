@@ -161,7 +161,11 @@ export const useLocationStore = defineStore('location', () => {
   const loadFavoriteLocations = () => {
     const saved = localStorage.getItem('favorite_locations')
     if (saved) {
-      favoriteLocations.value = JSON.parse(saved)
+      try {
+        favoriteLocations.value = JSON.parse(saved)
+      } catch (err) {
+        localStorage.removeItem('favorite_locations')
+      }
     }
   }
 

@@ -2,9 +2,23 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../services/api'
 
+function readStoredCustomer() {
+  const raw = localStorage.getItem('customer_data')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch (err) {
+    // customer_data corrupto (ej. se guardó el string "undefined") — limpiar
+    // y arrancar sin sesión en vez de tumbar el arranque de toda la app.
+    localStorage.removeItem('customer_data')
+    localStorage.removeItem('customer_token')
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('customer_token') || null)
-  const customer = ref(JSON.parse(localStorage.getItem('customer_data') || 'null'))
+  const customer = ref(readStoredCustomer())
   const loading = ref(false)
   const error = ref(null)
 
