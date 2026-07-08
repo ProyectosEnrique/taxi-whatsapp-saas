@@ -16,6 +16,5 @@ vps/frontend-dist/
 backend/api-service-base/menu-service/nul
 /nul
 **/nul
-backend/whatsapp-gateway && cp*
 # Cloud Run env var files (contain real credentials - use .env instead)
 env-vars-*.yaml

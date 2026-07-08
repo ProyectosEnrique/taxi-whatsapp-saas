@@ -13,11 +13,6 @@ RUN pip install --no-cache-dir -r requirements-light.txt
 
 COPY src/ ./src/
 
-RUN mkdir -p templates static config temp logs data/learning optimization_logs conversation_archive backups
-COPY templates/ ./templates/
-COPY static/ ./static/
-COPY config/ ./config/
-
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONIOENCODING=utf-8
 ENV FLASK_HOST=0.0.0.0
