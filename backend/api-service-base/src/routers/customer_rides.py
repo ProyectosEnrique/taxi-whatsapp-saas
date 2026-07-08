@@ -83,11 +83,12 @@ def register(payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     name     = payload.get("name") or ""
+    email    = payload.get("email") or None
     if not phone or not password:
         raise HTTPException(400, "phone y password requeridos")
     if db.query(Customer).filter(Customer.phone == phone).first():
         raise HTTPException(409, "Teléfono ya registrado")
-    customer = Customer(phone=phone, name=name, password_hash=hash_password(password))
+    customer = Customer(phone=phone, name=name, email=email, password_hash=hash_password(password))
     db.add(customer)
     db.commit()
     db.refresh(customer)

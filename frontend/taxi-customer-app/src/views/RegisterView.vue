@@ -80,7 +80,7 @@
             class="w-full bg-taxi-blue hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition duration-200 disabled:opacity-50"
           >
             <span v-if="!loading">Crear Cuenta</span>
-            <span v-else">Creando cuenta...</span>
+            <span v-else>Creando cuenta...</span>
           </button>
         </form>
 
