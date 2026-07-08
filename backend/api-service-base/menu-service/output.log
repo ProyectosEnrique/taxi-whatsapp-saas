@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "C:\Users\ASUS\Desktop\PROYECTOS_AGENTE_VENTAS\PROYECTO_B_WHATSAPP_SAAS\backend\api-service-base\menu-service\seed_data_completo.py", line 29, in <module>
-    from src.routers.auth import hash_password
-  File "C:\Users\ASUS\Desktop\PROYECTOS_AGENTE_VENTAS\PROYECTO_B_WHATSAPP_SAAS\backend\api-service-base\menu-service\src\routers\__init__.py", line 14, in <module>
-    from . import aliases
-  File "C:\Users\ASUS\Desktop\PROYECTOS_AGENTE_VENTAS\PROYECTO_B_WHATSAPP_SAAS\backend\api-service-base\menu-service\src\routers\aliases.py", line 21, in <module>
-    from ..models import Product, ProductAlias, Category
-ImportError: cannot import name 'ProductAlias' from 'src.models' (C:\Users\ASUS\Desktop\PROYECTOS_AGENTE_VENTAS\PROYECTO_B_WHATSAPP_SAAS\backend\api-service-base\menu-service\src\models\__init__.py)
