@@ -27,4 +27,4 @@ EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 CMD curl -f http://localhost:5000/api/health || exit 1
 
-CMD ["sh", "-c", "python -c 'from src.setup_auto import setup_proyecto; setup_proyecto(silent=True)' 2>/dev/null; gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 --preload src.api.app_v2:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--preload", "src.api.app_v2:app"]
