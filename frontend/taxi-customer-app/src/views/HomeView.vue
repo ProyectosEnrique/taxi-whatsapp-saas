@@ -140,7 +140,7 @@
         <div v-if="estimatedFare" class="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-gray-700">Tarifa estimada</span>
-            <span class="text-2xl font-bold text-green-600">${{ estimatedFare.total }}</span>
+            <span class="text-2xl font-bold text-green-600">${{ estimatedFare.fare }}</span>
           </div>
           <div class="text-xs text-gray-600 space-y-1">
             <div class="flex justify-between">
