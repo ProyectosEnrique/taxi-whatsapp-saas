@@ -12,8 +12,6 @@ COPY requirements-light.txt .
 RUN pip install --no-cache-dir -r requirements-light.txt
 
 COPY src/ ./src/
-COPY run_v2.py .
-COPY run_auto.py .
 
 RUN mkdir -p templates static config temp logs data/learning optimization_logs conversation_archive backups
 COPY templates/ ./templates/
