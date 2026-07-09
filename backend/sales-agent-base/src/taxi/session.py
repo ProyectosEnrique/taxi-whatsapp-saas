@@ -4,7 +4,8 @@ sesión vacía en memoria si Redis no está disponible).
 """
 import json
 import logging
-import os
+
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,8 @@ MAX_HISTORY            = 30     # mensajes a retener por sesión
 try:
     import redis as _redis_lib
     _redis_client = _redis_lib.from_url(
-        os.getenv("REDIS_URL", ""), decode_responses=True
-    ) if os.getenv("REDIS_URL") else None
+        settings.REDIS_URL, decode_responses=True
+    ) if settings.REDIS_URL else None
 except Exception:
     _redis_client = None
 

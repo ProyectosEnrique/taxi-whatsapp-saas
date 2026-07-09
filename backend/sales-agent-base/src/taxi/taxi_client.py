@@ -2,16 +2,17 @@
 Cliente HTTP hacia taxi-api (geocoding, tarifas, viajes, alta de cliente).
 """
 import logging
-import os
 from typing import Optional
 
 import httpx
 
+from src.config import settings
+
 logger = logging.getLogger(__name__)
 
-API_BASE          = os.getenv("MENU_SERVICE_URL", "http://taxi-api:5011")
-WHATSAPP_SECRET   = os.getenv("WHATSAPP_SECRET", "")
-CUSTOMER_APP_URL  = os.getenv("CUSTOMER_APP_URL", "https://taxi.nexoai.lat/cliente")
+API_BASE          = settings.MENU_SERVICE_URL
+WHATSAPP_SECRET   = settings.WHATSAPP_SECRET
+CUSTOMER_APP_URL  = settings.CUSTOMER_APP_URL
 # Derive base domain for tracking URLs (strip /cliente suffix if present)
 TRACKING_BASE     = CUSTOMER_APP_URL.replace('/cliente', '').rstrip('/')
 

@@ -5,19 +5,19 @@ malformados que a veces genera Groq llama-3.3.
 """
 import json
 import logging
-import os
 import re
 import uuid
 from typing import Optional
 
+from src.config import settings
 from . import tools as _tools
 
 logger = logging.getLogger(__name__)
 
-GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
-CEREBRAS_API_KEY  = os.getenv("CEREBRAS_API_KEY", "")
-GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+GROQ_API_KEY      = settings.GROQ_API_KEY
+CEREBRAS_API_KEY  = settings.CEREBRAS_API_KEY
+GEMINI_API_KEY    = settings.GEMINI_API_KEY
+OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY
 
 # Groq a veces genera el tool call como XML en vez de JSON:
 # 'failed_generation': '<function=name{...}</function>'

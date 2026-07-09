@@ -12,6 +12,9 @@ Flask-CORS==4.0.0
 # HTTP Client (llamadas a taxi-api y a los proveedores LLM)
 httpx==0.27.0
 
+# Configuración centralizada
+pydantic-settings==2.1.0
+
 # LLM (Groq/Cerebras/Gemini/OpenRouter, todos vía SDK de OpenAI + base_url)
 openai>=1.0.0
 
