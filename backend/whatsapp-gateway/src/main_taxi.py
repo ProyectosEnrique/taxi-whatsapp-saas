@@ -296,6 +296,7 @@ async def twilio_webhook(
         transcript = await stt.transcribe_audio_url(
             MediaUrl0,
             auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID else None,
+            content_type=MediaContentType0 or "audio/ogg",
         )
         if not transcript:
             _send_twilio(phone, "No entendí tu nota de voz. Por favor escríbeme tu mensaje.")
@@ -304,6 +305,9 @@ async def twilio_webhook(
         text = transcript
     else:
         text = Body.strip()
+        if not text and int(NumMedia) > 0 and MediaContentType0 and "audio" not in MediaContentType0:
+            _send_twilio(phone, "Solo proceso texto y notas de voz. Escríbeme lo que necesitas.")
+            return _twiml()
         if not text:
             return _twiml()
         logger.info(f"[TaxiGW] Twilio msg from {phone} ({customer_name}): {text[:80]}")

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 SESSION_TTL           = 1800   # 30 min sin actividad → conversación vence
 SESSION_TTL_WITH_RIDE  = 86400  # 24 h una vez que hay viaje confirmado
-MAX_HISTORY            = 20     # mensajes a retener por sesión
+MAX_HISTORY            = 30     # mensajes a retener por sesión
 
 try:
     import redis as _redis_lib

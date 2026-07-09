@@ -31,7 +31,7 @@ class STTClient:
         else:
             logger.warning("[STT] Deepgram API key no configurada - Notas de voz no funcionarán")
 
-    async def transcribe_audio_url(self, audio_url: str, auth: tuple = None) -> Optional[str]:
+    async def transcribe_audio_url(self, audio_url: str, auth: tuple = None, content_type: str = "audio/ogg") -> Optional[str]:
         """
         Transcribir audio desde una URL (usado para notas de voz de Twilio).
 
@@ -54,18 +54,19 @@ class STTClient:
                 return None
 
             # Transcribir
-            return await self.transcribe_bytes(audio_bytes)
+            return await self.transcribe_bytes(audio_bytes, content_type=content_type)
 
         except Exception as e:
             logger.error(f"[STT] Error transcribiendo URL: {e}")
             return None
 
-    async def transcribe_bytes(self, audio_bytes: bytes) -> Optional[str]:
+    async def transcribe_bytes(self, audio_bytes: bytes, content_type: str = "audio/ogg") -> Optional[str]:
         """
         Transcribir audio desde bytes.
 
         Args:
             audio_bytes: Bytes del audio
+            content_type: MIME type del audio (ej: audio/ogg, audio/mpeg, audio/mp4)
 
         Returns:
             Texto transcrito o None si falla
@@ -79,11 +80,11 @@ class STTClient:
 
             headers = {
                 "Authorization": f"Token {self.api_key}",
-                "Content-Type": "audio/ogg"  # Twilio envía en OGG/Opus generalmente
+                "Content-Type": content_type
             }
 
             params = {
-                "model": "nova-2",
+                "model": "nova-3",
                 "language": "es",
                 "smart_format": "true",
                 "punctuate": "true"

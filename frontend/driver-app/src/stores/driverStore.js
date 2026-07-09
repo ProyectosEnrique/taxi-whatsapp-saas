@@ -114,18 +114,45 @@ export const useDriverStore = defineStore('driver', () => {
   let _lastSentAt = 0
   const THROTTLE_MS = 5000 // enviar al servidor máximo cada 5s
 
+  // 'idle' | 'active' | 'denied' | 'error'
+  const gpsStatus = ref('idle')
+  const gpsErrorMessage = ref('')
+
   const startLocationTracking = () => {
-    if (!navigator.geolocation || _geoWatchId !== null) return
+    if (!navigator.geolocation) {
+      gpsStatus.value = 'error'
+      gpsErrorMessage.value = 'Tu navegador no soporta GPS'
+      return
+    }
+    // Si ya hay watch activo y GPS funciona, no reiniciar
+    if (_geoWatchId !== null && gpsStatus.value === 'active') return
+    // Limpiar watch previo fallido antes de reintentar
+    if (_geoWatchId !== null) {
+      navigator.geolocation.clearWatch(_geoWatchId)
+      _geoWatchId = null
+    }
 
     _geoWatchId = navigator.geolocation.watchPosition(
       (position) => {
+        gpsStatus.value = 'active'
+        gpsErrorMessage.value = ''
         const now = Date.now()
         if (now - _lastSentAt < THROTTLE_MS) return
         _lastSentAt = now
         const { latitude, longitude } = position.coords
         updateLocation(latitude, longitude)
       },
-      (err) => console.warn('GPS error:', err.message),
+      (err) => {
+        _geoWatchId = null // permitir retry
+        if (err.code === 1) {
+          gpsStatus.value = 'denied'
+          gpsErrorMessage.value = 'Permiso GPS denegado. Actívalo en ajustes del navegador.'
+        } else {
+          gpsStatus.value = 'error'
+          gpsErrorMessage.value = 'GPS no disponible. Verifica que el GPS esté activado.'
+        }
+        console.warn('GPS error:', err.message)
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     )
   }
@@ -135,6 +162,7 @@ export const useDriverStore = defineStore('driver', () => {
       navigator.geolocation.clearWatch(_geoWatchId)
       _geoWatchId = null
     }
+    gpsStatus.value = 'idle'
   }
 
   const toggleStatus = async () => {
@@ -161,6 +189,8 @@ export const useDriverStore = defineStore('driver', () => {
     fetchStats,
     startPolling,
     stopPolling,
+    gpsStatus,
+    gpsErrorMessage,
     startLocationTracking,
     stopLocationTracking,
     toggleStatus

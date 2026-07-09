@@ -653,3 +653,27 @@ async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session =
         pass
 
     return {"status": to_status.value, "ok": True}
+
+
+# ── Ubicación de conductor desde página web (sin JWT) ─────────────────────────
+
+class _DriverLocationBody(_BM):
+    lat: float
+    lng: float
+    driver_phone: str
+
+@router.post("/rides/{ride_id}/driver-location")
+def driver_location_web(ride_id: str, body: _DriverLocationBody, db: Session = Depends(get_db)):
+    """Actualiza posición GPS del conductor desde la página web (sin login)."""
+    trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
+    if not trip:
+        raise HTTPException(404, "Viaje no encontrado")
+    if trip.driver_phone != body.driver_phone:
+        raise HTTPException(403, "No autorizado")
+    driver = db.query(Driver).filter(Driver.phone == body.driver_phone).first()
+    if not driver:
+        raise HTTPException(404, "Conductor no encontrado")
+    driver.current_lat = body.lat
+    driver.current_lng = body.lng
+    db.commit()
+    return {"ok": True}

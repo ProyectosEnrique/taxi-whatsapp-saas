@@ -41,6 +41,14 @@
       🚨 ALERTA ENVIADA — {{ panicTime }} — Ayuda en camino
     </div>
 
+    <!-- Banner GPS inactivo -->
+    <div v-if="driverStore.gpsStatus === 'denied' || driverStore.gpsStatus === 'error'" class="bg-orange-500 text-white px-4 py-2 flex items-center justify-between text-sm font-semibold">
+      <span>⚠️ GPS desactivado — el cliente no puede ver tu posición</span>
+      <button @click="retryGps" class="ml-3 bg-white text-orange-600 font-bold px-3 py-1 rounded-lg text-xs">
+        Reintentar
+      </button>
+    </div>
+
     <!-- Contenido principal -->
     <main class="max-w-7xl mx-auto px-4 py-6">
       <div v-if="loading" class="flex items-center justify-center h-64">
@@ -645,6 +653,10 @@ const openWaze = () => {
     ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
     : `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`
   window.open(wazeUrl, '_blank')
+}
+
+const retryGps = () => {
+  driverStore.startLocationTracking()
 }
 
 onMounted(() => {

@@ -20,7 +20,7 @@
     <template v-else-if="ride">
 
       <!-- Mapa -->
-      <div id="driver-map" class="nav-map"></div>
+      <div id="driver-map" class="nav-map" style="overflow:hidden"></div>
 
       <!-- Card info + acción -->
       <div class="info-card">
@@ -42,9 +42,14 @@
             </div>
           </div>
 
-          <p v-if="!gpsGranted" class="gps-hint">
-            ⚠️ Activa el GPS del navegador para ver tu ruta
-          </p>
+          <div v-if="!gpsGranted" class="gps-banner">
+            <div v-if="gpsDenied" class="gps-banner-inner gps-denied">
+              🔒 GPS bloqueado — actívalo en <strong>Ajustes del navegador → Permisos → Ubicación</strong> y recarga la página
+            </div>
+            <div v-else class="gps-banner-inner gps-allow" @click="startGPS" @touchend.prevent="startGPS">
+              📍 Toca aquí para activar GPS y compartir tu posición
+            </div>
+          </div>
 
           <div class="action-row">
             <!-- Llamar cliente -->
@@ -98,6 +103,7 @@ const status    = ref(null)
 const eta       = ref(null)
 const error     = ref(null)
 const gpsGranted = ref(false)
+const gpsDenied  = ref(false)
 const actioning  = ref(false)
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -281,16 +287,66 @@ function _placeDriverMarker(pos) {
   }
 }
 
+let _lastLocationSent = 0
+const LOCATION_THROTTLE_MS = 5000
+
+// Wake Lock — mantiene la pantalla encendida para que el GPS no se detenga
+let _wakeLock = null
+
+async function _requestWakeLock() {
+  if (!('wakeLock' in navigator)) return
+  try {
+    _wakeLock = await navigator.wakeLock.request('screen')
+    _wakeLock.addEventListener('release', () => {
+      _wakeLock = null
+      if (document.visibilityState === 'visible') _requestWakeLock()
+    })
+  } catch (e) { console.warn('[WakeLock]', e.message) }
+}
+
+// Cuando el usuario regresa al tab: re-activar wake lock y GPS
+function _onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    _requestWakeLock()
+    if (!gpsGranted.value) startGPS()
+  }
+}
+
+async function _sendLocation(lat, lng) {
+  if (!driverPhone) return
+  const now = Date.now()
+  if (now - _lastLocationSent < LOCATION_THROTTLE_MS) return
+  _lastLocationSent = now
+  try {
+    await fetch(`${API_BASE}/driver/rides/${rideId}/driver-location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng, driver_phone: driverPhone }),
+    })
+  } catch (e) { console.warn('[GPS] sync failed:', e.message) }
+}
+
 async function startGPS() {
   if (!navigator.geolocation) return
+  // Limpiar watch previo antes de reintentar
+  if (watchId != null) {
+    navigator.geolocation.clearWatch(watchId)
+    watchId = null
+  }
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       gpsGranted.value = true
       driverPos = [pos.coords.latitude, pos.coords.longitude]
       _placeDriverMarker(driverPos)
       if (ride.value) await syncMap(ride.value, driverPos)
+      // Enviar posición al servidor para que el cliente vea el movimiento
+      await _sendLocation(pos.coords.latitude, pos.coords.longitude)
     },
-    (e) => console.warn('[GPS]', e.message),
+    (e) => {
+      gpsGranted.value = false
+      if (e.code === 1) gpsDenied.value = true  // PERMISSION_DENIED
+      console.warn('[GPS]', e.message)
+    },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
   )
 }
@@ -360,6 +416,8 @@ onMounted(async () => {
     }
     await syncMap(data, null)
     await startGPS()
+    await _requestWakeLock()
+    document.addEventListener('visibilitychange', _onVisibilityChange)
 
     if (data.status !== 'completed') {
       pollTimer = setInterval(fetchRide, 5000)
@@ -372,6 +430,8 @@ onMounted(async () => {
 onUnmounted(() => {
   clearInterval(pollTimer)
   if (watchId != null) navigator.geolocation.clearWatch(watchId)
+  if (_wakeLock) { _wakeLock.release(); _wakeLock = null }
+  document.removeEventListener('visibilitychange', _onVisibilityChange)
   if (map) { map.remove(); map = null }
 })
 </script>
@@ -432,6 +492,31 @@ onUnmounted(() => {
 .addr-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
 .addr-text  { font-size: 15px; color: #f9fafb; line-height: 1.4; }
 
+.gps-banner {
+  margin-top: 10px;
+}
+.gps-banner-inner {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.4;
+}
+.gps-allow {
+  background: #d97706;
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(0,0,0,0.2);
+  touch-action: manipulation;
+  user-select: none;
+}
+.gps-allow:active { background: #b45309; }
+.gps-denied {
+  background: #374151;
+  color: #fbbf24;
+  font-size: 13px;
+}
 .gps-hint {
   margin-top: 10px;
   font-size: 13px;
