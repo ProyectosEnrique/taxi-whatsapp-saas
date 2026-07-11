@@ -19,3 +19,6 @@ backend/api-service-base/menu-service/nul
 **/nul
 # Cloud Run env var files (contain real credentials - use .env instead)
 env-vars-*.yaml
+
+# Documentos internos de negocio (repo público — no exponer precios/propuestas)
+PROPUESTA_SERVICIO_150_UNIDADES.html
