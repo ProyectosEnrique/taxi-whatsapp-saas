@@ -42,13 +42,21 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 - **Servidor:** Gunicorn 21.2.0, 2 workers síncronos, puerto 5000
   - CMD: `gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 --preload src.api.app_v2:app`
   - Antes era Flask dev server (`python run_auto.py`) — cambiado para soportar ~50 taxis
+- App entry point: `src/api/app_v2.py` — solo registra `sales_bp` (blueprint de `sales_routes.py`) + healthcheck
+- **`src/taxi/` — módulos por responsabilidad** (antes un solo `agent.py` de 775 líneas):
+  - `agent.py` — orquestador delgado: bucle de tool calling, manejo de GPS entrante, recovery de errores
+  - `llm_cascade.py` — cascada de proveedores (Groq → Cerebras → Gemini → OpenRouter) + recuperación de tool calls XML malformados de Groq
+  - `prompts.py` — `SYSTEM_PROMPT` (formato intención→acción)
+  - `tools.py` — definiciones de function calling + dispatcher `run_tool()`
+  - `taxi_client.py` — llamadas HTTP a taxi-api (geocoding, tarifas, viajes)
+  - `session.py` — sesión de conversación en Redis (`MAX_HISTORY=30`, TTL 30min / 24h con viaje activo)
+- **Config centralizada:** `src/config.py` (Pydantic Settings) — todas las variables de entorno del agente (LLM keys, `REDIS_URL`, `MENU_SERVICE_URL`, `WHATSAPP_SECRET`, `CUSTOMER_APP_URL`) se leen de `settings`, no de `os.getenv()` disperso
 - **LLM fallback chain:** Groq → Cerebras → Gemini → OpenRouter
   - `parallel_tool_calls=False` (crítico para flujos secuenciales de tool calling)
   - Cerebras model: `gpt-oss-120b` — Cerebras retiró todos los modelos Llama (2026-06-28). Únicos disponibles: `gpt-oss-120b`, `zai-glm-4.7`
   - OpenRouter: `max_retries=0`, `timeout=20s` — evita esperar 60s cuando rate-limited y superar el timeout del gateway
+  - `LLMCascade.has_primary_provider` (solo Groq+Cerebras) vs `has_any_provider` (los 4) — el guard de "servicio no disponible" en `agent.py` usa el primero a propósito, así se preservó el comportamiento original
 - **Recovery:** patrón `_FAILED_GEN_RE` para tool calls XML fallidos de Groq; reset de historial cuando Groq retorna 400 ("tool call validation failed")
-- App entry point: `src/api/app_v2.py`
-- Setup inicial: `src/setup_auto.py` (`setup_proyecto()`) — corre una vez al arrancar
 
 ## 5. Variables de entorno críticas (`.env`)
 
@@ -203,3 +211,16 @@ function _placeDriverMarker(pos) {
 - `?p=` es el teléfono del conductor en Base64 — autenticación sin login completo
 - Mapa: `<div id="driver-map">` dentro de `v-else-if="ride"` → necesita `nextTick()` antes de `initMap()`
 - `watchPosition()` actualiza marcador 🚕 del conductor cada movimiento GPS real
+
+## 13. Tests (`backend/api-service-base/tests/`)
+
+- 19 tests con pytest contra SQLite en memoria (no toca Postgres real) — corren en segundos, sin Docker
+- La app de test es un `FastAPI()` mínimo que solo monta los routers bajo prueba (`customer_rides`, `payments`) — evita el `lifespan` de `src.main` (engine real, tareas en background, webhook de Telegram)
+- `conftest.py` (raíz de `api-service-base`) fija `DATABASE_URL` dummy antes de cualquier import — necesario porque `src/config.py` la exige
+- Cobertura: `fare_service.calculate_fare` (base, mínimo, surge pico/madrugada/fin de semana con `datetime` congelado), registro/login, estimar tarifa, solicitar/cancelar viaje, webhook de MercadoPago (aprobado/rechazado/ignorado/idempotente) con `httpx.AsyncClient` mockeado
+- Correr localmente: `cd backend/api-service-base && pytest tests/ -v`
+- No hay CI configurado — correr manualmente antes de cambios grandes en `customer_rides.py`, `payments.py` o `fare_service.py`
+
+## 14. Estructura del repo
+
+Este repo nació de una plantilla SaaS multi-tenant genérica (restaurante/farmacia/vinatería) que se especializó a "solo taxi". En 2026-07 se limpiaron ~183 archivos de residuo (backends/frontends duplicados no usados por ningún Dockerfile, infra muerta de Railway/Render/Cloud Run/Firebase/Cloudflare, scripts multi-tenant, tests E2E de Cypress rotos, docs nunca actualizados desde el commit inicial). Lo que queda en la raíz y en `backend/`/`frontend/` es, con pocas excepciones, lo que realmente está en producción — no asumas que un archivo es residuo sin verificarlo contra `docker-compose.vps.yml` y `vps/nginx/Dockerfile` primero.
