@@ -2,10 +2,24 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../services/api'
 
+function readStoredDriver() {
+  const raw = localStorage.getItem('driver_data')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch (err) {
+    // driver_data corrupto (ej. se guardó el string "undefined") — limpiar
+    // y arrancar sin sesión en vez de tumbar el arranque de toda la app.
+    localStorage.removeItem('driver_data')
+    localStorage.removeItem('driver_token')
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   // State
   const token = ref(localStorage.getItem('driver_token') || null)
-  const driver = ref(JSON.parse(localStorage.getItem('driver_data') || 'null'))
+  const driver = ref(readStoredDriver())
   const loading = ref(false)
   const error = ref(null)
 

@@ -59,6 +59,12 @@ const routes = [
     name: 'Agenda',
     component: () => import('../views/ScheduledRidesDriverView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    // Cualquier ruta no reconocida (ej. el Service Worker sirve algo desde
+    // caché antes de que nginx redirija) → dashboard en vez de <router-view> vacío.
+    path: '/:pathMatch(.*)*',
+    redirect: '/dashboard'
   }
 ]
 
@@ -69,14 +75,22 @@ const router = createRouter({
 
 // Navigation guard
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
+  try {
+    const authStore = useAuthStore()
 
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+      next('/login')
+    } else if (to.path === '/login' && authStore.isAuthenticated) {
+      next('/dashboard')
+    } else {
+      next()
+    }
+  } catch (err) {
+    // Si el guard falla (ej. datos corruptos en localStorage) no dejar la
+    // navegación colgada con <router-view> vacío — ir a login sin sesión.
+    localStorage.removeItem('driver_token')
+    localStorage.removeItem('driver_data')
     next('/login')
-  } else if (to.path === '/login' && authStore.isAuthenticated) {
-    next('/dashboard')
-  } else {
-    next()
   }
 })
 

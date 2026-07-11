@@ -185,9 +185,9 @@
         <p class="text-sm text-red-600 mb-3">Cambia <strong>Ubicacion</strong> a <strong>Permitir</strong>, luego vuelve aqui y recarga.</p>
         <button @click="reloadPage()" class="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg">Recargar pagina</button>
       </div>
-      <div v-else-if="driverStore.isAvailable && driverStore.gpsStatus !== 'granted'" class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-center justify-between">
+      <div v-else-if="driverStore.isAvailable && driverStore.gpsStatus !== 'active'" class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-center justify-between">
         <p class="text-sm text-yellow-800">&#128205; Activa tu ubicacion para recibir viajes.</p>
-        <button @click="driverStore.requestGPSPermission()" class="ml-3 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-lg whitespace-nowrap">Permitir GPS</button>
+        <button @click="driverStore.startLocationTracking()" class="ml-3 px-3 py-1 bg-yellow-500 text-white text-sm font-semibold rounded-lg whitespace-nowrap">Permitir GPS</button>
       </div>
 
       <!-- Solicitudes de viaje pendientes -->
@@ -405,8 +405,6 @@ const setStatus = async (status) => {
     }
     rideStore.startPolling()
     driverStore.startLocationTracking()
-    // Forzar dialogo de permiso GPS inmediatamente
-    driverStore.requestGPSPermission()
   } else if (result.success && status === 'offline') {
     rideStore.stopPolling()
     driverStore.stopLocationTracking()
@@ -444,8 +442,6 @@ onMounted(() => {
     rideStore.startPolling()
     driverStore.startPolling()
     driverStore.startLocationTracking()
-    // Solicitar permiso GPS al arrancar
-    driverStore.requestGPSPermission()
   }
   rideStore.fetchScheduledRides()
 })
