@@ -1,6 +1,8 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -9,6 +11,7 @@ from src import fare_service
 from src.auth import create_token, hash_password
 from src.database import Base, get_db
 from src.models import Customer
+from src.rate_limit import limiter
 from src.routers import customer_rides, payments
 
 engine = create_engine(
@@ -21,9 +24,13 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(autouse=True)
 def _reset_db():
-    """Tablas frescas y caché de tarifas limpia en cada test."""
+    """Tablas frescas, caché de tarifas limpia y contador de rate-limit
+    reiniciado en cada test — TestClient siempre pega desde la misma IP
+    simulada, así que sin esto los tests de register/login de distintos
+    tests se acumularían contra el mismo contador."""
     Base.metadata.create_all(bind=engine)
     fare_service.invalidate_cache()
+    limiter.reset()
     yield
     fare_service.invalidate_cache()
     Base.metadata.drop_all(bind=engine)
@@ -52,6 +59,8 @@ def app():
     lifespan de src.main (engine real, tareas en background, webhook
     de Telegram)."""
     test_app = FastAPI()
+    test_app.state.limiter = limiter
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     test_app.include_router(customer_rides.router)
     test_app.include_router(payments.router)
     test_app.dependency_overrides[get_db] = _override_get_db

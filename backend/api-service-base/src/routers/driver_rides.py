@@ -10,13 +10,14 @@ from decimal import Decimal
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Driver, Trip, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_driver
 from ..config import settings
+from ..rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,8 @@ def _trip_to_dict(trip: Trip) -> dict:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.post("/login")
-def login(payload: dict, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     driver   = db.query(Driver).filter(Driver.phone == phone).first()

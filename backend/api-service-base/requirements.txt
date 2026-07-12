@@ -29,5 +29,8 @@ python-multipart==0.0.6
 # QR codes (mesas / landing)
 qrcode[pil]==7.4.2
 
+# Rate limiting (login/registro/forgot-password)
+slowapi==0.1.10
+
 # Tests
 pytest==7.4.4

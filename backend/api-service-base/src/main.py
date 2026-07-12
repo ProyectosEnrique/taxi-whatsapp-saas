@@ -348,6 +348,15 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+# Rate limiting — protege login/registro (fuerza bruta) y forgot-password
+# (manda SMS real vía Twilio, con costo por envío)
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from .rate_limit import limiter
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # ==============================================================================
 # MIDDLEWARE
 # ==============================================================================

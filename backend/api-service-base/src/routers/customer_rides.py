@@ -9,7 +9,7 @@ import string
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -17,6 +17,7 @@ from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, 
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare
 from ..config import settings
+from ..rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/customer", tags=["customer"])
@@ -79,7 +80,8 @@ def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.post("/register")
-def register(payload: dict, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     name     = payload.get("name") or ""
@@ -97,7 +99,8 @@ def register(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(payload: dict, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     customer = db.query(Customer).filter(Customer.phone == phone).first()
@@ -113,7 +116,8 @@ def logout():
 
 
 @router.post("/forgot-password")
-async def forgot_password(payload: dict, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone = (payload.get("phone") or "").strip()
     if not phone:
         raise HTTPException(400, "phone requerido")
@@ -151,7 +155,8 @@ async def forgot_password(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-password")
-def reset_password(payload: dict, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def reset_password(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone = (payload.get("phone") or "").strip()
     code = (payload.get("code") or "").strip()
     new_password = payload.get("new_password") or ""
