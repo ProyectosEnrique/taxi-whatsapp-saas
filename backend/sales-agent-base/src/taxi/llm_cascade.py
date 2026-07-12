@@ -82,6 +82,7 @@ class LLMCascade:
                     api_key=GROQ_API_KEY,
                     base_url="https://api.groq.com/openai/v1",
                     timeout=30.0,
+                    max_retries=0,
                 )
                 logger.info("[TaxiAgent] Groq inicializado")
             if CEREBRAS_API_KEY:
@@ -89,6 +90,7 @@ class LLMCascade:
                     api_key=CEREBRAS_API_KEY,
                     base_url="https://api.cerebras.ai/v1",
                     timeout=30.0,
+                    max_retries=0,
                 )
                 logger.info("[TaxiAgent] Cerebras fallback inicializado")
             if GEMINI_API_KEY:
@@ -96,6 +98,7 @@ class LLMCascade:
                     api_key=GEMINI_API_KEY,
                     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                     timeout=30.0,
+                    max_retries=0,
                 )
                 logger.info("[TaxiAgent] Gemini fallback inicializado")
             if OPENROUTER_API_KEY:
@@ -136,7 +139,7 @@ class LLMCascade:
             providers.append((self._openrouter, "meta-llama/llama-3.3-70b-instruct:free", "OpenRouter"))
 
         last_exc = RuntimeError("Sin proveedores LLM configurados")
-        for client, model, name in providers:
+        for i, (client, model, name) in enumerate(providers):
             try:
                 kwargs_merged = {"model": model, "messages": messages, **kwargs}
                 if tools:
@@ -147,9 +150,10 @@ class LLMCascade:
                 return resp, name
             except Exception as e:
                 last_exc = e
-                is_last = (name == providers[-1][2])
+                is_last = (i == len(providers) - 1)
                 if not is_last:
-                    logger.warning(f"[TaxiAgent] {name} error ({type(e).__name__}: {str(e)[:80]}) — usando fallback Cerebras")
+                    next_name = providers[i + 1][2]
+                    logger.warning(f"[TaxiAgent] {name} error ({type(e).__name__}: {str(e)[:80]}) — usando fallback {next_name}")
                     continue
                 raise last_exc
         raise last_exc
