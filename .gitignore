@@ -22,3 +22,4 @@ env-vars-*.yaml
 
 # Documentos internos de negocio (repo público — no exponer precios/propuestas)
 PROPUESTA_SERVICIO_150_UNIDADES.html
+AUDITORIA_PRODUCCION.md
