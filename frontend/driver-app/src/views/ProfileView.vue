@@ -181,6 +181,45 @@
         </form>
       </div>
 
+      <!-- Cobros con tarjeta (MercadoPago Connect) -->
+      <div class="bg-white rounded-lg shadow mb-6 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">💳 Cobros con Tarjeta</h3>
+        <p class="text-sm text-gray-500 mb-4">
+          Conecta tu propia cuenta de MercadoPago para recibir tus cobros con tarjeta directo —
+          100% para ti, sin comisión de la plataforma.
+        </p>
+
+        <div v-if="driver?.mp_connected" class="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">✅</span>
+            <div>
+              <p class="font-medium text-gray-900">Cuenta conectada</p>
+              <p class="text-sm text-gray-500">Ya puedes aceptar viajes con pago por tarjeta</p>
+            </div>
+          </div>
+          <button
+            @click="disconnectMercadoPago"
+            :disabled="mpLoading"
+            class="text-red-600 hover:underline text-sm disabled:opacity-50"
+          >
+            Desconectar
+          </button>
+        </div>
+
+        <div v-else>
+          <button
+            @click="connectMercadoPago"
+            :disabled="mpLoading"
+            class="w-full bg-[#009EE3] hover:bg-[#008ecf] disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
+          >
+            {{ mpLoading ? 'Conectando...' : 'Conectar mi cuenta de MercadoPago' }}
+          </button>
+          <p class="text-xs text-gray-400 mt-2 text-center">
+            Sin esto no podrás aceptar viajes con pago por tarjeta — los de efectivo no se afectan.
+          </p>
+        </div>
+      </div>
+
       <!-- Documentos -->
       <div class="bg-white rounded-lg shadow mb-6 p-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">📄 Documentos</h3>
@@ -368,14 +407,15 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
-import { driverApi } from '../services/api'
+import { driverApi, mercadoPagoApi } from '../services/api'
 import { useToast } from '../composables/useToast'
 
 const { success: toastSuccess, error: toastError } = useToast()
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const driver = computed(() => authStore.driver)
@@ -512,8 +552,53 @@ const goBack = () => {
   router.push('/dashboard')
 }
 
+// MercadoPago Connect — cada conductor conecta su propia cuenta
+const mpLoading = ref(false)
+
+const connectMercadoPago = async () => {
+  mpLoading.value = true
+  try {
+    const { url } = await mercadoPagoApi.getConnectUrl()
+    window.location.href = url // sale de la SPA a iniciar sesión en MercadoPago
+  } catch (err) {
+    toastError('No se pudo iniciar la conexión con MercadoPago')
+    mpLoading.value = false
+  }
+}
+
+const disconnectMercadoPago = async () => {
+  if (!confirm('¿Desconectar tu cuenta de MercadoPago? No podrás aceptar viajes con tarjeta hasta reconectarla.')) return
+  mpLoading.value = true
+  try {
+    await mercadoPagoApi.disconnect()
+    authStore.updateDriverData({ mp_connected: false })
+    toastSuccess('Cuenta de MercadoPago desconectada')
+  } catch (err) {
+    toastError('No se pudo desconectar la cuenta')
+  } finally {
+    mpLoading.value = false
+  }
+}
+
+// Al volver de MercadoPago, el backend redirige aquí con ?mp_connected=1|0
+const checkMercadoPagoReturn = async () => {
+  const mpParam = route.query.mp_connected
+  if (mpParam === undefined) return
+  if (mpParam === '1') {
+    try {
+      const profile = await driverApi.getProfile()
+      authStore.updateDriverData(profile)
+      toastSuccess('✅ Cuenta de MercadoPago conectada')
+    } catch (_) { /* best-effort */ }
+  } else {
+    toastError('No se pudo conectar tu cuenta de MercadoPago. Intenta de nuevo.')
+  }
+  router.replace({ path: route.path }) // limpia el query param de la URL
+}
+
 onMounted(() => {
   loadVehicleForm()
   loadSettings()
+  checkMercadoPagoReturn()
 })
 </script>

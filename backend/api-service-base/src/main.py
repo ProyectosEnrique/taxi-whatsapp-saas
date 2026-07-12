@@ -290,6 +290,12 @@ async def lifespan(app: FastAPI):
         ("trips",     "last_notified_at",                 "TIMESTAMP WITH TIME ZONE"),
         # Foto del vehículo del conductor
         ("drivers",   "vehicle_photo_url",                "VARCHAR(255)"),
+        # MercadoPago Connect — cobros con tarjeta directo a la cuenta del conductor
+        ("drivers",   "mp_user_id",                       "VARCHAR(50)"),
+        ("drivers",   "mp_access_token",                  "VARCHAR(255)"),
+        ("drivers",   "mp_refresh_token",                 "VARCHAR(255)"),
+        ("drivers",   "mp_token_expires_at",              "TIMESTAMP WITH TIME ZONE"),
+        ("drivers",   "mp_connected_at",                  "TIMESTAMP WITH TIME ZONE"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe

@@ -4,7 +4,6 @@ Portado desde mandaya/payments.py y adaptado para viajes de taxi.
 """
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -12,16 +11,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db, SessionLocal
-from ..models import Trip, TripStatus
+from ..models import Driver, Trip, TripStatus
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
 
-MP_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
-WA_GATEWAY_URL  = os.getenv("WHATSAPP_GATEWAY_URL", "http://taxi-whatsapp:8000")
-PUBLIC_URL      = os.getenv("PUBLIC_URL", "https://taxi.nexoai.lat")
+# MP_ACCESS_TOKEN: token de la propia aplicación de la plataforma — hoy solo se
+# usa para consultar el webhook (ver mercadopago_webhook), NO para crear
+# preferencias de viaje. Cada viaje con tarjeta cobra con el token del
+# conductor asignado (MercadoPago Connect — ver create_mp_preference).
+MP_ACCESS_TOKEN = settings.MERCADOPAGO_ACCESS_TOKEN
+WA_GATEWAY_URL  = settings.WHATSAPP_GATEWAY_URL
+PUBLIC_URL      = settings.PUBLIC_URL
 MP_API          = "https://api.mercadopago.com"
-BUSINESS_NAME   = os.getenv("BUSINESS_NAME", "Taxi App")
+BUSINESS_NAME   = settings.BUSINESS_NAME
 
 
 # ── Core helper (importable desde otros módulos) ──────────────────────────────
@@ -86,8 +90,12 @@ async def create_preference(
 @router.post("/mp-preference")
 async def create_mp_preference(payload: dict, db: Session = Depends(get_db)):
     """
-    Crea una preferencia MP para un viaje con pago con tarjeta.
-    Llamado por whatsapp-gateway o por el agente de conversación.
+    Crea una preferencia MP para un viaje con pago con tarjeta — el cobro cae
+    directo a la cuenta de MercadoPago del conductor asignado (MercadoPago
+    Connect), no a una cuenta de la plataforma. Por eso solo se puede llamar
+    DESPUÉS de que un conductor aceptó el viaje (ver accept_ride en
+    driver_rides.py, que ya bloquea aceptar viajes con tarjeta si el
+    conductor no tiene MercadoPago conectado).
     Body: {"trip_id": "TRIP-XXXXXXXX"}
     """
     trip_id = payload.get("trip_id")
@@ -98,15 +106,19 @@ async def create_mp_preference(payload: dict, db: Session = Depends(get_db)):
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
 
-    if not MP_ACCESS_TOKEN:
-        raise HTTPException(503, "MercadoPago no configurado en el servidor")
+    if not trip.driver_phone:
+        raise HTTPException(409, "Aún no hay conductor asignado a este viaje")
+
+    driver = db.query(Driver).filter(Driver.phone == trip.driver_phone).first()
+    if not driver or not driver.mp_access_token:
+        raise HTTPException(409, "El conductor de este viaje no tiene MercadoPago conectado")
 
     title = (
         f"Viaje #{trip_id}"
         + (f" — {trip.destination_address[:40]}" if trip.destination_address else "")
     )
     pref = await create_preference(
-        token=MP_ACCESS_TOKEN,
+        token=driver.mp_access_token,
         trip_id=trip_id,
         amount=float(trip.fare),
         title=title,

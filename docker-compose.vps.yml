@@ -176,6 +176,8 @@ services:
       DEBUG: "false"
       CORS_ORIGINS: '["https://taxi.nexoai.lat"]'
       MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MERCADOPAGO_CLIENT_ID: ${MERCADOPAGO_CLIENT_ID:-}
+      MERCADOPAGO_CLIENT_SECRET: ${MERCADOPAGO_CLIENT_SECRET:-}
       PUBLIC_URL: https://taxi.nexoai.lat
       BUSINESS_NAME: ${BUSINESS_NAME:-Taxi App}
       WHATSAPP_GATEWAY_URL: http://taxi-whatsapp:8000

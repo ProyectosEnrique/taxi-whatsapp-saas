@@ -64,7 +64,9 @@ class Settings(BaseSettings):
     # MERCADOPAGO
     # ==============================================================================
 
-    MERCADOPAGO_ACCESS_TOKEN: str = ""
+    MERCADOPAGO_ACCESS_TOKEN: str = ""     # token de la plataforma (uso general, no por conductor)
+    MERCADOPAGO_CLIENT_ID: str = ""        # credenciales de la aplicación MercadoPago (modo Marketplace)
+    MERCADOPAGO_CLIENT_SECRET: str = ""    # una sola app para toda la plataforma, no por conductor
     PUBLIC_URL: str = "https://taxi.nexoai.lat"
     BUSINESS_NAME: str = "Taxi App"
     WHATSAPP_GATEWAY_URL: str = "http://taxi-whatsapp:8000"

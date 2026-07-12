@@ -11,11 +11,12 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Driver, Trip, TripStatus, TaxiGroup
-from ..auth import hash_password, verify_password, create_token, get_current_driver
+from ..auth import hash_password, verify_password, create_token, get_current_driver, _decode
 from ..config import settings
 from ..rate_limit import limiter
 
@@ -67,6 +68,7 @@ def _driver_to_dict(driver: Driver) -> dict:
             "lat": _sf(driver.current_lat),
             "lng": _sf(driver.current_lng),
         },
+        "mp_connected": bool(driver.mp_connected_at),
     }
 
 
@@ -315,6 +317,96 @@ def get_earnings(period: str = "week", current: Driver = Depends(get_current_dri
     }
 
 
+# ── MercadoPago Connect — cada conductor cobra directo a su propia cuenta,
+#    sin comisión de la plataforma (la plataforma ya cobra su cuota semanal
+#    aparte). Una sola "aplicación" MercadoPago para toda la plataforma
+#    (MERCADOPAGO_CLIENT_ID/SECRET); cada conductor autoriza su propia cuenta.
+
+MP_OAUTH_STATE_ROLE = "mp_oauth_state"
+MP_AUTH_URL  = "https://auth.mercadopago.com.mx/authorization"
+MP_TOKEN_URL = "https://api.mercadopago.com/oauth/token"
+
+
+@router.get("/mercadopago/connect-url")
+def mercadopago_connect_url(current: Driver = Depends(get_current_driver)):
+    if not settings.MERCADOPAGO_CLIENT_ID:
+        raise HTTPException(503, "MercadoPago no configurado en el servidor")
+    # El state lleva el teléfono del conductor firmado (mismo JWT que ya usa
+    # el login) — el callback lo recibe sin bearer token, es una redirección
+    # nueva del navegador, no una llamada autenticada de la app.
+    state = create_token(current.phone, MP_OAUTH_STATE_ROLE)
+    redirect_uri = f"{settings.PUBLIC_URL}/api/v1/driver/mercadopago/callback"
+    url = (
+        f"{MP_AUTH_URL}?client_id={settings.MERCADOPAGO_CLIENT_ID}"
+        f"&response_type=code&platform_id=mp"
+        f"&redirect_uri={redirect_uri}&state={state}"
+    )
+    return {"url": url}
+
+
+@router.get("/mercadopago/callback")
+async def mercadopago_callback(code: str | None = None, state: str | None = None, db: Session = Depends(get_db)):
+    """MercadoPago redirige aquí tras la autorización — público, sin JWT."""
+    fail_redirect = f"{settings.PUBLIC_URL}/driver/profile?mp_connected=0"
+    if not code or not state:
+        return RedirectResponse(fail_redirect)
+
+    try:
+        payload = _decode(state)
+        if payload.get("role") != MP_OAUTH_STATE_ROLE:
+            raise ValueError("state con role inesperado")
+        phone = payload["sub"]
+    except Exception:
+        logger.warning("[MP Connect] state inválido o expirado en callback")
+        return RedirectResponse(fail_redirect)
+
+    driver = db.query(Driver).filter(Driver.phone == phone).first()
+    if not driver:
+        return RedirectResponse(fail_redirect)
+
+    redirect_uri = f"{settings.PUBLIC_URL}/api/v1/driver/mercadopago/callback"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as c:
+            r = await c.post(MP_TOKEN_URL, json={
+                "client_id":     settings.MERCADOPAGO_CLIENT_ID,
+                "client_secret": settings.MERCADOPAGO_CLIENT_SECRET,
+                "grant_type":    "authorization_code",
+                "code":          code,
+                "redirect_uri":  redirect_uri,
+            })
+        if r.status_code != 200:
+            logger.error(f"[MP Connect] token exchange falló para {phone}: {r.status_code} {r.text[:300]}")
+            return RedirectResponse(fail_redirect)
+        data = r.json()
+    except Exception as exc:
+        logger.error(f"[MP Connect] excepción en token exchange para {phone}: {exc}")
+        return RedirectResponse(fail_redirect)
+
+    driver.mp_user_id       = str(data.get("user_id") or "")
+    driver.mp_access_token  = data.get("access_token")
+    driver.mp_refresh_token = data.get("refresh_token")
+    expires_in = data.get("expires_in")
+    driver.mp_token_expires_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=expires_in) if expires_in else None
+    )
+    driver.mp_connected_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info(f"[MP Connect] {phone} conectó su cuenta de MercadoPago (mp_user_id={driver.mp_user_id})")
+
+    return RedirectResponse(f"{settings.PUBLIC_URL}/driver/profile?mp_connected=1")
+
+
+@router.post("/mercadopago/disconnect")
+def mercadopago_disconnect(current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+    current.mp_user_id          = None
+    current.mp_access_token     = None
+    current.mp_refresh_token    = None
+    current.mp_token_expires_at = None
+    current.mp_connected_at     = None
+    db.commit()
+    return {"success": True}
+
+
 # ── Gestión de viajes ─────────────────────────────────────────────────────────
 
 @router.get("/rides/pending")
@@ -447,6 +539,8 @@ async def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver
         raise HTTPException(404, "Viaje no encontrado")
     if trip.status != TripStatus.REQUESTED or trip.driver_phone:
         raise HTTPException(409, "Viaje ya fue tomado por otro conductor")
+    if trip.payment_method == "card" and not current.mp_access_token:
+        raise HTTPException(409, "Conecta tu cuenta de MercadoPago para aceptar viajes con pago por tarjeta")
     trip.driver_phone = current.phone
     trip.driver_name  = current.name
     trip.status       = TripStatus.CONFIRMED

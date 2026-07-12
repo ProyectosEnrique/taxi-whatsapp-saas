@@ -178,7 +178,7 @@
             </button>
           </div>
           <p v-if="paymentMethod === 'card'" class="text-xs text-blue-600 mt-1.5 text-center">
-            Serás redirigido al checkout de MercadoPago
+            Podrás pagar con tarjeta en cuanto se asigne tu conductor
           </p>
         </div>
 
@@ -188,10 +188,7 @@
           :disabled="!locationStore.canRequestRide || requesting"
           class="w-full bg-taxi-yellow hover:bg-yellow-500 text-white font-bold py-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          <span v-if="requesting">
-            <span v-if="creatingPayment">Generando link de pago...</span>
-            <span v-else>Solicitando...</span>
-          </span>
+          <span v-if="requesting">Solicitando...</span>
           <span v-else>{{ locationStore.canRequestRide ? '🚕 Solicitar Taxi' : 'Ingresa origen y destino' }}</span>
         </button>
 
@@ -236,7 +233,7 @@ import { useRouter } from 'vue-router'
 import { useLocationStore } from '../stores/locationStore'
 import { useRideStore } from '../stores/rideStore'
 import { useToast } from '../composables/useToast'
-import { ridesApi, promoApi, paymentApi } from '../services/api'
+import { ridesApi, promoApi } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -399,7 +396,6 @@ const destinationResults = ref([])
 const showOriginResults = ref(false)
 const showDestinationResults = ref(false)
 const requesting = ref(false)
-const creatingPayment = ref(false)
 const paymentMethod = ref('cash')
 const showPromoCode = ref(false)
 const promoCode = ref('')
@@ -522,7 +518,6 @@ const requestRide = async () => {
   if (!locationStore.canRequestRide) return
 
   requesting.value = true
-  creatingPayment.value = false
 
   try {
     const rideData = {
@@ -539,31 +534,15 @@ const requestRide = async () => {
       return
     }
 
-    const tripId = result.ride.ride_id
-
-    // Pago con tarjeta: crear preferencia MP y redirigir al checkout
-    if (paymentMethod.value === 'card') {
-      creatingPayment.value = true
-      try {
-        const pref = await paymentApi.createMPPreference(tripId)
-        // Guardar trip_id en sessionStorage para recuperar al volver de MP
-        sessionStorage.setItem('pending_mp_trip', tripId)
-        // Redirigir al checkout de MercadoPago (misma ventana)
-        window.location.href = pref.init_point
-      } catch {
-        toastError('No se pudo generar el link de pago. Intenta con efectivo.')
-        // El viaje ya fue creado — ir al tracking de todas formas
-        router.push(`/ride/${tripId}`)
-      }
-      return
-    }
-
-    router.push(`/ride/${tripId}`)
+    // El cobro con tarjeta ya no se genera aquí: cae directo a la cuenta de
+    // MercadoPago del conductor asignado, así que hay que esperar a que
+    // alguien acepte el viaje. RideTrackingView.vue genera el link de pago
+    // en cuanto detecta que ya hay conductor asignado.
+    router.push(`/ride/${result.ride.ride_id}`)
   } catch (err) {
     toastError('Error de conexión')
   } finally {
     requesting.value = false
-    creatingPayment.value = false
   }
 }
 

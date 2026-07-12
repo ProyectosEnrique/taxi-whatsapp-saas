@@ -389,6 +389,13 @@ class Driver(Base):
     # Propio Telegram del chofer — para notificaciones de viajes y aceptar vía bot
     telegram_chat_id = Column(String(50), nullable=True, index=True)
 
+    # MercadoPago Connect — cuenta propia del conductor, cobros con tarjeta le caen directo a él
+    mp_user_id          = Column(String(50),  nullable=True)
+    mp_access_token     = Column(String(255), nullable=True)
+    mp_refresh_token    = Column(String(255), nullable=True)
+    mp_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    mp_connected_at     = Column(DateTime(timezone=True), nullable=True)  # NULL = no conectado
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):

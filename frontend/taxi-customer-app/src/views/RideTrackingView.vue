@@ -369,8 +369,26 @@ const ratingComment = ref('')
 const rated = ref(false)
 const mapContainer = ref(null)
 const retryingPayment = ref(false)
+const autoPaymentTriggered = ref(false)
 
 const paymentPending = computed(() => ride.value?.payment_status === 'pending_payment')
+
+// El cobro con tarjeta cae directo a la cuenta de MercadoPago del conductor
+// asignado, así que no se puede generar hasta que alguien acepte el viaje.
+// En cuanto aparece un conductor y el pago sigue sin iniciarse, se genera
+// el link automáticamente y se redirige — mismo mecanismo que "volver a
+// MercadoPago" (retryPayment), solo que disparado en automático.
+const maybeAutoStartPayment = (r) => {
+  if (
+    r?.payment_method === 'card' &&
+    r?.payment_status === 'pending' &&
+    r?.driver &&
+    !autoPaymentTriggered.value
+  ) {
+    autoPaymentTriggered.value = true
+    retryPayment()
+  }
+}
 
 let leafletMap = null
 let driverMarker = null
@@ -518,6 +536,7 @@ watch(() => rideStore.activeRide, (newRide) => {
   const lat = newRide.driver?.current_lat
   const lon = newRide.driver?.current_lon
   if (lat && lon) updateDriverMarker(lat, lon)
+  maybeAutoStartPayment(newRide)
 }, { deep: true })
 
 const loadRideDetails = async () => {
@@ -666,6 +685,7 @@ const retryPayment = async () => {
     window.location.href = pref.init_point
   } catch {
     toastError('No se pudo generar el link de pago. Intenta de nuevo.')
+    autoPaymentTriggered.value = false // permite que el intento automático se reintente en el próximo poll
   } finally {
     retryingPayment.value = false
   }
@@ -705,6 +725,8 @@ onMounted(async () => {
   await loadRideDetails()
   if (ride.value?.payment_method === 'card' && ride.value?.payment_status === 'pending_payment') {
     startPaymentPolling()
+  } else {
+    maybeAutoStartPayment(ride.value)
   }
 })
 

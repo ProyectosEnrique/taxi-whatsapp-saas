@@ -201,6 +201,22 @@ export const ridesApi = {
 }
 
 // ============================================
+// MERCADOPAGO API — conectar cuenta propia para cobros con tarjeta
+// ============================================
+
+export const mercadoPagoApi = {
+  getConnectUrl: async () => {
+    const response = await api.get('/driver/mercadopago/connect-url')
+    return response.data
+  },
+
+  disconnect: async () => {
+    const response = await api.post('/driver/mercadopago/disconnect')
+    return response.data
+  },
+}
+
+// ============================================
 // EARNINGS API
 // ============================================
 
