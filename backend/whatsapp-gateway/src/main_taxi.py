@@ -44,6 +44,26 @@ TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_WA_NUMBER     = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+16204077336")
 WHATSAPP_SECRET      = os.getenv("WHATSAPP_SECRET", "")
+PUBLIC_URL           = os.getenv("PUBLIC_URL", "https://taxi.nexoai.lat")
+
+
+# ─── Verificación de firma del webhook de Twilio ───────────────────────────────
+# Sin esto, cualquiera que conozca la URL del webhook puede mandar mensajes
+# falsos suplantando cualquier número de teléfono — cada mensaje falso dispara
+# una llamada real al LLM y potencialmente una respuesta real de WhatsApp,
+# ambas con costo. Twilio firma cada request con HMAC-SHA1 usando el Auth
+# Token; recalculamos la firma y la comparamos.
+def _verify_twilio_signature(url: str, form_dict: dict, signature: str | None) -> bool:
+    if not TWILIO_AUTH_TOKEN:
+        # Sin Auth Token configurado no hay forma de verificar — no bloquear
+        # el servicio por una variable de entorno faltante, pero avisar fuerte.
+        logger.warning("[TaxiGW] TWILIO_AUTH_TOKEN no configurado — firma del webhook SIN verificar")
+        return True
+    if not signature:
+        return False
+    from twilio.request_validator import RequestValidator
+    validator = RequestValidator(TWILIO_AUTH_TOKEN)
+    return validator.validate(url, form_dict, signature)
 
 
 # ─── FSM caller ───────────────────────────────────────────────────────────────
@@ -270,6 +290,8 @@ async def meta_webhook(request: Request):
 
 @app.post("/webhook/twilio")
 async def twilio_webhook(
+    request: Request,
+    x_twilio_signature: str = Header(None, alias="X-Twilio-Signature"),
     From: str = Form(...),
     Body: str = Form(""),
     ProfileName: str = Form(None),
@@ -280,6 +302,13 @@ async def twilio_webhook(
     Longitude: str = Form(None),
 ):
     import asyncio as _aio
+
+    form_dict = dict(await request.form())
+    webhook_url = f"{PUBLIC_URL}{request.url.path}"
+    if not _verify_twilio_signature(webhook_url, form_dict, x_twilio_signature):
+        logger.warning(f"[TaxiGW] Firma de Twilio inválida — request rechazado (From={From!r})")
+        return Response(status_code=403)
+
     phone         = From.replace("whatsapp:", "").strip()
     customer_name = ProfileName or "Cliente"
 
