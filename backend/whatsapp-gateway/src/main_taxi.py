@@ -33,6 +33,27 @@ def _is_duplicate(msg_id: str) -> bool:
     _seen[msg_id] = now
     return False
 
+
+# Rate limit por teléfono: {phone: [timestamps]} — cada mensaje procesado
+# dispara una llamada real al LLM y potencialmente un envío real de WhatsApp,
+# ambos con costo. Ventana fija simple, suficiente para una sola instancia
+# de proceso (taxi-whatsapp corre un solo worker uvicorn, sin fragmentación
+# entre procesos).
+_msg_times: dict[str, list[float]] = {}
+_RATE_LIMIT_WINDOW = 60      # segundos
+_RATE_LIMIT_MAX_MSGS = 20    # mensajes por teléfono por ventana
+
+
+def _is_rate_limited(phone: str) -> bool:
+    now = time.time()
+    times = [t for t in _msg_times.get(phone, []) if now - t < _RATE_LIMIT_WINDOW]
+    if len(times) >= _RATE_LIMIT_MAX_MSGS:
+        _msg_times[phone] = times
+        return True
+    times.append(now)
+    _msg_times[phone] = times
+    return False
+
 SALES_AGENT_URL      = os.getenv("SALES_AGENT_URL", "http://taxi-agent:5000")
 META_VERIFY_TOKEN    = os.getenv("META_VERIFY_TOKEN", "taxi2026")
 META_ACCESS_TOKEN    = os.getenv("META_ACCESS_TOKEN", "")
@@ -311,6 +332,12 @@ async def twilio_webhook(
 
     phone         = From.replace("whatsapp:", "").strip()
     customer_name = ProfileName or "Cliente"
+
+    if _is_rate_limited(phone):
+        logger.warning(f"[TaxiGW] Rate limit alcanzado para {phone} — mensaje descartado")
+        # TwiML vacío (200), no un código de error: así Twilio no reintenta
+        # el mismo mensaje una y otra vez, empeorando el problema.
+        return _twiml()
 
     # Determinar texto del mensaje antes de lanzar background task
     if Latitude and Longitude:
