@@ -45,6 +45,10 @@ services:
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.5
+    volumes:
+      # Documentos estáticos internos (guías, propuestas) — fuera del repo
+      # git a propósito, se suben por scp directo al VPS.
+      - /root/projects/taxi-static:/usr/share/nginx/html/docs:ro
     logging:
       driver: json-file
       options:

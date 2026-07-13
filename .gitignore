@@ -23,4 +23,5 @@ env-vars-*.yaml
 # Documentos internos de negocio (repo público — no exponer precios/propuestas)
 PROPUESTA_SERVICIO_150_UNIDADES.html
 PROPUESTA_DIRIGENTES_BASE_TAXIS.html
+Guia_Base_Taxis.pdf
 AUDITORIA_PRODUCCION.md
