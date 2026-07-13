@@ -39,7 +39,7 @@ export default defineConfig({
         // denylist, el SW intercepta la navegación con el index.html
         // cacheado antes de que nginx pueda redirigir — Vue Router no
         // encuentra ruta para /cliente y <router-view> queda vacío.
-        navigateFallbackDenylist: [/^\/driver/, /^\/admin/, /^\/cliente$/],
+        navigateFallbackDenylist: [/^\/driver/, /^\/admin/, /^\/cliente$/, /^\/guia-base/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
