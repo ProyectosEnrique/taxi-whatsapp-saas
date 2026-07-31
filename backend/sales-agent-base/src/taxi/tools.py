@@ -123,6 +123,22 @@ TOOLS = [
 ]
 
 
+def mark_ride_sent_if_success(session: dict, name: str, result_str: str) -> None:
+    """Si `crear_viaje` tuvo éxito, guarda el resultado en la sesión para que el
+    llamador pueda devolver la confirmación real en vez de un error genérico
+    si el proveedor LLM falla en una ronda posterior (el viaje ya es real e
+    irreversible — no debe reintentarse ni perderse de la respuesta al cliente)."""
+    if name != "crear_viaje":
+        return
+    try:
+        data = json.loads(result_str)
+    except Exception:
+        return
+    if data.get("success"):
+        session["_ride_sent"] = True
+        session["_ride_data"] = data
+
+
 def run_tool(name: str, args: dict, phone: str) -> str:
     if name == "buscar_lugar":
         results = client.geocode(args.get("query", ""))

@@ -32,7 +32,7 @@ CONTENT_FUNC_RE = re.compile(
 )
 
 
-def recover_tool_call(err_str: str, messages: list, phone: str) -> Optional[list]:
+def recover_tool_call(err_str: str, messages: list, phone: str, session: Optional[dict] = None) -> Optional[list]:
     """
     Groq llama-3.3 sometimes generates tool calls as XML instead of JSON.
     Error contains 'failed_generation': '<function=name{...}</function>'
@@ -48,6 +48,8 @@ def recover_tool_call(err_str: str, messages: list, phone: str) -> Optional[list
         return None
     tc_id      = f"call_{uuid.uuid4().hex[:8]}"
     result_str = _tools.run_tool(func_name, args, phone)
+    if session is not None:
+        _tools.mark_ride_sent_if_success(session, func_name, result_str)
     logger.info(f"[TaxiAgent] Recovered {func_name}({args}) → {result_str[:80]}")
     return messages + [
         {
@@ -62,6 +64,7 @@ def recover_tool_call(err_str: str, messages: list, phone: str) -> Optional[list
         {
             "role":         "tool",
             "tool_call_id": tc_id,
+            "name":         func_name,
             "content":      result_str,
         },
     ]
@@ -136,7 +139,7 @@ class LLMCascade:
         if self._gemini:
             providers.append((self._gemini,   "gemini-2.0-flash",        "Gemini"))
         if self._openrouter:
-            providers.append((self._openrouter, "meta-llama/llama-3.3-70b-instruct:free", "OpenRouter"))
+            providers.append((self._openrouter, "openai/gpt-oss-20b:free", "OpenRouter"))
 
         last_exc = RuntimeError("Sin proveedores LLM configurados")
         for i, (client, model, name) in enumerate(providers):

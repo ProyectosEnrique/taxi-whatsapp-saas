@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 _GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
 
 
+def _ride_confirmation_text(session: dict) -> str:
+    """Mensaje a devolver cuando crear_viaje ya tuvo éxito en una ronda anterior
+    pero una ronda posterior falla — el viaje es real e irreversible, así que el
+    cliente debe recibir la confirmación real, nunca un error genérico que lo
+    lleve a pensar que necesita solicitar el taxi de nuevo (doble viaje real)."""
+    data       = session.get("_ride_data") or {}
+    ride_id    = data.get("ride_id", "—")
+    tracking   = data.get("tracking_url", "")
+    tracking_line = f"\n\nSigue tu viaje aquí:\n{tracking}" if tracking else ""
+    return f"¡Listo! Tu viaje *{ride_id}* ya está confirmado. 🚕{tracking_line}"
+
+
 class AgentResult:
     def __init__(self, text: str):
         self.response_text = text
@@ -37,6 +49,8 @@ class TaxiAgent:
         taxi_client.init_customer(phone)
 
         session = sess.load(phone)
+        session.pop("_ride_sent", None)
+        session.pop("_ride_data", None)
         history = session.get("history", [])
         ctx     = session.setdefault("context", {})
 
@@ -83,10 +97,27 @@ class TaxiAgent:
                 )
             except Exception as e:
                 err_str = str(e)
+
+                if session.get("_ride_sent"):
+                    # crear_viaje ya se ejecutó con éxito en una ronda anterior — el viaje
+                    # es real e irreversible. NUNCA responder con un error genérico aquí
+                    # (llevaría al cliente a pensar que debe pedir el taxi de nuevo) ni
+                    # reintentar/reset del historial (podría hacer que el LLM, sin memoria
+                    # de que ya se creó el viaje, vuelva a llamar crear_viaje).
+                    logger.warning(
+                        f"[TaxiAgent] Proveedor falló tras crear_viaje (viaje ya confirmado) "
+                        f"[{phone}]: {err_str[:120]}"
+                    )
+                    reply = _ride_confirmation_text(session)
+                    history.append({"role": "assistant", "content": reply})
+                    session["history"] = history
+                    sess.save(phone, session)
+                    return AgentResult(reply)
+
                 # Groq occasionally generates malformed XML tool calls
                 if "tool_use_failed" in err_str:
                     # Attempt to parse & execute the malformed tool call
-                    recovered = llm_cascade.recover_tool_call(err_str, messages, phone)
+                    recovered = llm_cascade.recover_tool_call(err_str, messages, phone, session)
                     if recovered:
                         messages = recovered
                         continue  # let the loop produce a final text response
@@ -148,10 +179,12 @@ class TaxiAgent:
                     except Exception:
                         args = {}
                     result_str = tools.run_tool(tc.function.name, args, phone)
+                    tools.mark_ride_sent_if_success(session, tc.function.name, result_str)
                     logger.info(f"[TaxiAgent] {tc.function.name} → {result_str[:100]}")
                     messages.append({
                         "role":         "tool",
                         "tool_call_id": tc.id,
+                        "name":         tc.function.name,
                         "content":      result_str,
                     })
                 # Continuar bucle para respuesta final
@@ -171,12 +204,13 @@ class TaxiAgent:
                     import uuid
                     tc_id      = f"call_{uuid.uuid4().hex[:8]}"
                     result_str = tools.run_tool(func_name, args, phone)
+                    tools.mark_ride_sent_if_success(session, func_name, result_str)
                     messages.append({
                         "role": "assistant", "content": None,
                         "tool_calls": [{"id": tc_id, "type": "function",
                                         "function": {"name": func_name, "arguments": json.dumps(args)}}],
                     })
-                    messages.append({"role": "tool", "tool_call_id": tc_id, "content": result_str})
+                    messages.append({"role": "tool", "tool_call_id": tc_id, "name": func_name, "content": result_str})
                     continue  # siguiente ronda para respuesta final limpia
 
                 history.append({"role": "assistant", "content": final_text})
@@ -185,7 +219,10 @@ class TaxiAgent:
                 return AgentResult(final_text)
 
         # Fallback si se agotaron rondas
-        fallback = "Perdón, no pude completar la solicitud. ¿Puedes repetirla?"
+        if session.get("_ride_sent"):
+            fallback = _ride_confirmation_text(session)
+        else:
+            fallback = "Perdón, no pude completar la solicitud. ¿Puedes repetirla?"
         history.append({"role": "assistant", "content": fallback})
         session["history"] = history
         sess.save(phone, session)
