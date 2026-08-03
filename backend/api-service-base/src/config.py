@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     TELEGRAM_WEBHOOK_SECRET: str = ""   # secret para validar webhooks de Telegram
 
     # ==============================================================================
+    # REDIS (ride_notifs.py — comparte estado entre workers si se escala > 1)
+    # ==============================================================================
+
+    REDIS_URL: str = ""
+
+    # ==============================================================================
     # ADMIN
     # ==============================================================================
     ADMIN_PASSWORD: str = "admin1234"   # cambiar en .env del VPS

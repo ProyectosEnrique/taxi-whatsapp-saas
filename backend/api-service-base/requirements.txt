@@ -32,5 +32,9 @@ qrcode[pil]==7.4.2
 # Rate limiting (login/registro/forgot-password)
 slowapi==0.1.10
 
+# Redis (ride_notifs.py — compartir estado entre workers si el servicio
+# se escala a mas de 1, ver comentario en ese archivo)
+redis[asyncio]==5.0.1
+
 # Tests
 pytest==7.4.4

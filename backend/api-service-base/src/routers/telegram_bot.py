@@ -314,14 +314,14 @@ async def telegram_webhook(
             _notify_customer_wa(trip.customer_phone, driver, trip, "accepted")
 
             # Marcar como tomado en los chats de los demás conductores
-            for d_chat, msg_id in ride_notifs.get(ride_id):
+            for d_chat, msg_id in await ride_notifs.get(ride_id):
                 if d_chat != chat_id:
                     await edit_message_text(
                         d_chat, msg_id,
                         f"🚫 <b>Viaje {ride_id} ya fue tomado</b>\n"
                         f"Otro conductor lo aceptó primero."
                     )
-            ride_notifs.remove(ride_id)
+            await ride_notifs.remove(ride_id)
 
         # ── Llegué al origen ─────────────────────────────────────────────────
         elif cq_data.startswith("arrived_"):
@@ -491,4 +491,4 @@ async def notify_drivers_new_ride(trip: Trip, db: Session) -> None:
             notifications.append((driver.telegram_chat_id, result["message_id"]))
             logger.info(f"[TelegramBot] Notificado {driver.name} — viaje {trip.trip_id}")
 
-    ride_notifs.save(trip.trip_id, notifications)
+    await ride_notifs.save(trip.trip_id, notifications)

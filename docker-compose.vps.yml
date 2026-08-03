@@ -194,6 +194,9 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Redis — ride_notifs.py (mismo mandaya_redis que usa taxi-agent, DB 3,
+      # key prefix distinto "taxi:ride_notifs:*" para no chocar)
+      REDIS_URL: redis://mandaya_redis:6379/3
       # Geocoding — Google Maps primario, Nominatim fallback
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       # Centro geográfico de operación — restringe geocoding a la ciudad
