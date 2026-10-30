@@ -9,6 +9,7 @@ Versión: 1.0.0
 
 import asyncio
 import logging
+import re
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -44,10 +45,23 @@ from pathlib import Path
 # CONFIGURACIÓN DE LOGGING
 # ==============================================================================
 
+class _RedactBotTokenFormatter(logging.Formatter):
+    """httpx loguea la URL completa de cada llamada a Telegram, que lleva el
+    token del bot (api.telegram.org/bot<id>:<token>/...). Se tacha sobre el
+    texto ya formateado para cubrir también tracebacks y mensajes de error."""
+    _BOT_TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9_-]+")
+
+    def format(self, record):
+        return self._BOT_TOKEN_RE.sub(r"bot\1:***", super().format(record))
+
+
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(_RedactBotTokenFormatter(
+    '{"timestamp":"%(asctime)s","level":"%(levelname)s","service":"%(name)s","message":"%(message)s"}'
+))
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper()),
-    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","service":"%(name)s","message":"%(message)s"}',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[_log_handler]
 )
 
 logger = logging.getLogger("menu_service")
