@@ -102,14 +102,21 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
             await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
         return
 
+    now  = datetime.now(timezone.utc)
+    live = loc.get("live_period")
     driver.current_lat = loc["latitude"]
     driver.current_lng = loc["longitude"]
-    driver.location_updated_at = datetime.now(timezone.utc)
+    driver.location_updated_at = now
+    if not live:
+        driver.location_live_until = None
+    elif not edited:
+        # live_period cuenta desde que se envió el mensaje; "hasta que la desactive" = 0x7FFFFFFF
+        sent_at = datetime.fromtimestamp(msg.get("date") or now.timestamp(), timezone.utc)
+        driver.location_live_until = sent_at + timedelta(seconds=min(live, 86400))
     db.commit()
     if edited:
         return
 
-    live = loc.get("live_period")
     if not live:
         await send_message(
             chat_id,
@@ -536,9 +543,17 @@ def _location_fresh(driver: Driver) -> bool:
     at = driver.location_updated_at
     if not at or driver.current_lat is None or driver.current_lng is None:
         return False
+    now = datetime.now(timezone.utc)
     if at.tzinfo is None:
         at = at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - at <= timedelta(minutes=settings.LOCATION_FRESH_MIN)
+    if now - at <= timedelta(minutes=settings.LOCATION_FRESH_MIN):
+        return True
+    # Con ubicación en vivo activa, Telegram solo manda cambios: estacionado
+    # puede pasar mucho sin actualizar, y su última posición sigue siendo buena.
+    until = driver.location_live_until
+    if until and until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    return bool(until and until > now and now - at <= timedelta(minutes=settings.LOCATION_LIVE_FRESH_MIN))
 
 
 def _rings_km() -> list[float]:

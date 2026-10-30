@@ -119,6 +119,33 @@ def test_live_updates_are_saved_silently(tg_client, db_session, sent):
     assert sent["text"] == []
 
 
+def test_live_sharing_window_is_saved_and_cleared_when_stopped(tg_client, db_session, sent):
+    _driver(db_session, 1)
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81, live=28800))
+    db_session.expire_all()
+    d = db_session.query(Driver).filter(Driver.telegram_chat_id == "chat1").one()
+    assert d.location_live_until is not None
+
+    # Al dejar de compartir, Telegram manda una última edición ya sin live_period
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("edited_message", "chat1", 20.55, -100.81))
+    db_session.expire_all()
+    d = db_session.query(Driver).filter(Driver.telegram_chat_id == "chat1").one()
+    assert d.location_live_until is None
+
+
+def test_parked_driver_with_live_sharing_still_counts_as_near(db_session, sent):
+    # Formado en la Central 30 min sin moverse: Telegram no mandó actualizaciones
+    d = _driver(db_session, 1, lat=20.5410, lng=-100.8000, minutes_ago=30)
+    d.location_live_until = datetime.now(timezone.utc) + timedelta(hours=5)
+    db_session.commit()
+    _driver(db_session, 2)
+    trip = _trip(db_session)
+
+    nxt = asyncio.run(telegram_bot._dispatch(trip, db_session, 0))
+    assert _chats(sent) == ["chat1"]
+    assert nxt == 1
+
+
 def test_static_location_explains_how_to_share_live(tg_client, db_session, sent):
     _driver(db_session, 1)
     tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81))

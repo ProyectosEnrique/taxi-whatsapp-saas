@@ -298,6 +298,7 @@ async def lifespan(app: FastAPI):
         ("drivers",   "mp_connected_at",                  "TIMESTAMP WITH TIME ZONE"),
         # Despacho por cercanía — hora de la última ubicación del chofer
         ("drivers",   "location_updated_at",              "TIMESTAMP WITH TIME ZONE"),
+        ("drivers",   "location_live_until",              "TIMESTAMP WITH TIME ZONE"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe

@@ -365,6 +365,9 @@ class Driver(Base):
     # Hora de la última ubicación (app o ubicación en vivo de Telegram) —
     # sin esto no se distingue "está aquí ahora" de "pasó por aquí hace 2 h"
     location_updated_at = Column(DateTime(timezone=True), nullable=True)
+    # Hasta cuándo comparte "ubicación en tiempo real" por Telegram: estacionado
+    # (p. ej. formado en la Central) Telegram casi no manda actualizaciones
+    location_live_until = Column(DateTime(timezone=True), nullable=True)
 
     # Vehículo
     vehicle_brand     = Column(String(100))

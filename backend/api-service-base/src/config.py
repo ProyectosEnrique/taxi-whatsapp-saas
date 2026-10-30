@@ -104,7 +104,8 @@ class Settings(BaseSettings):
     # DISPATCH_RING_WAIT_S segundos, al siguiente; al final, a todos los online.
     DISPATCH_RINGS_KM: str = "2,4"      # vacío = avisar a todos de una vez (como antes)
     DISPATCH_RING_WAIT_S: int = 60
-    LOCATION_FRESH_MIN: int = 5         # ubicación más vieja que esto no cuenta como "cerca"
+    LOCATION_FRESH_MIN: int = 5         # ubicación más vieja que esto no cuenta como "cerca"...
+    LOCATION_LIVE_FRESH_MIN: int = 60   # ...salvo con ubicación en vivo activa (estacionado casi no actualiza)
 
     # ==============================================================================
     # REDIS (ride_notifs.py — comparte estado entre workers si se escala > 1)
