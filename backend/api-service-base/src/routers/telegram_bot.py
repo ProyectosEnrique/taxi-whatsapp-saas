@@ -7,7 +7,13 @@ Comandos:
   /descanso        — marcar como offline
   /estado          — ver viaje activo con botones de acción
   /ganancias       — resumen de ganancias de hoy y la semana
+  /ubicacion       — cómo compartir la ubicación en tiempo real
   /desvincular     — desvincular la cuenta
+
+Ubicación: el chofer comparte "ubicación en tiempo real" en este chat una vez
+por turno; Telegram manda cada actualización como edited_message y con eso se
+guarda su posición (sin app abierta ni pantalla encendida). La usa
+notify_drivers_new_ride para avisar primero a los choferes cercanos.
 
 Callbacks inline:
   accept_<id>    — aceptar viaje
@@ -15,14 +21,16 @@ Callbacks inline:
   start_<id>     — iniciar viaje (pasajero a bordo)
   complete_<id>  — completar viaje
 """
+import asyncio
 import logging
+import math
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..models import Driver, Trip, TripStatus
 from ..config import settings
 from ..services import ride_notifs
@@ -62,6 +70,62 @@ def _maps(lat, lng) -> str | None:
     if lat and lng:
         return f"https://maps.google.com/?q={lat},{lng}"
     return None
+
+
+_LOCATION_HELP = (
+    "📍 <b>Comparte tu ubicación en tiempo real</b>\n"
+    "Una sola vez al empezar tu turno:\n"
+    "1. Toca el clip 📎 abajo, en este chat\n"
+    "2. Elige <b>Ubicación</b>\n"
+    "3. Toca <b>Compartir ubicación en tiempo real</b>\n"
+    "4. Elige <b>8 horas</b>\n\n"
+    "Así te llegan primero los viajes que están cerca de ti. "
+    "Funciona aunque apagues la pantalla; deja el celular cargando 🔌"
+)
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    r = 6371.0
+    dlat, dlng = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
+    """Guarda la posición que manda el chofer (fija o en vivo).
+    Las actualizaciones en vivo llegan como edited_message: se guardan en silencio."""
+    chat_id = str(msg["chat"]["id"])
+    loc     = msg["location"]
+    driver  = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
+    if not driver:
+        if not edited:
+            await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+        return
+
+    driver.current_lat = loc["latitude"]
+    driver.current_lng = loc["longitude"]
+    driver.location_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    if edited:
+        return
+
+    live = loc.get("live_period")
+    if not live:
+        await send_message(
+            chat_id,
+            "📍 Recibí tu ubicación, pero es <b>fija</b>: en unos minutos ya no sabremos dónde andas.\n\n"
+            + _LOCATION_HELP,
+        )
+        return
+    # Telegram manda 0x7FFFFFFF cuando el chofer elige "hasta que la desactive"
+    duration = "hasta que la desactives" if live >= 86400 else f"por {max(1, round(live / 3600))} h"
+    logger.info(f"[TelegramBot] {driver.name} compartió ubicación en vivo ({live}s)")
+    extra = "" if driver.is_online else "\n\nAhora usa /disponible para empezar a recibir viajes."
+    await send_message(
+        chat_id,
+        f"✅ <b>Ubicación en vivo activada</b> {duration}.\n"
+        f"Te llegarán primero los viajes cerca de ti.{extra}",
+    )
 
 
 def _notify_customer_wa(
@@ -128,6 +192,12 @@ async def telegram_webhook(
 ):
     data = await request.json()
 
+    # ── Ubicación del chofer (fija, o en vivo: llega como edited_message) ────
+    loc_msg = data.get("message") or data.get("edited_message")
+    if loc_msg and loc_msg.get("location"):
+        await _handle_location(loc_msg, "edited_message" in data, db)
+        return {"ok": True}
+
     # ── Comandos de texto ────────────────────────────────────────────────────
     if "message" in data:
         msg     = data["message"]
@@ -156,8 +226,10 @@ async def telegram_webhook(
                 f"• /descanso — ponerte offline\n"
                 f"• /estado — ver tu viaje activo\n"
                 f"• /ganancias — ver tus ganancias del día\n"
+                f"• /ubicacion — compartir tu ubicación en tiempo real\n"
                 f"• /desvincular — dejar de recibir notificaciones"
             )
+            await send_message(chat_id, _LOCATION_HELP)
 
         elif text.startswith("/disponible"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
@@ -172,6 +244,11 @@ async def telegram_webhook(
                 f"🟢 <b>¡Estás disponible!</b>\n"
                 f"Recibirás notificaciones de nuevos viajes aquí."
             )
+            if not _location_fresh(driver):
+                await send_message(chat_id, _LOCATION_HELP)
+
+        elif text.startswith("/ubicacion") or text.startswith("/ubicación"):
+            await send_message(chat_id, _LOCATION_HELP)
 
         elif text.startswith("/descanso"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
@@ -267,6 +344,7 @@ async def telegram_webhook(
                 "/descanso — ponerte offline\n"
                 "/estado — ver viaje activo\n"
                 "/ganancias — ver tus ganancias del día\n"
+                "/ubicacion — compartir tu ubicación en tiempo real\n"
                 "/desvincular — dejar de recibir notificaciones"
             )
 
@@ -452,23 +530,26 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         )
 
 
-# ── Notificación de nuevo viaje a todos los choferes online ──────────────────
+# ── Notificación de nuevo viaje: primero a los cercanos, luego a todos ───────
 
-async def notify_drivers_new_ride(trip: Trip, db: Session) -> None:
-    """Notifica a todos los choferes online vinculados de un nuevo viaje disponible."""
-    drivers = (
-        db.query(Driver)
-        .filter(
-            Driver.is_online  == True,
-            Driver.is_active  == True,
-            Driver.telegram_chat_id.isnot(None),
-        )
-        .all()
-    )
-    if not drivers:
-        logger.info(f"[TelegramBot] Sin choferes online vinculados para notificar viaje {trip.trip_id}")
-        return
+def _location_fresh(driver: Driver) -> bool:
+    at = driver.location_updated_at
+    if not at or driver.current_lat is None or driver.current_lng is None:
+        return False
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - at <= timedelta(minutes=settings.LOCATION_FRESH_MIN)
 
+
+def _rings_km() -> list[float]:
+    try:
+        return [float(x) for x in settings.DISPATCH_RINGS_KM.split(",") if x.strip()]
+    except ValueError:
+        logger.warning(f"[TelegramBot] DISPATCH_RINGS_KM inválido: {settings.DISPATCH_RINGS_KM!r} — aviso a todos")
+        return []
+
+
+async def _send_ride(trip: Trip, drivers: list[Driver], dist: dict[int, float]) -> None:
     maps_orig = _maps(trip.origin_lat, trip.origin_lng)
     maps_dest = _maps(trip.destination_lat, trip.destination_lng)
     orig_link = f"<a href='{maps_orig}'>Origen</a>" if maps_orig else "Origen"
@@ -486,9 +567,80 @@ async def notify_drivers_new_ride(trip: Trip, db: Session) -> None:
 
     notifications: list[tuple[str, int]] = []
     for driver in drivers:
-        result = await send_with_buttons(driver.telegram_chat_id, text, buttons)
+        km = dist.get(driver.id)
+        near = f"\n📏 Estás a {km:.1f} km del cliente" if km is not None else ""
+        result = await send_with_buttons(driver.telegram_chat_id, text + near, buttons)
         if result and result.get("message_id"):
             notifications.append((driver.telegram_chat_id, result["message_id"]))
             logger.info(f"[TelegramBot] Notificado {driver.name} — viaje {trip.trip_id}")
 
-    await ride_notifs.save(trip.trip_id, notifications)
+    await ride_notifs.add(trip.trip_id, notifications)
+
+
+async def _dispatch(trip: Trip, db: Session, ring: int, everyone: bool = False) -> int | None:
+    """Avisa del viaje al círculo `ring` o al siguiente que tenga choferes, sin
+    repetir a quien ya se le avisó. Devuelve el círculo que sigue (para
+    ampliarlo si nadie acepta) o None si ya se avisó a todos."""
+    drivers = (
+        db.query(Driver)
+        .filter(
+            Driver.is_online  == True,
+            Driver.is_active  == True,
+            Driver.telegram_chat_id.isnot(None),
+        )
+        .all()
+    )
+    if not everyone:
+        notified = {chat for chat, _ in await ride_notifs.get(trip.trip_id)}
+        drivers = [d for d in drivers if d.telegram_chat_id not in notified]
+    if not drivers:
+        logger.info(f"[TelegramBot] Sin choferes online vinculados para notificar viaje {trip.trip_id}")
+        return None
+
+    dist: dict[int, float] = {}
+    if trip.origin_lat is not None and trip.origin_lng is not None:
+        for d in drivers:
+            if _location_fresh(d):
+                dist[d.id] = _haversine_km(float(d.current_lat), float(d.current_lng),
+                                           float(trip.origin_lat), float(trip.origin_lng))
+
+    rings = [] if everyone or not dist else _rings_km()
+    for i in range(ring, len(rings)):
+        near = sorted((d for d in drivers if dist.get(d.id, math.inf) <= rings[i]), key=lambda d: dist[d.id])
+        if near:
+            logger.info(f"[TelegramBot] Viaje {trip.trip_id}: {len(near)} chofer(es) a ≤{rings[i]:g} km")
+            await _send_ride(trip, near, dist)
+            return i + 1
+
+    await _send_ride(trip, drivers, dist)
+    return None
+
+
+async def _expand_later(trip_id: str, ring: int) -> None:
+    """Si nadie aceptó en DISPATCH_RING_WAIT_S, avisa al siguiente círculo.
+    Corre aparte (asyncio.create_task); si el proceso se reinicia antes, el
+    _ride_timeout_monitor de main.py re-avisa a todos a los 3 min."""
+    while ring is not None:
+        await asyncio.sleep(settings.DISPATCH_RING_WAIT_S)
+        db = SessionLocal()
+        try:
+            trip = db.query(Trip).filter(Trip.trip_id == trip_id).first()
+            if not trip or trip.status != TripStatus.REQUESTED or trip.driver_phone:
+                return
+            ring = await _dispatch(trip, db, ring)
+        except Exception as exc:
+            logger.warning(f"[TelegramBot] Ampliar aviso de {trip_id} falló: {exc}")
+            return
+        finally:
+            db.close()
+
+
+async def notify_drivers_new_ride(trip: Trip, db: Session, everyone: bool = False) -> None:
+    """Avisa de un viaje nuevo: primero a los choferes con ubicación reciente
+    dentro del 1er círculo (DISPATCH_RINGS_KM), luego amplía cada
+    DISPATCH_RING_WAIT_S, y al final a todos los online. Si nadie tiene
+    ubicación reciente (o everyone=True) avisa a todos de una vez, como antes.
+    El primero que acepta se lo lleva (callback accept_)."""
+    next_ring = await _dispatch(trip, db, 0, everyone=everyone)
+    if next_ring is not None:
+        asyncio.create_task(_expand_later(trip.trip_id, next_ring))

@@ -224,3 +224,12 @@ function _placeDriverMarker(pos) {
 ## 14. Estructura del repo
 
 Este repo nació de una plantilla SaaS multi-tenant genérica (restaurante/farmacia/vinatería) que se especializó a "solo taxi". En 2026-07 se limpiaron ~183 archivos de residuo (backends/frontends duplicados no usados por ningún Dockerfile, infra muerta de Railway/Render/Cloud Run/Firebase/Cloudflare, scripts multi-tenant, tests E2E de Cypress rotos, docs nunca actualizados desde el commit inicial). Lo que queda en la raíz y en `backend/`/`frontend/` es, con pocas excepciones, lo que realmente está en producción — no asumas que un archivo es residuo sin verificarlo contra `docker-compose.vps.yml` y `vps/nginx/Dockerfile` primero.
+
+## 15. Ubicación de choferes por Telegram + despacho por cercanía (rama `ubicacion-telegram`, 2026-10-30)
+
+- **Por qué:** la app del chofer es web — el navegador deja de mandar GPS al bloquear la pantalla, y los choferes que solo usan el bot de Telegram nunca la mandaban. La "ubicación en tiempo real" de Telegram sigue funcionando en segundo plano.
+- **Chofer:** una vez por turno, en el chat del bot: 📎 → Ubicación → Compartir ubicación en tiempo real → 8 h. `/ubicacion` repite las instrucciones (también se mandan al `/vincular` y en `/disponible` si su ubicación no está fresca).
+- **Webhook (`telegram_bot.py`):** `message.location` (primera vez, con `live_period`) responde confirmación; cada actualización llega como `edited_message.location` y se guarda en silencio (`drivers.current_lat/lng` + `drivers.location_updated_at`, columna nueva). `set_webhook` pide `allowed_updates` con `edited_message` explícito.
+- **Despacho (`notify_drivers_new_ride`):** con ubicación fresca (≤ `LOCATION_FRESH_MIN`=5 min) avisa primero a los choferes a ≤ 2 km del origen, si nadie acepta en `DISPATCH_RING_WAIT_S`=60 s a ≤ 4 km, y luego a todos los online (`DISPATCH_RINGS_KM="2,4"`; vacío = todos de una vez, como antes). Sin nadie con ubicación fresca → todos de una vez. La ampliación corre en `asyncio.create_task(_expand_later)`; si el proceso se reinicia, `_ride_timeout_monitor` re-avisa a todos (`everyone=True`) a los 3 min. `ride_notifs.add` acumula avisos de todas las tandas para marcarlos "ya fue tomado".
+- Distancia en línea recta (haversine). Pendiente: turno de fila para taxis dentro de la Central (todos están "igual de cerca").
+- Tests: `tests/test_telegram_location.py` (12).

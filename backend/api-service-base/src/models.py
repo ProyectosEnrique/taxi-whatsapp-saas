@@ -362,6 +362,9 @@ class Driver(Base):
     # Ubicación en tiempo real
     current_lat  = Column(Numeric(10, 7))
     current_lng  = Column(Numeric(10, 7))
+    # Hora de la última ubicación (app o ubicación en vivo de Telegram) —
+    # sin esto no se distingue "está aquí ahora" de "pasó por aquí hace 2 h"
+    location_updated_at = Column(DateTime(timezone=True), nullable=True)
 
     # Vehículo
     vehicle_brand     = Column(String(100))

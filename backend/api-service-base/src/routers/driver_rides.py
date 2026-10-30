@@ -240,6 +240,7 @@ def update_status(payload: dict, current: Driver = Depends(get_current_driver), 
 def update_location(payload: dict, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
     current.current_lat = payload.get("lat")
     current.current_lng = payload.get("lon") or payload.get("lng")
+    current.location_updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "ok"}
 

@@ -181,11 +181,11 @@ async def _ride_timeout_monitor():
                     logger.warning(f"[RideMonitor] Viaje {trip.trip_id} sin conductor +12 min — alertando operador")
                 elif elapsed >= 480:   # 8 min → re-broadcast prioridad alta
                     await broadcast_event("new_ride", {**ride_data, "priority": "high"})
-                    await notify_drivers_new_ride(trip, db)
+                    await notify_drivers_new_ride(trip, db, everyone=True)
                     logger.info(f"[RideMonitor] Re-broadcast ⚠️ {trip.trip_id} ({elapsed/60:.0f} min)")
                 elif elapsed >= 180:   # 3 min → re-broadcast normal
                     await broadcast_event("new_ride", ride_data)
-                    await notify_drivers_new_ride(trip, db)
+                    await notify_drivers_new_ride(trip, db, everyone=True)
                     logger.info(f"[RideMonitor] Re-broadcast {trip.trip_id} ({elapsed/60:.0f} min)")
 
                 trip.last_notified_at = now
@@ -296,6 +296,8 @@ async def lifespan(app: FastAPI):
         ("drivers",   "mp_refresh_token",                 "VARCHAR(255)"),
         ("drivers",   "mp_token_expires_at",              "TIMESTAMP WITH TIME ZONE"),
         ("drivers",   "mp_connected_at",                  "TIMESTAMP WITH TIME ZONE"),
+        # Despacho por cercanía — hora de la última ubicación del chofer
+        ("drivers",   "location_updated_at",              "TIMESTAMP WITH TIME ZONE"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe

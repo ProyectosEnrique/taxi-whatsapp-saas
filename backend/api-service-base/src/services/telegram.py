@@ -99,7 +99,9 @@ async def set_webhook(webhook_url: str, secret_token: str = "") -> bool:
     """Registra el webhook del bot con Telegram."""
     if not settings.TELEGRAM_BOT_TOKEN:
         return False
-    payload: dict = {"url": webhook_url}
+    # edited_message explícito: la ubicación en vivo de los choferes llega como
+    # ediciones del mensaje original (si no se pide, Telegram reusa el último ajuste)
+    payload: dict = {"url": webhook_url, "allowed_updates": ["message", "edited_message", "callback_query"]}
     if secret_token:
         payload["secret_token"] = secret_token
     try:

@@ -62,6 +62,12 @@ async def get(ride_id: str) -> list[tuple[str, int]]:
     return _memory_store.get(ride_id, [])
 
 
+async def add(ride_id: str, notifications: list[tuple[str, int]]) -> None:
+    """Agrega avisos a los ya guardados — el despacho por círculos manda el
+    mismo viaje en varias tandas y todas deben marcarse "ya fue tomado"."""
+    await save(ride_id, await get(ride_id) + notifications)
+
+
 async def remove(ride_id: str) -> None:
     if _redis_client is not None:
         try:

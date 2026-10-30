@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     TELEGRAM_ALERT_CHAT_ID: str = ""    # chat_id del grupo/canal del operador
     TELEGRAM_WEBHOOK_SECRET: str = ""   # secret para validar webhooks de Telegram
 
+    # Despacho por cercanía (telegram_bot.notify_drivers_new_ride): el viaje se
+    # avisa primero a los choferes dentro del 1er círculo; si nadie acepta en
+    # DISPATCH_RING_WAIT_S segundos, al siguiente; al final, a todos los online.
+    DISPATCH_RINGS_KM: str = "2,4"      # vacío = avisar a todos de una vez (como antes)
+    DISPATCH_RING_WAIT_S: int = 60
+    LOCATION_FRESH_MIN: int = 5         # ubicación más vieja que esto no cuenta como "cerca"
+
     # ==============================================================================
     # REDIS (ride_notifs.py — comparte estado entre workers si se escala > 1)
     # ==============================================================================
