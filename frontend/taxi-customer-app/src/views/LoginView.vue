@@ -2,8 +2,8 @@
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-taxi-yellow to-yellow-600 px-4">
     <div class="max-w-md w-full">
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full shadow-lg mb-4">
-          <span class="text-4xl">🚕</span>
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
+          <img src="/favicon.svg" alt="TaxiCerca" class="w-20 h-20">
         </div>
         <h1 class="text-3xl font-bold text-white mb-2">TaxiCerca</h1>
         <p class="text-yellow-100">Inicia sesión para solicitar tu viaje</p>

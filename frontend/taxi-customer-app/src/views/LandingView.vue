@@ -5,7 +5,7 @@
       <div class="max-w-3xl mx-auto px-4 pt-6 pb-12">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-3xl">🚕</span>
+            <img src="/logo-pin.svg" alt="" class="h-10 w-auto drop-shadow">
             <span class="text-2xl font-extrabold tracking-tight">Taxi<span class="text-white drop-shadow">Cerca</span></span>
           </div>
           <router-link to="/login" class="text-sm font-semibold bg-white/80 hover:bg-white rounded-full px-4 py-2">Entrar</router-link>
@@ -74,7 +74,7 @@
     <!-- Pie legal -->
     <footer class="bg-gray-900 text-gray-300 text-sm">
       <div class="max-w-3xl mx-auto px-4 py-8 space-y-2">
-        <p class="text-white font-bold text-base">🚕 TaxiCerca</p>
+        <p class="text-white font-bold text-base flex items-center gap-2"><img src="/logo-pin.svg" alt="" class="h-6 w-auto"> TaxiCerca</p>
         <p>TaxiCerca es un servicio de <b>Enrique Hernández Parra</b> · Salvatierra, Guanajuato, México.</p>
         <p>
           TaxiCerca es una plataforma de comunicación: el viaje lo realizan los choferes y bases de taxis aliadas.

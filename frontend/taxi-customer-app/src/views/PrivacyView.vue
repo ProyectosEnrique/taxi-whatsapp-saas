@@ -3,7 +3,7 @@
     <header class="bg-taxi-yellow">
       <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
         <router-link to="/" class="flex items-center gap-2 font-extrabold text-xl text-gray-900">
-          <span class="text-2xl">🚕</span> TaxiCerca
+          <img src="/logo-pin.svg" alt="" class="h-8 w-auto drop-shadow"> TaxiCerca
         </router-link>
       </div>
     </header>

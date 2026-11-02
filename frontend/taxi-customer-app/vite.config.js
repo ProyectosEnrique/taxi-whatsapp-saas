@@ -8,12 +8,12 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      includeAssets: ['favicon.svg', 'logo-pin.svg', 'icons/*.png'],
       manifest: {
         name: 'TaxiCerca',
         short_name: 'TaxiCerca',
         description: 'Pide tu taxi por WhatsApp',
-        theme_color: '#10B981',
+        theme_color: '#FACC15',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
