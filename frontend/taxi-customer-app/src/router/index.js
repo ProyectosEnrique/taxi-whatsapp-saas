@@ -3,8 +3,17 @@ import { useAuthStore } from '../stores/authStore'
 
 const routes = [
   {
+    // Página pública de TaxiCerca (con sesión abierta se va directo a /home)
     path: '/',
-    redirect: '/home'
+    name: 'Landing',
+    component: () => import('../views/LandingView.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/privacidad',
+    name: 'Privacy',
+    component: () => import('../views/PrivacyView.vue'),
+    meta: { requiresAuth: false }
   },
   {
     path: '/login',
@@ -104,7 +113,7 @@ router.beforeEach((to, from, next) => {
 
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
       next('/login')
-    } else if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
+    } else if ((to.path === '/' || to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
       next('/home')
     } else {
       next()

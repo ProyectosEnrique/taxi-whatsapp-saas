@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: {
-        name: 'Customer App - Sistema de Taxi',
-        short_name: 'Customer App',
-        description: 'Aplicación para clientes de taxi',
+        name: 'TaxiCerca',
+        short_name: 'TaxiCerca',
+        description: 'Pide tu taxi por WhatsApp',
         theme_color: '#10B981',
         background_color: '#ffffff',
         display: 'standalone',

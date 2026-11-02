@@ -6,7 +6,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="text-2xl">🚕</span>
-            <h1 class="text-lg font-bold text-gray-900">Taxi App</h1>
+            <h1 class="text-lg font-bold text-gray-900">TaxiCerca</h1>
           </div>
           <div class="flex items-center space-x-2">
             <router-link to="/scheduled" class="p-2 hover:bg-gray-100 rounded-lg" title="Viajes programados">
