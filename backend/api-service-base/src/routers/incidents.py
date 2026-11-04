@@ -25,6 +25,7 @@ from ..models import Customer, Driver, Incident
 from ..auth import get_current_customer, get_current_driver
 from ..config import settings
 from ..services.telegram import send_to_operator, send_message
+from .admin import _admin_auth
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +254,8 @@ def public_track(incident_id: str, db: Session = Depends(get_db)):
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
-@admin_router.get("/incidents")
+# Exige x-admin-key: la lista trae nombre, teléfono, ubicación y audio de cada alerta.
+@admin_router.get("/incidents", dependencies=[Depends(_admin_auth)])
 def list_incidents(db: Session = Depends(get_db)):
     incidents = (
         db.query(Incident)
@@ -284,7 +286,7 @@ def list_incidents(db: Session = Depends(get_db)):
     ]}
 
 
-@admin_router.post("/incidents/{incident_id}/resolve")
+@admin_router.post("/incidents/{incident_id}/resolve", dependencies=[Depends(_admin_auth)])
 def resolve_incident(incident_id: str, db: Session = Depends(get_db)):
     incident = db.query(Incident).filter(Incident.incident_id == incident_id).first()
     if not incident:

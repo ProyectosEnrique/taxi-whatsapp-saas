@@ -399,7 +399,7 @@
       <!-- Versión -->
       <div class="mt-6 text-center text-sm text-gray-500">
         <p>Versión 1.0.0</p>
-        <p class="mt-1">© 2024 Taxi App. Todos los derechos reservados.</p>
+        <p class="mt-1">© 2026 TaxiCerca</p>
       </div>
     </main>
   </div>

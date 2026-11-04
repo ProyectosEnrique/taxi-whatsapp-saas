@@ -3,10 +3,10 @@
     <div class="max-w-md w-full">
       <!-- Logo y título -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full shadow-lg mb-4">
-          <span class="text-4xl">🚕</span>
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
+          <img :src="logoSrc" alt="TaxiCerca" class="w-20 h-20">
         </div>
-        <h1 class="text-3xl font-bold text-white mb-2">Conductor App</h1>
+        <h1 class="text-3xl font-bold text-white mb-2">TaxiCerca Chofer</h1>
         <p class="text-yellow-100">Inicia sesión para comenzar tu turno</p>
       </div>
 
@@ -119,7 +119,7 @@
       <!-- Footer -->
       <div class="mt-6 text-center">
         <p class="text-sm text-yellow-100">
-          © 2024 Taxi App. Todos los derechos reservados.
+          © 2026 TaxiCerca
         </p>
       </div>
     </div>
@@ -127,6 +127,8 @@
 </template>
 
 <script setup>
+// Con base en la URL (/driver/ o /admin/ en el VPS) para que el logo cargue en cualquier ruta
+const logoSrc = `${import.meta.env.BASE_URL}favicon.svg`
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'

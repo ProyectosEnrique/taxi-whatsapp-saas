@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: {
-        name: 'Admin Panel - Sistema de Taxi',
-        short_name: 'Admin Panel',
+        name: 'TaxiCerca — Panel',
+        short_name: 'TaxiCerca Panel',
         description: 'Panel administrativo para sistema de taxi',
         theme_color: '#3B82F6',
         background_color: '#ffffff',

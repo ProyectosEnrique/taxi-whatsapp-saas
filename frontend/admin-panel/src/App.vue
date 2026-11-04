@@ -3,8 +3,8 @@
   <div v-if="!authenticated" class="min-h-screen bg-gray-900 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8">
       <div class="text-center mb-8">
-        <span class="text-5xl">🚕</span>
-        <h1 class="text-2xl font-bold text-gray-900 mt-3">TaxiAdmin</h1>
+        <img :src="logoSrc" alt="TaxiCerca" class="w-16 h-16 mx-auto rounded-2xl">
+        <h1 class="text-2xl font-bold text-gray-900 mt-3">TaxiCerca</h1>
         <p class="text-gray-500 text-sm mt-1">Panel de Control</p>
       </div>
       <form @submit.prevent="tryLogin">
@@ -36,7 +36,7 @@
         <div class="flex items-center space-x-3">
           <span class="text-3xl">🚕</span>
           <div>
-            <h1 class="text-lg font-bold leading-tight">TaxiAdmin</h1>
+            <h1 class="text-lg font-bold leading-tight">TaxiCerca</h1>
             <p class="text-xs text-gray-400">Panel de Control</p>
           </div>
         </div>
@@ -74,6 +74,8 @@
 </template>
 
 <script setup>
+// Con base en la URL (/driver/ o /admin/ en el VPS) para que el logo cargue en cualquier ruta
+const logoSrc = `${import.meta.env.BASE_URL}favicon.svg`
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -101,13 +103,14 @@ const navItems = [
 ]
 
 // Parchea window.fetch globalmente para inyectar x-admin-key en
-// todas las llamadas a /api/v1/admin sin tocar cada componente.
+// todas las llamadas a /api/v1/admin (y a la lista de incidentes, que también
+// exige la clave) sin tocar cada componente.
 function patchFetch(key) {
   const _orig = window._origFetch || window.fetch
   window._origFetch = _orig
   window.fetch = (input, init = {}) => {
     const url = typeof input === 'string' ? input : input?.url || ''
-    if (url.includes('/api/v1/admin')) {
+    if (url.includes('/api/v1/admin') || url.includes('/api/v1/incidents')) {
       init.headers = { ...(init.headers || {}), 'x-admin-key': key }
     }
     return _orig(input, init)

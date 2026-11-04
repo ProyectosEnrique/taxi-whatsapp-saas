@@ -9,12 +9,12 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
-        name: 'Driver App - Sistema de Taxi',
-        short_name: 'Driver App',
+        name: 'TaxiCerca Chofer',
+        short_name: 'TaxiCerca Chofer',
         description: 'Aplicación para conductores de taxi',
-        theme_color: '#FDB813',
+        theme_color: '#FACC15',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',

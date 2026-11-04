@@ -515,7 +515,7 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await send_with_buttons(
             chat_id,
             msg,
-            [[{"text": chr(0x1f7e2) + " Llegue al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
+            [[{"text": chr(0x1f7e2) + " Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:
