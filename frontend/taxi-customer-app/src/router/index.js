@@ -94,6 +94,15 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
+    // Enlace de los QR impresos. nginx ya redirige a WhatsApp; esto cubre
+    // teléfonos con un Service Worker viejo que sirva la app desde caché.
+    path: '/pedir',
+    beforeEnter() {
+      window.location.replace('https://wa.me/19785413145?text=Hola%2C%20quiero%20pedir%20un%20taxi')
+      return false
+    }
+  },
+  {
     // Cualquier ruta no reconocida (ej. /cliente si el Service Worker la
     // sirve desde caché antes de que nginx redirija) → inicio en vez de
     // <router-view> vacío.
