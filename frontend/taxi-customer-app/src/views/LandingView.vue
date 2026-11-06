@@ -80,7 +80,7 @@
           TaxiCerca es una plataforma de comunicación: el viaje lo realizan los choferes y bases de taxis aliadas.
         </p>
         <p>
-          WhatsApp para pedir taxi: <a :href="waLink" class="underline">+1 978 541 3145</a> ·
+          WhatsApp para pedir taxi: <a :href="waLink" class="underline">+1 316 241 2111</a> ·
           Contacto: <a :href="ownerLink" class="underline">477 199 9661</a> (solo mensajes)
         </p>
         <p><router-link to="/privacidad" class="underline">Aviso de privacidad</router-link></p>
@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-const TAXI_WA = '19785413145'
+const TAXI_WA = '13162412111'
 const OWNER_WA = '524771999661'
 
 const waLink = `https://wa.me/${TAXI_WA}?text=${encodeURIComponent('Hola, quiero un taxi')}`
