@@ -61,9 +61,26 @@ META_PHONE_ID        = os.getenv("META_PHONE_NUMBER_ID", "988164724391332")
 # Set META_WEBHOOK_ENABLED=true only when the Meta Business account is validated.
 # Default is false (Twilio-only mode) to avoid double-processing the same message.
 META_WEBHOOK_ENABLED = os.getenv("META_WEBHOOK_ENABLED", "false").lower() == "true"
-TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
+# Línea principal de WhatsApp: subcuenta Twilio propia de TaxiCerca
+# (TWILIO_WA_*). Si no está configurada, se usa la cuenta principal como antes.
+TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_WA_ACCOUNT_SID") or os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_WA_AUTH_TOKEN") or os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_WA_NUMBER     = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+16204077336")
+
+# Línea anterior (+1 978 541 3145, cuenta principal de Twilio). Mientras dure
+# el cambio de número, a quien escriba ahí solo se le contesta con el número
+# nuevo: no se procesan viajes, porque los avisos del viaje saldrían del
+# número nuevo y fuera de la ventana de 24 h no llegarían.
+LEGACY_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
+LEGACY_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
+HAS_LEGACY_LINE      = bool(LEGACY_ACCOUNT_SID) and LEGACY_ACCOUNT_SID != TWILIO_ACCOUNT_SID
+_NEW_WA_DIGITS       = TWILIO_WA_NUMBER.replace("whatsapp:", "").lstrip("+")
+LEGACY_REPLY = (
+    "🚕 *TaxiCerca cambió de número.*\n"
+    "Pide tu taxi aquí 👉 "
+    f"https://wa.me/{_NEW_WA_DIGITS}?text=Hola%2C%20quiero%20pedir%20un%20taxi\n"
+    "Guárdanos en tus contactos como *TaxiCerca*."
+)
 WHATSAPP_SECRET      = os.getenv("WHATSAPP_SECRET", "")
 PUBLIC_URL           = os.getenv("PUBLIC_URL", "https://taxi.nexoai.lat")
 
@@ -74,8 +91,9 @@ PUBLIC_URL           = os.getenv("PUBLIC_URL", "https://taxi.nexoai.lat")
 # una llamada real al LLM y potencialmente una respuesta real de WhatsApp,
 # ambas con costo. Twilio firma cada request con HMAC-SHA1 usando el Auth
 # Token; recalculamos la firma y la comparamos.
-def _verify_twilio_signature(url: str, form_dict: dict, signature: str | None) -> bool:
-    if not TWILIO_AUTH_TOKEN:
+def _verify_twilio_signature(url: str, form_dict: dict, signature: str | None,
+                             auth_token: str = TWILIO_AUTH_TOKEN) -> bool:
+    if not auth_token:
         # Sin Auth Token configurado no hay forma de verificar — no bloquear
         # el servicio por una variable de entorno faltante, pero avisar fuerte.
         logger.warning("[TaxiGW] TWILIO_AUTH_TOKEN no configurado — firma del webhook SIN verificar")
@@ -83,7 +101,7 @@ def _verify_twilio_signature(url: str, form_dict: dict, signature: str | None) -
     if not signature:
         return False
     from twilio.request_validator import RequestValidator
-    validator = RequestValidator(TWILIO_AUTH_TOKEN)
+    validator = RequestValidator(auth_token)
     return validator.validate(url, form_dict, signature)
 
 
@@ -326,6 +344,12 @@ async def twilio_webhook(
 
     form_dict = dict(await request.form())
     webhook_url = f"{PUBLIC_URL}{request.url.path}"
+    if HAS_LEGACY_LINE and form_dict.get("AccountSid") == LEGACY_ACCOUNT_SID:
+        if not _verify_twilio_signature(webhook_url, form_dict, x_twilio_signature, LEGACY_AUTH_TOKEN):
+            logger.warning(f"[TaxiGW] Firma de Twilio inválida (línea anterior) — rechazado (From={From!r})")
+            return Response(status_code=403)
+        logger.info(f"[TaxiGW] Línea anterior: {From} → aviso de número nuevo")
+        return _twiml(LEGACY_REPLY)  # TwiML responde desde el mismo número que recibió
     if not _verify_twilio_signature(webhook_url, form_dict, x_twilio_signature):
         logger.warning(f"[TaxiGW] Firma de Twilio inválida — request rechazado (From={From!r})")
         return Response(status_code=403)

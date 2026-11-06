@@ -70,6 +70,7 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 | `TWILIO_ACCOUNT_SID` | taxi-whatsapp | No envía WhatsApp |
 | `TWILIO_AUTH_TOKEN` | taxi-whatsapp | No envía WhatsApp |
 | `TWILIO_WHATSAPP_NUMBER` | taxi-whatsapp | No envía WhatsApp |
+| `TWILIO_WA_ACCOUNT_SID` / `TWILIO_WA_AUTH_TOKEN` | taxi-whatsapp | Subcuenta Twilio "TaxiCerca WhatsApp" (número +1 316 241 2111, portafolio Meta TaxiCerca). Vacías = usa `TWILIO_ACCOUNT_SID`/`TOKEN` como antes. Con ellas puestas, lo que llegue firmado por la cuenta principal (el 978) solo recibe el aviso de número nuevo, sin procesar viajes |
 | `JWT_SECRET` | taxi-api | JWT inválidos |
 | `GOOGLE_MAPS_API_KEY` | taxi-api | Geocoding usa solo Nominatim (OSM) como fallback — POIs pobres en ciudades pequeñas |
 | `CITY_LAT` / `CITY_LNG` | taxi-api | Sin bias geográfico — geocoding puede retornar resultados de otras ciudades |
