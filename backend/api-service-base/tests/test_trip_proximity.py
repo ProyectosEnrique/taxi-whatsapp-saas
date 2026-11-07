@@ -210,9 +210,12 @@ def test_accepted_message_has_direct_navigation_buttons(db_session, bot):
 
     _, text, buttons = bot["buttons"][-1]
     urls = [b.get("url", "") for row in buttons for b in row]
+    # Una sola ruta: pasa por el pasajero (parada) y sigue al destino
     assert any("google.com/maps/dir/" in u and "dir_action=navigate" in u
-               and f"destination={_ORIGIN[0]}" in u for u in urls)
-    assert any(u.startswith("https://waze.com/ul?") and "navigate=yes" in u for u in urls)
+               and f"destination={_DEST[0]}" in u and f"waypoints={_ORIGIN[0]}" in u for u in urls)
+    # Waze no acepta paradas: va solo al pasajero
+    assert any(u.startswith("https://waze.com/ul?") and f"ll={_ORIGIN[0]}" in u
+               and "navigate=yes" in u for u in urls)
     assert "🟢 Llegué al origen" in _labels(buttons)
     assert "/conductor/viaje/" not in text
 

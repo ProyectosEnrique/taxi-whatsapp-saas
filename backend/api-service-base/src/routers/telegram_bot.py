@@ -84,6 +84,22 @@ def _nav_buttons(lat, lng, label: str) -> list[list[dict]]:
     return [[{"text": f"🧭 {label}", "url": gmaps}, {"text": "🚙 Waze", "url": waze}]]
 
 
+def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
+    """Al aceptar: una sola ruta de Maps pasando por el pasajero hasta el destino,
+    así el chofer no regresa a Telegram para navegar. Waze no acepta paradas,
+    por eso ese botón va solo al pasajero."""
+    if not (trip.origin_lat and trip.origin_lng):
+        return []
+    if not (trip.destination_lat and trip.destination_lng):
+        return _nav_buttons(trip.origin_lat, trip.origin_lng, "Ir por el pasajero")
+    gmaps = (f"https://www.google.com/maps/dir/?api=1"
+             f"&destination={trip.destination_lat},{trip.destination_lng}"
+             f"&waypoints={trip.origin_lat},{trip.origin_lng}"
+             f"&travelmode=driving&dir_action=navigate")
+    waze = f"https://waze.com/ul?ll={trip.origin_lat},{trip.origin_lng}&navigate=yes"
+    return [[{"text": "🧭 Ruta completa", "url": gmaps}, {"text": "🚙 Waze (pasajero)", "url": waze}]]
+
+
 _LOCATION_HELP = (
     "📍 <b>Comparte tu ubicación en tiempo real</b>\n"
     "Una sola vez al empezar tu turno:\n"
@@ -516,8 +532,9 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await send_with_buttons(
             chat_id,
             f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
-            f"<i>Al llegar se avisa solo; el botón verde es por si no se marca.</i>",
-            _nav_buttons(trip.origin_lat, trip.origin_lng, "Ir por el pasajero")
+            f"<i>🧭 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
+            f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>",
+            _pickup_nav_buttons(trip)
             + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
         )
 
