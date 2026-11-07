@@ -448,17 +448,15 @@ async def telegram_webhook(
             if err:
                 await answer_callback(cq_id, err, alert=True)
                 return {"ok": True}
+            if trip.status == TripStatus.IN_PROGRESS:
+                await answer_callback(cq_id, "🚗 El viaje ya estaba iniciado")
+                return {"ok": True}
             if trip.status not in (TripStatus.CONFIRMED, TripStatus.DRIVER_ARRIVED):
                 await answer_callback(cq_id, "⚠️ El viaje no está en estado correcto", alert=True)
                 return {"ok": True}
 
-            trip.status = TripStatus.IN_PROGRESS
-            db.commit()
-            logger.info(f"[TelegramBot] {driver.name} inició viaje {ride_id}")
-
             await answer_callback(cq_id, "🚗 ¡Viaje iniciado!")
-            await _send_ride_action(chat_id, trip)
-            _notify_customer_wa(trip.customer_phone, driver, trip, "started")
+            await _mark_started(driver, trip, db)
 
         # ── Completar viaje ──────────────────────────────────────────────────
         elif cq_data.startswith("complete_"):
@@ -527,7 +525,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await send_with_buttons(
             chat_id,
             f"📍 <b>Llegaste — esperando al pasajero</b>\n\n"
-            f"{_trip_summary(trip)}\n\nCuando suba, toca <b>Iniciar viaje</b>.",
+            f"{_trip_summary(trip)}\n\nCuando suba el pasajero, arranca: el viaje se inicia solo "
+            f"al alejarte del punto. El botón es por si no se marca.",
             [[{"text": "🚗 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]],
         )
 
@@ -550,6 +549,15 @@ async def _mark_arrived(driver: Driver, trip: Trip, db: Session, auto: bool = Fa
     _notify_customer_wa(trip.customer_phone, driver, trip, "arrived")
 
 
+async def _mark_started(driver: Driver, trip: Trip, db: Session, auto: bool = False) -> None:
+    """Pasa el viaje a "en curso" y les avisa al chofer y al pasajero."""
+    trip.status = TripStatus.IN_PROGRESS
+    db.commit()
+    logger.info(f"[TelegramBot] {driver.name} inició viaje ({'auto' if auto else 'botón'}) {trip.trip_id}")
+    await _send_ride_action(driver.telegram_chat_id, trip)
+    _notify_customer_wa(trip.customer_phone, driver, trip, "started")
+
+
 def _seconds_since(dt: datetime | None) -> float:
     if dt is None:
         return float("inf")
@@ -560,10 +568,12 @@ def _seconds_since(dt: datetime | None) -> float:
 
 async def _check_trip_proximity(driver: Driver, db: Session) -> None:
     """Con cada ubicación del chofer: cerca del pasajero marca "Llegué" solo;
-    cerca del destino le manda el botón de completar (una sola vez)."""
+    al alejarse del punto ya con el pasajero inicia el viaje; cerca del
+    destino le manda el botón de completar (cada aviso una sola vez)."""
     trip = (db.query(Trip)
               .filter(Trip.driver_phone == driver.phone,
-                      Trip.status.in_([TripStatus.CONFIRMED, TripStatus.IN_PROGRESS]))
+                      Trip.status.in_([TripStatus.CONFIRMED, TripStatus.DRIVER_ARRIVED,
+                                       TripStatus.IN_PROGRESS]))
               .order_by(Trip.updated_at.desc())
               .first())
     if not trip or _seconds_since(trip.updated_at) < settings.PROXIMITY_MIN_AGE_S:
@@ -574,6 +584,11 @@ async def _check_trip_proximity(driver: Driver, db: Session) -> None:
         meters = _haversine_km(*here, float(trip.origin_lat), float(trip.origin_lng)) * 1000
         if meters <= settings.AUTO_ARRIVE_RADIUS_M and await ride_notifs.claim_once("arrived", trip.trip_id):
             await _mark_arrived(driver, trip, db, auto=True)
+
+    elif trip.status == TripStatus.DRIVER_ARRIVED and settings.AUTO_START_RADIUS_M and trip.origin_lat:
+        meters = _haversine_km(*here, float(trip.origin_lat), float(trip.origin_lng)) * 1000
+        if meters > settings.AUTO_START_RADIUS_M and await ride_notifs.claim_once("started", trip.trip_id):
+            await _mark_started(driver, trip, db, auto=True)
 
     elif trip.status == TripStatus.IN_PROGRESS and settings.NEAR_DEST_RADIUS_M and trip.destination_lat:
         meters = _haversine_km(*here, float(trip.destination_lat), float(trip.destination_lng)) * 1000

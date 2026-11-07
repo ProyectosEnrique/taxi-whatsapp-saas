@@ -142,6 +142,44 @@ def test_auto_arrival_can_be_disabled(tg_client, db_session, bot, monkeypatch):
     assert _status(db_session, trip) == TripStatus.CONFIRMED
 
 
+# ── "Iniciar viaje" automático ────────────────────────────────────────────────
+
+_LEAVING_ORIGIN = (20.5380, -100.8010)  # ~245 m del origen
+
+
+def test_starts_automatically_when_leaving_pickup(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.DRIVER_ARRIVED)
+    _move(tg_client, *_LEAVING_ORIGIN)
+
+    assert _status(db_session, trip) == TripStatus.IN_PROGRESS
+    assert bot["wa"] == ["started"]
+    assert "✅ Completar viaje" in _labels(bot["buttons"][-1][2])
+
+
+def test_no_auto_start_while_waiting_at_pickup(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.DRIVER_ARRIVED)
+    _move(tg_client, *_NEAR_ORIGIN)
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+    assert bot["wa"] == []
+
+
+def test_no_auto_start_right_after_arriving(tg_client, db_session, bot):
+    # Recién llegó: aunque el GPS brinque, no iniciar en el primer minuto
+    trip = _setup(db_session, TripStatus.DRIVER_ARRIVED, seconds_ago=5)
+    _move(tg_client, *_LEAVING_ORIGIN)
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+
+
+def test_manual_start_after_auto_start_is_harmless(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.DRIVER_ARRIVED)
+    _move(tg_client, *_LEAVING_ORIGIN)
+    cq = {"update_id": 2, "callback_query": {"id": "q1", "from": {"id": "chat1"},
+                                              "data": f"start_{trip.trip_id}"}}
+    tg_client.post("/api/v1/telegram/webhook", json=cq)
+    assert bot["wa"] == ["started"]
+    assert "ya estaba iniciado" in bot["callbacks"][-1]
+
+
 # ── Cerca del destino ─────────────────────────────────────────────────────────
 
 def test_near_destination_offers_complete_once(tg_client, db_session, bot):

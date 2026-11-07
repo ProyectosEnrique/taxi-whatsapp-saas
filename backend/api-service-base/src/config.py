@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     # ofrece al chofer el botón de completar. 0 = desactivado.
     AUTO_ARRIVE_RADIUS_M: int = 120
     NEAR_DEST_RADIUS_M: int = 200
+    AUTO_START_RADIUS_M: int = 200      # ya llegó y se aleja esto del origen → viaje iniciado solo
     PROXIMITY_MIN_AGE_S: int = 60       # no antes de esto tras aceptar/iniciar (evita falsos al arrancar)
 
     # ==============================================================================
