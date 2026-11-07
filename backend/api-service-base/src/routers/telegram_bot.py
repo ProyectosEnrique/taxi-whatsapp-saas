@@ -13,7 +13,9 @@ Comandos:
 Ubicación: el chofer comparte "ubicación en tiempo real" en este chat una vez
 por turno; Telegram manda cada actualización como edited_message y con eso se
 guarda su posición (sin app abierta ni pantalla encendida). La usa
-notify_drivers_new_ride para avisar primero a los choferes cercanos.
+notify_drivers_new_ride para avisar primero a los choferes cercanos, y
+durante el viaje: cerca del pasajero "Llegué" se marca solo, y cerca del
+destino se le manda el botón de completar (así el chofer casi no sale de Maps).
 
 Callbacks inline:
   accept_<id>    — aceptar viaje
@@ -72,6 +74,16 @@ def _maps(lat, lng) -> str | None:
     return None
 
 
+def _nav_buttons(lat, lng, label: str) -> list[list[dict]]:
+    """Botones que abren Google Maps o Waze ya navegando (sin pasos extra)."""
+    if not (lat and lng):
+        return []
+    gmaps = (f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}"
+             f"&travelmode=driving&dir_action=navigate")
+    waze = f"https://waze.com/ul?ll={lat},{lng}&navigate=yes"
+    return [[{"text": f"🧭 {label}", "url": gmaps}, {"text": "🚙 Waze", "url": waze}]]
+
+
 _LOCATION_HELP = (
     "📍 <b>Comparte tu ubicación en tiempo real</b>\n"
     "Una sola vez al empezar tu turno:\n"
@@ -114,6 +126,10 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
         sent_at = datetime.fromtimestamp(msg.get("date") or now.timestamp(), timezone.utc)
         driver.location_live_until = sent_at + timedelta(seconds=min(live, 86400))
     db.commit()
+    try:
+        await _check_trip_proximity(driver, db)
+    except Exception as e:  # nunca romper el guardado de ubicación por esto
+        logger.warning(f"[TelegramBot] proximidad falló para {driver.name}: {e}")
     if edited:
         return
 
@@ -415,17 +431,15 @@ async def telegram_webhook(
             if err:
                 await answer_callback(cq_id, err, alert=True)
                 return {"ok": True}
+            if trip.status == TripStatus.DRIVER_ARRIVED:
+                await answer_callback(cq_id, "📍 Tu llegada ya estaba registrada")
+                return {"ok": True}
             if trip.status != TripStatus.CONFIRMED:
                 await answer_callback(cq_id, "⚠️ El viaje no está en estado correcto", alert=True)
                 return {"ok": True}
 
-            trip.status = TripStatus.DRIVER_ARRIVED
-            db.commit()
-            logger.info(f"[TelegramBot] {driver.name} llegó al origen — viaje {ride_id}")
-
             await answer_callback(cq_id, "📍 ¡Llegada registrada!")
-            await _send_ride_action(chat_id, trip)
-            _notify_customer_wa(trip.customer_phone, driver, trip, "arrived")
+            await _mark_arrived(driver, trip, db)
 
         # ── Iniciar viaje ────────────────────────────────────────────────────
         elif cq_data.startswith("start_"):
@@ -500,41 +514,77 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
     Envía el mensaje de estado del viaje con el botón de acción correspondiente
     al estado actual. Centraliza toda la lógica de qué botón mostrar.
     """
-    maps_orig = _maps(trip.origin_lat, trip.origin_lng)
-    maps_dest = _maps(trip.destination_lat, trip.destination_lng)
-
     if trip.status == TripStatus.CONFIRMED:
-        nl = chr(10)
-        orig_line = (nl*2 + chr(0x1f4cd) + " <a href='" + maps_orig + "'>Abrir en Maps</a>") if maps_orig else ""
-        import base64 as _b64
-        _p = _b64.urlsafe_b64encode((trip.driver_phone or "").encode()).decode().rstrip("=")
-        nav_url = f"{settings.PUBLIC_URL}/conductor/viaje/{trip.trip_id}?p={_p}"
-        nav_line = nl*2 + chr(0x1f5fa) + " Navegar al origen: " + nav_url
-        msg = (chr(0x2705) + " <b>Viaje aceptado " + chr(0x2014) + " en camino al origen</b>" +
-               nl*2 + _trip_summary(trip) + orig_line + nav_line)
         await send_with_buttons(
             chat_id,
-            msg,
-            [[{"text": chr(0x1f7e2) + " Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
+            f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
+            f"<i>Al llegar se avisa solo; el botón verde es por si no se marca.</i>",
+            _nav_buttons(trip.origin_lat, trip.origin_lng, "Ir por el pasajero")
+            + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:
-        dest_line = f"\n\n🏁 <a href='{maps_dest}'>Abrir destino en Maps</a>" if maps_dest else ""
         await send_with_buttons(
             chat_id,
-            f"📍 <b>Llegaste al origen — esperando al pasajero</b>\n\n"
-            f"{_trip_summary(trip)}{dest_line}",
+            f"📍 <b>Llegaste — esperando al pasajero</b>\n\n"
+            f"{_trip_summary(trip)}\n\nCuando suba, toca <b>Iniciar viaje</b>.",
             [[{"text": "🚗 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]],
         )
 
     elif trip.status == TripStatus.IN_PROGRESS:
-        dest_line = f"\n\n🏁 <a href='{maps_dest}'>Abrir destino en Maps</a>" if maps_dest else ""
         await send_with_buttons(
             chat_id,
-            f"🚗 <b>Viaje en curso</b>\n\n"
-            f"{_trip_summary(trip)}{dest_line}",
-            [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
+            f"🚗 <b>Viaje en curso</b>\n\n{_trip_summary(trip)}\n\n"
+            f"<i>Cerca del destino te mando el botón para completar.</i>",
+            _nav_buttons(trip.destination_lat, trip.destination_lng, "Ir al destino")
+            + [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
         )
+
+
+async def _mark_arrived(driver: Driver, trip: Trip, db: Session, auto: bool = False) -> None:
+    """Pasa el viaje a "llegó al origen" y les avisa al chofer y al pasajero."""
+    trip.status = TripStatus.DRIVER_ARRIVED
+    db.commit()
+    logger.info(f"[TelegramBot] {driver.name} llegó al origen ({'auto' if auto else 'botón'}) — viaje {trip.trip_id}")
+    await _send_ride_action(driver.telegram_chat_id, trip)
+    _notify_customer_wa(trip.customer_phone, driver, trip, "arrived")
+
+
+def _seconds_since(dt: datetime | None) -> float:
+    if dt is None:
+        return float("inf")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds()
+
+
+async def _check_trip_proximity(driver: Driver, db: Session) -> None:
+    """Con cada ubicación del chofer: cerca del pasajero marca "Llegué" solo;
+    cerca del destino le manda el botón de completar (una sola vez)."""
+    trip = (db.query(Trip)
+              .filter(Trip.driver_phone == driver.phone,
+                      Trip.status.in_([TripStatus.CONFIRMED, TripStatus.IN_PROGRESS]))
+              .order_by(Trip.updated_at.desc())
+              .first())
+    if not trip or _seconds_since(trip.updated_at) < settings.PROXIMITY_MIN_AGE_S:
+        return
+    here = (float(driver.current_lat), float(driver.current_lng))
+
+    if trip.status == TripStatus.CONFIRMED and settings.AUTO_ARRIVE_RADIUS_M and trip.origin_lat:
+        meters = _haversine_km(*here, float(trip.origin_lat), float(trip.origin_lng)) * 1000
+        if meters <= settings.AUTO_ARRIVE_RADIUS_M and await ride_notifs.claim_once("arrived", trip.trip_id):
+            await _mark_arrived(driver, trip, db, auto=True)
+
+    elif trip.status == TripStatus.IN_PROGRESS and settings.NEAR_DEST_RADIUS_M and trip.destination_lat:
+        meters = _haversine_km(*here, float(trip.destination_lat), float(trip.destination_lng)) * 1000
+        if meters <= settings.NEAR_DEST_RADIUS_M and await ride_notifs.claim_once("near_dest", trip.trip_id):
+            logger.info(f"[TelegramBot] {driver.name} cerca del destino — viaje {trip.trip_id}")
+            await send_with_buttons(
+                driver.telegram_chat_id,
+                f"🏁 <b>Ya casi llegas al destino</b>\n{trip.destination_address}\n\n"
+                f"💰 Cobra <b>${float(trip.fare or 0):.0f}</b> y toca completar.",
+                [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
+            )
 
 
 # ── Notificación de nuevo viaje: primero a los cercanos, luego a todos ───────

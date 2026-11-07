@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     DISPATCH_RING_WAIT_S: int = 60
     LOCATION_FRESH_MIN: int = 5         # ubicación más vieja que esto no cuenta como "cerca"...
     LOCATION_LIVE_FRESH_MIN: int = 60   # ...salvo con ubicación en vivo activa (estacionado casi no actualiza)
+    # Avisos por cercanía durante el viaje (ubicación en vivo de Telegram):
+    # "Llegué" se marca solo cerca del pasajero y, cerca del destino, se le
+    # ofrece al chofer el botón de completar. 0 = desactivado.
+    AUTO_ARRIVE_RADIUS_M: int = 120
+    NEAR_DEST_RADIUS_M: int = 200
+    PROXIMITY_MIN_AGE_S: int = 60       # no antes de esto tras aceptar/iniciar (evita falsos al arrancar)
 
     # ==============================================================================
     # REDIS (ride_notifs.py — comparte estado entre workers si se escala > 1)

@@ -68,6 +68,24 @@ async def add(ride_id: str, notifications: list[tuple[str, int]]) -> None:
     await save(ride_id, await get(ride_id) + notifications)
 
 
+_memory_claims: set[str] = set()
+
+
+async def claim_once(tag: str, ride_id: str, ttl: int = 6 * 3600) -> bool:
+    """True solo la primera vez para (tag, viaje): evita que dos actualizaciones
+    de ubicación seguidas disparen el mismo aviso automático dos veces."""
+    key = f"taxi:once:{tag}:{ride_id}"
+    if _redis_client is not None:
+        try:
+            return bool(await _redis_client.set(key, "1", nx=True, ex=ttl))
+        except Exception as exc:
+            logger.warning(f"[ride_notifs] claim_once fallo, usando memoria: {exc}")
+    if key in _memory_claims:
+        return False
+    _memory_claims.add(key)
+    return True
+
+
 async def remove(ride_id: str) -> None:
     if _redis_client is not None:
         try:
