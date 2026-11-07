@@ -17,6 +17,7 @@ from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, 
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare
 from ..config import settings
+from ..services.farmacerca_gift import gift_for
 from ..rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -547,6 +548,8 @@ def public_track(ride_id: str, db: Session = Depends(get_db)):
             "lng": _sf(driver.current_lng),
         } if driver else None,
         "fare": float(trip.fare or 0),
+        # Banner "regalo de FarmaCerca" (solo primer viaje y taxi dado de alta en FarmaCerca)
+        "gift": gift_for(trip, driver, db),
     }
 
 

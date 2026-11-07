@@ -36,6 +36,7 @@ from ..database import SessionLocal, get_db
 from ..models import Driver, Trip, TripStatus
 from ..config import settings
 from ..services import ride_notifs
+from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
     answer_callback,
     edit_message_text,
@@ -228,6 +229,7 @@ def _notify_customer_wa(
             f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
             f"¡Gracias por usar nuestro servicio! 🙌\n"
             f"Para agendar tu próximo viaje escríbeme aquí."
+            f"{gift_line(trip, driver) if event == 'completed' else ''}"
         ),
     }
     msg = messages.get(event)

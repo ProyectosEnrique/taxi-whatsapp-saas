@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     AUTO_ARRIVE_RADIUS_M: int = 120
     NEAR_DEST_RADIUS_M: int = 200
     AUTO_START_RADIUS_M: int = 200      # ya llegó y se aleja esto del origen → viaje iniciado solo
+    # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.
+    FARMACERCA_GIFT_URL: str = "https://farmacia.nexoai.lat/r/taxi"
+    FARMACERCA_GIFT_AMOUNT: int = 5
     PROXIMITY_MIN_AGE_S: int = 60       # no antes de esto tras aceptar/iniciar (evita falsos al arrancar)
 
     # ==============================================================================

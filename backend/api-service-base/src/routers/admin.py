@@ -53,6 +53,7 @@ def _driver_to_dict(driver: Driver) -> dict:
             "color":  driver.vehicle_color or "",
             "year":   driver.vehicle_year,
         },
+        "taxi_number": driver.taxi_number or "",
         "location": {
             "lat": float(driver.current_lat or 0),
             "lng": float(driver.current_lng or 0),
@@ -181,6 +182,7 @@ def create_driver(payload: dict, db: Session = Depends(get_db)):
         vehicle_plates = payload.get("vehicle_plates", ""),
         vehicle_color  = payload.get("vehicle_color", ""),
         vehicle_year   = payload.get("vehicle_year"),
+        taxi_number    = payload.get("taxi_number") or None,
         driver_code    = driver_code,
         is_active      = True,
         is_online      = False,
@@ -196,7 +198,8 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.phone == phone).first()
     if not driver:
         raise HTTPException(404, "Conductor no encontrado")
-    for field in ("name", "vehicle_brand", "vehicle_model", "vehicle_plates", "vehicle_color", "vehicle_year", "driver_code"):
+    for field in ("name", "vehicle_brand", "vehicle_model", "vehicle_plates", "vehicle_color", "vehicle_year", "driver_code",
+                  "taxi_number"):
         if field in payload:
             setattr(driver, field, payload[field])
     if "is_active" in payload:

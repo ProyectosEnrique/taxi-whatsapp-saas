@@ -18,6 +18,7 @@ from ..database import get_db
 from ..models import Driver, Trip, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_driver, _decode
 from ..config import settings
+from ..services.farmacerca_gift import gift_line
 from ..rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -636,7 +637,8 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
         f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
         f"¡Gracias por usar nuestro servicio! 🙌\n"
         f"Para agendar tu próximo viaje escríbeme aquí o visita:\n"
-        f"{settings.PUBLIC_URL}/cliente",
+        f"{settings.PUBLIC_URL}/cliente"
+        f"{gift_line(trip, current)}",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
 

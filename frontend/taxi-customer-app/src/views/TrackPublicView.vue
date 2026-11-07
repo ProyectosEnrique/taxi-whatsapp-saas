@@ -66,6 +66,18 @@
         </div>
       </div>
 
+      <!-- Regalo FarmaCerca (primer viaje) -->
+      <div v-if="ride.gift && ride.status !== 'cancelled'" class="info-card gift-card">
+        <p v-if="!isCompleted">
+          🎁 Al terminar tu viaje te regalamos <strong>${{ ride.gift.amount }}</strong> en tu
+          Monedero FarmaCerca, <em>Tu farmacia por WhatsApp</em>.
+        </p>
+        <template v-else>
+          <p>🎁 Por viajar con TaxiCerca tienes <strong>${{ ride.gift.amount }}</strong> en tu Monedero FarmaCerca.</p>
+          <a :href="ride.gift.url" class="btn-gift" target="_blank" rel="noopener">Recoger mi regalo</a>
+        </template>
+      </div>
+
       <!-- Finished -->
       <div v-if="isFinished" class="info-card finished-card">
         <p>{{ isCompleted ? '¡Llegaste a tu destino! 🎉' : 'Viaje cancelado.' }}</p>
@@ -372,6 +384,24 @@ onUnmounted(() => {
   font-size: 15px;
 }
 .finished-card p { margin: 0 0 16px; }
+
+.gift-card {
+  background: #effaf3;
+  border: 1px solid #b7e4c7;
+  font-size: 14px;
+  text-align: center;
+}
+.gift-card p { margin: 0; color: #1b4332; }
+.btn-gift {
+  display: inline-block;
+  margin-top: 12px;
+  background: #2d6a4f;
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 24px;
+  border-radius: 50px;
+  text-decoration: none;
+}
 
 .btn-primary {
   display: inline-block;

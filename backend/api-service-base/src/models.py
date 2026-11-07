@@ -386,6 +386,9 @@ class Driver(Base):
     driver_code = Column(String(30), unique=True, index=True)  # slug para URL: "carlos-a1b2"
     group_id    = Column(Integer, ForeignKey("taxi_groups.id"), nullable=True)
     group       = relationship("TaxiGroup", back_populates="drivers")
+    # Número económico del taxi = código del taxi en FarmaCerca (aliado TAXI):
+    # con él, el regalo del primer viaje le abona también al chofer
+    taxi_number = Column(String(20), nullable=True)
 
     # Contacto de emergencia
     emergency_contact_name        = Column(String(150), nullable=True)
