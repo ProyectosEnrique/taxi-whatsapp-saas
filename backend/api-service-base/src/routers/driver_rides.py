@@ -555,13 +555,13 @@ async def accept_ride(ride_id: str, current: Driver = Depends(get_current_driver
     except Exception as sse_err:
         logger.warning(f"[Driver] SSE ride_taken error: {sse_err}")
 
+    from .telegram_bot import _eta_line, _vehicle_line
     _notify_customer(
         trip.customer_phone,
         f"🚕 *¡Conductor asignado!*\n\n"
-        f"Tu taxi está en camino 🟢\n"
+        f"Tu taxi está en camino 🟢{_eta_line(current, trip)}\n"
         f"Conductor: *{current.name}*\n"
-        f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
-        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
+        f"{_vehicle_line(current)}\n"
         f"📍 Sigue tu viaje en tiempo real:\n"
         f"{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}\n\n"
         f"_Escribe *estado* para más info o *cancelar* si ya no lo necesitas._",
@@ -586,12 +586,12 @@ def driver_arrived(ride_id: str, current: Driver = Depends(get_current_driver), 
     trip.status = TripStatus.DRIVER_ARRIVED
     db.commit()
     logger.info(f"[Driver] {current.name} llegó al origen del viaje {ride_id}")
+    from .telegram_bot import _vehicle_line
     _notify_customer(
         trip.customer_phone,
         f"🚕 *¡Tu taxi llegó!*\n\n"
         f"Tu conductor *{current.name}* está esperándote.\n"
-        f"Vehículo: {current.vehicle_brand or ''} {current.vehicle_model or ''} "
-        f"({current.vehicle_color or ''}) — *{current.vehicle_plates or 'N/D'}*\n\n"
+        f"{_vehicle_line(current)}\n"
         f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}

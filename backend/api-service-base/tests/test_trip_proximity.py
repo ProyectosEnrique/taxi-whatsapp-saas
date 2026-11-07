@@ -201,6 +201,31 @@ def test_no_destination_prompt_while_far(tg_client, db_session, bot):
     assert bot["buttons"] == []
 
 
+# ── Aviso al pasajero: tiempo de llegada y vehículo ───────────────────────────
+
+def test_eta_when_driver_location_is_fresh(db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    d = db_session.query(Driver).one()
+    d.current_lat, d.current_lng = _FAR            # ~2.2 km del pasajero
+    d.location_updated_at = datetime.now(timezone.utc)
+    db_session.commit()
+    assert telegram_bot._eta_line(d, trip) == " · llega en ~7 min"
+
+
+def test_no_eta_without_recent_location(db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    d = db_session.query(Driver).one()
+    assert telegram_bot._eta_line(d, trip) == ""
+
+
+def test_vehicle_line_skips_missing_data():
+    d = Driver(vehicle_brand="Nissan", vehicle_model="Tsuru", vehicle_color="blanco",
+               vehicle_plates="ABC-123")
+    assert telegram_bot._vehicle_line(d) == "Vehículo: Nissan Tsuru (blanco) — *ABC-123*\n"
+    assert telegram_bot._vehicle_line(Driver(vehicle_color="rojo")) == "Vehículo: rojo\n"
+    assert telegram_bot._vehicle_line(Driver()) == ""
+
+
 # ── Botones de navegación ─────────────────────────────────────────────────────
 
 def test_accepted_message_has_direct_navigation_buttons(db_session, bot):

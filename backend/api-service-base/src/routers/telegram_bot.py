@@ -167,6 +167,29 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
     )
 
 
+def _vehicle_line(driver: Driver) -> str:
+    """'Vehículo: Nissan Tsuru (blanco) — *ABC-123*' con solo los datos que hay
+    (nada de "N/D": da desconfianza)."""
+    car = " ".join(p for p in (driver.vehicle_brand, driver.vehicle_model) if p)
+    if driver.vehicle_color:
+        car = f"{car} ({driver.vehicle_color})" if car else driver.vehicle_color
+    if driver.vehicle_plates:
+        car = f"{car} — *{driver.vehicle_plates}*" if car else f"Placas *{driver.vehicle_plates}*"
+    return f"Vehículo: {car}\n" if car else ""
+
+
+def _eta_line(driver: Driver, trip: Trip) -> str:
+    """' · llega en ~5 min' según la distancia del chofer al pasajero (si su
+    ubicación es reciente); vacío si no se sabe."""
+    if not (_location_fresh(driver) and trip.origin_lat and trip.origin_lng):
+        return ""
+    km = _haversine_km(float(driver.current_lat), float(driver.current_lng),
+                       float(trip.origin_lat), float(trip.origin_lng))
+    # línea recta × 1.3 por calles, ~25 km/h en ciudad
+    minutes = max(2, round(km * 1.3 / 25 * 60))
+    return f" · llega en ~{minutes} min"
+
+
 def _notify_customer_wa(
     customer_phone: str, driver: Driver, trip: Trip, event: str = "accepted"
 ) -> None:
@@ -177,20 +200,20 @@ def _notify_customer_wa(
     if not gateway or not customer_phone:
         return
 
+    vehicle = _vehicle_line(driver)
+    eta = _eta_line(driver, trip)
     messages = {
         "accepted": (
             f"🚕 *¡Conductor asignado!*\n\n"
-            f"Tu taxi está en camino 🟢\n"
+            f"Tu taxi está en camino 🟢{eta}\n"
             f"Conductor: *{driver.name}*\n"
-            f"Vehículo: {driver.vehicle_brand or ''} {driver.vehicle_model or ''} "
-            f"({driver.vehicle_color or ''}) — *{driver.vehicle_plates or 'N/D'}*\n\n"
+            f"{vehicle}\n"
             f"📍 Sigue tu viaje:\n{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
         ),
         "arrived": (
             f"🚕 *¡Tu taxi llegó!*\n\n"
             f"Tu conductor *{driver.name}* está esperándote.\n"
-            f"Vehículo: {driver.vehicle_brand or ''} {driver.vehicle_model or ''} "
-            f"({driver.vehicle_color or ''}) — *{driver.vehicle_plates or 'N/D'}*\n\n"
+            f"{vehicle}\n"
             f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
         ),
         "started": (
