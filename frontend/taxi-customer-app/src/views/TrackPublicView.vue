@@ -25,6 +25,12 @@
         <span>{{ statusIcon }} {{ statusLabel }}</span>
       </div>
 
+      <!-- Tiempo y distancia -->
+      <div v-if="etaText" class="eta-card">
+        <span class="eta-main">{{ etaText.main }}</span>
+        <span v-if="etaText.sub" class="eta-sub">{{ etaText.sub }}</span>
+      </div>
+
       <!-- Map -->
       <div id="public-map" class="track-map"></div>
 
@@ -124,6 +130,66 @@ const statusClass = computed(() => STATUS_MAP[ride.value?.status]?.cls ?? '')
 const isFinished  = computed(() => ['completed', 'cancelled'].includes(ride.value?.status))
 const isCompleted = computed(() => ride.value?.status === 'completed')
 
+// ── Tiempo y distancia ─────────────────────────────────────────────────────────
+// En camino: taxi → pasajero. En curso: taxi → destino. Antes de asignar: trayecto
+// completo. Se recalcula cada 30 s (no en cada consulta de 5 s, para no saturar OSRM).
+const eta = ref(null)            // { km, min, kind }
+let lastEtaAt = 0
+let lastEtaStatus = null
+const ETA_EVERY_MS = 30000
+
+function _haversineKm(a, b, c, d) {
+  const R = 6371, toRad = x => x * Math.PI / 180
+  const dLat = toRad(c - a), dLng = toRad(d - b)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+async function _routeKmMin(oLat, oLng, dLat, dLng) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=false`
+    const data = await (await fetch(url)).json()
+    const r = data.routes?.[0]
+    if (r) return { km: r.distance / 1000, min: r.duration / 60 }
+  } catch (_) { /* aproximación abajo */ }
+  // Línea recta × 1.3 por calles, ~25 km/h en ciudad
+  const km = _haversineKm(oLat, oLng, dLat, dLng) * 1.3
+  return { km, min: km / 25 * 60 }
+}
+
+async function updateEta(data) {
+  const s = data.status
+  const dr = data.driver, o = data.origin, d = data.destination
+  let from = null, to = null, kind = null
+  if (s === 'confirmed' && dr?.lat != null && o?.lat != null) {
+    from = [dr.lat, dr.lng]; to = [o.lat, o.lng]; kind = 'pickup'
+  } else if (s === 'in_progress' && dr?.lat != null && d?.lat != null) {
+    from = [dr.lat, dr.lng]; to = [d.lat, d.lng]; kind = 'dest'
+  } else if (['requested', 'scheduled'].includes(s) && o?.lat != null && d?.lat != null) {
+    from = [o.lat, o.lng]; to = [d.lat, d.lng]; kind = 'trip'
+  } else {
+    eta.value = s === 'driver_arrived' ? { kind: 'arrived' } : null
+    lastEtaStatus = s
+    return
+  }
+  const now = Date.now()
+  if (s === lastEtaStatus && now - lastEtaAt < ETA_EVERY_MS) return
+  lastEtaStatus = s
+  lastEtaAt = now
+  const r = await _routeKmMin(...from, ...to)
+  eta.value = { km: r.km, min: Math.max(1, Math.round(r.min)), kind }
+}
+
+const etaText = computed(() => {
+  const e = eta.value
+  if (!e) return null
+  if (e.kind === 'arrived') return { main: '🚕 Tu taxi te está esperando' }
+  const km = e.km < 1 ? `${Math.round(e.km * 1000)} m` : `${e.km.toFixed(1)} km`
+  if (e.kind === 'pickup') return { main: `🚕 Tu taxi llega en ~${e.min} min`, sub: `a ${km} de ti` }
+  if (e.kind === 'dest') return { main: `🏁 Llegas en ~${e.min} min`, sub: `faltan ${km} para tu destino` }
+  return { main: `🛣️ Trayecto: ${km}`, sub: `~${e.min} min de viaje` }
+})
+
 async function fetchRide() {
   try {
     const resp = await fetch(`${API_BASE}/customer/rides/${rideId}/public-track`)
@@ -138,6 +204,7 @@ async function fetchRide() {
     await nextTick()
     initMap(data)
     updateMarkers(data)
+    updateEta(data)
     if (isFinished.value) clearInterval(pollTimer)
   } catch (e) {
     console.error('[TrackPublic] fetch error:', e)
@@ -384,6 +451,19 @@ onUnmounted(() => {
   font-size: 15px;
 }
 .finished-card p { margin: 0 0 16px; }
+
+.eta-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+.eta-main { font-size: 18px; font-weight: 700; }
+.eta-sub { font-size: 13px; opacity: .8; }
 
 .gift-card {
   background: #effaf3;
