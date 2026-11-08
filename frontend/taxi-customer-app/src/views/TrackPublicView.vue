@@ -72,6 +72,30 @@
         </div>
       </div>
 
+      <!-- SOS: mantener presionado 2 s (un toque por accidente no alerta a nadie) -->
+      <div v-if="canSos" class="sos-box">
+        <div v-if="sosSent" class="sos-sent">
+          <p>🚨 <strong>Alerta enviada.</strong> El encargado de la base ya tiene tus datos y te va a contactar.</p>
+          <a :href="`tel:${emergencyPhone}`" class="btn-911">📞 Llamar al {{ emergencyPhone }}</a>
+        </div>
+        <template v-else>
+          <button
+            class="btn-sos"
+            :class="{ holding: sosHolding }"
+            :disabled="sosSending"
+            @pointerdown.prevent="startSosHold"
+            @pointerup="cancelSosHold"
+            @pointerleave="cancelSosHold"
+            @pointercancel="cancelSosHold"
+            @contextmenu.prevent
+          >
+            <span class="sos-fill" :style="{ width: sosProgress + '%' }"></span>
+            <span class="sos-label">{{ sosSending ? 'Enviando alerta…' : '🚨 SOS — mantén presionado' }}</span>
+          </button>
+          <p v-if="sosError" class="sos-error">{{ sosError }}</p>
+        </template>
+      </div>
+
       <!-- Regalo FarmaCerca (primer viaje) -->
       <div v-if="ride.gift && ride.status !== 'cancelled'" class="info-card gift-card">
         <p v-if="!isCompleted">
@@ -129,6 +153,71 @@ const statusIcon  = computed(() => STATUS_MAP[ride.value?.status]?.icon ?? '')
 const statusClass = computed(() => STATUS_MAP[ride.value?.status]?.cls ?? '')
 const isFinished  = computed(() => ['completed', 'cancelled'].includes(ride.value?.status))
 const isCompleted = computed(() => ride.value?.status === 'completed')
+
+// ── SOS ───────────────────────────────────────────────────────────────────────
+const SOS_HOLD_MS = 2000
+const canSos = computed(() => ['confirmed', 'driver_arrived', 'in_progress'].includes(ride.value?.status) || sosSent.value)
+const sosHolding = ref(false)
+const sosProgress = ref(0)
+const sosSending = ref(false)
+const sosSent = ref(false)
+const sosError = ref('')
+const emergencyPhone = ref('911')
+let sosTimer = null
+let sosStart = 0
+
+function startSosHold() {
+  if (sosSending.value) return
+  sosError.value = ''
+  sosHolding.value = true
+  sosStart = Date.now()
+  sosTimer = setInterval(() => {
+    sosProgress.value = Math.min(100, (Date.now() - sosStart) / SOS_HOLD_MS * 100)
+    if (sosProgress.value >= 100) {
+      cancelSosHold()
+      sendSos()
+    }
+  }, 50)
+}
+
+function cancelSosHold() {
+  clearInterval(sosTimer)
+  sosHolding.value = false
+  if (!sosSending.value) sosProgress.value = 0
+}
+
+function _position() {
+  // Ubicación del celular si la da en 4 s; si no, se usa la del taxi
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve({})
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => resolve({}),
+      { enableHighAccuracy: true, timeout: 4000, maximumAge: 30000 },
+    )
+  })
+}
+
+async function sendSos() {
+  sosSending.value = true
+  try {
+    const where = await _position()
+    const resp = await fetch(`${API_BASE}/customer/rides/${rideId}/sos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(where),
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`)
+    emergencyPhone.value = data.emergency_phone || '911'
+    sosSent.value = true
+  } catch (e) {
+    sosError.value = `No se pudo enviar la alerta. Si estás en peligro, llama al ${emergencyPhone.value}.`
+  } finally {
+    sosSending.value = false
+    sosProgress.value = 0
+  }
+}
 
 // ── Tiempo y distancia ─────────────────────────────────────────────────────────
 // En camino: taxi → pasajero. En curso: taxi → destino. Antes de asignar: trayecto
@@ -451,6 +540,48 @@ onUnmounted(() => {
   font-size: 15px;
 }
 .finished-card p { margin: 0 0 16px; }
+
+.btn-sos {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.btn-sos.holding { background: #7f1d1d; }
+.sos-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(255,255,255,.25);
+}
+.sos-label { position: relative; }
+.sos-error { margin: 8px 0 0; color: #b91c1c; font-size: 13px; text-align: center; }
+.sos-sent {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: center;
+  color: #7f1d1d;
+}
+.sos-sent p { margin: 0 0 12px; }
+.btn-911 {
+  display: inline-block;
+  background: #b91c1c;
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 24px;
+  border-radius: 50px;
+  text-decoration: none;
+}
 
 .eta-card {
   display: flex;

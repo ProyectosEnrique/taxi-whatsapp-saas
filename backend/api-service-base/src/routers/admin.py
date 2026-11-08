@@ -54,6 +54,7 @@ def _driver_to_dict(driver: Driver) -> dict:
             "year":   driver.vehicle_year,
         },
         "taxi_number": driver.taxi_number or "",
+        "group_id": driver.group_id,
         "location": {
             "lat": float(driver.current_lat or 0),
             "lng": float(driver.current_lng or 0),
@@ -199,7 +200,7 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
     if not driver:
         raise HTTPException(404, "Conductor no encontrado")
     for field in ("name", "vehicle_brand", "vehicle_model", "vehicle_plates", "vehicle_color", "vehicle_year", "driver_code",
-                  "taxi_number"):
+                  "taxi_number", "group_id"):
         if field in payload:
             setattr(driver, field, payload[field])
     if "is_active" in payload:

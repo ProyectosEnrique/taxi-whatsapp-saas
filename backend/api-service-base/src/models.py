@@ -437,10 +437,31 @@ class Incident(Base):
     last_location_lng   = Column(Numeric(10, 7), nullable=True)
     last_location_at    = Column(DateTime(timezone=True), nullable=True)
 
+    # Base del taxi involucrado (a sus encargados va la alerta) y quién la atendió
+    group_id        = Column(Integer, nullable=True)
+    acknowledged_by = Column(String(150), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f"<Incident(incident_id='{self.incident_id}', reporter='{self.reporter_phone}')>"
+
+
+class BaseManager(Base):
+    """Encargado de una base de taxis: recibe por Telegram las alertas SOS de
+    los viajes de sus choferes. priority 1 = principal (al instante),
+    2 = respaldo (si nadie atiende en SOS_ESCALATE_MIN). group_id vacío = sin base."""
+    __tablename__ = "base_managers"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    group_id         = Column(Integer, ForeignKey("taxi_groups.id"), nullable=True, index=True)
+    name             = Column(String(150), nullable=False)
+    phone            = Column(String(30), unique=True, nullable=False, index=True)
+    telegram_chat_id = Column(String(50), nullable=True, index=True)   # se llena con /encargado
+    priority         = Column(Integer, default=1)
+    is_active        = Column(Boolean, default=True)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
 
 
 # ==============================================================================

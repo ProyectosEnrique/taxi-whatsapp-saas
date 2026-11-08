@@ -24,7 +24,8 @@ from ..database import get_db
 from ..models import Customer, Driver, Incident
 from ..auth import get_current_customer, get_current_driver
 from ..config import settings
-from ..services.telegram import send_to_operator, send_message
+from ..services import sos
+from ..services.telegram import send_message
 from .admin import _admin_auth
 
 logger = logging.getLogger(__name__)
@@ -48,24 +49,6 @@ def _maps_url(lat, lng) -> str:
     return "Sin ubicación"
 
 
-async def _alert_operator(incident: Incident) -> None:
-    """Manda alerta Telegram al grupo del operador."""
-    maps = _maps_url(incident.lat, incident.lng)
-    track = _tracking_url(incident.incident_id)
-    tipo = "Conductor" if incident.reporter_type == "driver" else "Cliente"
-    text = (
-        f"🚨 <b>ALERTA SOS</b>\n"
-        f"Tipo: {tipo}\n"
-        f"Nombre: <b>{incident.reporter_name}</b>\n"
-        f"Tel: {incident.reporter_phone}\n"
-        f"Viaje: {incident.trip_id or 'N/A'}\n"
-        f"Hora: {datetime.now(timezone.utc).strftime('%H:%M UTC')}\n"
-        f"📍 <a href='{maps}'>Ver en mapa</a>\n"
-        f"🔗 <a href='{track}'>Rastreo en vivo</a>"
-    )
-    await send_to_operator(text)
-
-
 async def _alert_emergency_contact(incident: Incident, contact_name: str,
                                    contact_phone: str, contact_telegram_id: str) -> None:
     """Manda alerta Telegram al contacto de emergencia personal."""
@@ -85,22 +68,16 @@ async def _alert_emergency_contact(incident: Incident, contact_name: str,
     await send_message(contact_telegram_id, text)
 
 
-def _create_incident(db: Session, reporter_type, phone, name, payload: dict) -> Incident:
-    incident = Incident(
-        trip_id           = payload.get("trip_id"),
-        reporter_type     = reporter_type,
-        reporter_phone    = phone,
-        reporter_name     = name,
-        lat               = payload.get("lat"),
-        lng               = payload.get("lng"),
-        last_location_lat = payload.get("lat"),
-        last_location_lng = payload.get("lng"),
-        last_location_at  = datetime.now(timezone.utc) if payload.get("lat") else None,
-        notes             = payload.get("notes", ""),
-    )
-    db.add(incident)
-    db.commit()
-    db.refresh(incident)
+async def _raise(db: Session, reporter_type: str, phone: str, name: str, payload: dict) -> Incident:
+    """Mismo aviso que el SOS de Telegram/WhatsApp/seguimiento: encargados de la
+    base del taxi + operador (services/sos.py)."""
+    from ..models import Trip
+    trip = None
+    if payload.get("trip_id"):
+        trip = db.query(Trip).filter(Trip.trip_id == payload["trip_id"]).first()
+    trip = trip or sos.trip_for(db, phone, reporter_type)
+    incident, _ = await sos.raise_sos(db, reporter_type=reporter_type, phone=phone, name=name, trip=trip,
+                                      lat=payload.get("lat"), lng=payload.get("lng"), source="app")
     return incident
 
 
@@ -122,10 +99,7 @@ async def report_incident_customer(
     current: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):
-    incident = _create_incident(db, "customer", current.phone, current.name or "Cliente", payload)
-    logger.warning(f"[SOS] CLIENTE {current.phone} — {incident.incident_id}")
-
-    await _alert_operator(incident)
+    incident = await _raise(db, "customer", current.phone, current.name or "Cliente", payload)
     await _alert_emergency_contact(
         incident,
         current.emergency_contact_name or "",
@@ -143,10 +117,7 @@ async def report_incident_driver(
     current: Driver = Depends(get_current_driver),
     db: Session = Depends(get_db),
 ):
-    incident = _create_incident(db, "driver", current.phone, current.name, payload)
-    logger.warning(f"[SOS] CONDUCTOR {current.phone} — {incident.incident_id}")
-
-    await _alert_operator(incident)
+    incident = await _raise(db, "driver", current.phone, current.name, payload)
     await _alert_emergency_contact(
         incident,
         current.emergency_contact_name or "",

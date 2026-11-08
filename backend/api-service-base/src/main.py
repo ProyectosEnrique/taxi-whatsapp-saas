@@ -35,6 +35,7 @@ from .routers.incidents import admin_router as incidents_admin_router
 from .routers.admin import router as admin_router
 from .routers.whatsapp import router as whatsapp_router
 from .routers.telegram_bot import router as telegram_bot_router
+from .routers.sos import router as sos_router, admin_router as sos_admin_router
 from .routers.sse import router as sse_router
 from .database import engine, Base
 from .config import settings
@@ -88,49 +89,21 @@ request_duration = Histogram(
 
 async def _dead_mans_switch():
     """
-    Cada 2 minutos revisa incidentes activos sin resolver.
-    Si llevan más de 5 min sin escalarse → envía alerta de escalación por Telegram.
+    Cada 30 s: alertas SOS que nadie atendió ("✅ Ya lo atiendo") en
+    SOS_ESCALATE_MIN → a los encargados de respaldo y al operador (services/sos.py).
     """
-    from .services.telegram import send_to_operator
+    from .services.sos import escalate_pending
     await asyncio.sleep(30)
     while True:
         try:
             db = SessionLocal()
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
-            pending = (
-                db.query(Incident)
-                .filter(
-                    Incident.status == "active",
-                    Incident.escalated == False,
-                    Incident.created_at <= cutoff,
-                )
-                .all()
-            )
-            for inc in pending:
-                maps = (
-                    f"https://maps.google.com/?q={inc.last_location_lat},{inc.last_location_lng}"
-                    if inc.last_location_lat else "Sin ubicación"
-                )
-                track = f"{settings.PUBLIC_URL}/track/{inc.incident_id}"
-                tipo = "Conductor" if inc.reporter_type == "driver" else "Cliente"
-                msg = (
-                    f"⚠️ <b>ESCALACIÓN — SOS sin resolver</b>\n"
-                    f"Han pasado +5 minutos sin respuesta.\n"
-                    f"Tipo: {tipo} | {inc.reporter_name}\n"
-                    f"Tel: {inc.reporter_phone}\n"
-                    f"📍 <a href='{maps}'>Última ubicación</a>\n"
-                    f"🔗 <a href='{track}'>Rastreo</a>\n"
-                    f"⚠️ Considera llamar al {settings.EMERGENCY_PHONE}"
-                )
-                await send_to_operator(msg)
-                inc.escalated = True
-                logger.warning(f"[DeadMansSwitch] Escalado: {inc.incident_id}")
-            if pending:
-                db.commit()
-            db.close()
+            try:
+                await escalate_pending(db)
+            finally:
+                db.close()
         except Exception as exc:
             logger.error(f"[DeadMansSwitch] Error: {exc}")
-        await asyncio.sleep(120)
+        await asyncio.sleep(30)
 
 
 async def _ride_timeout_monitor():
@@ -315,6 +288,10 @@ async def lifespan(app: FastAPI):
         ("drivers",   "location_live_until",              "TIMESTAMP WITH TIME ZONE"),
         # Regalo FarmaCerca — número económico del taxi
         ("drivers",   "taxi_number",                      "VARCHAR(20)"),
+        # SOS: base del taxi y quién atendió la alerta
+        ("incidents", "group_id",                         "INTEGER"),
+        ("incidents", "acknowledged_by",                  "VARCHAR(150)"),
+        ("incidents", "acknowledged_at",                  "TIMESTAMP WITH TIME ZONE"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe
@@ -531,6 +508,8 @@ app.include_router(incidents_admin_router)
 app.include_router(admin_router)
 app.include_router(whatsapp_router)
 app.include_router(telegram_bot_router)
+app.include_router(sos_router)
+app.include_router(sos_admin_router)
 app.include_router(sse_router)
 
 # ==============================================================================

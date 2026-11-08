@@ -103,6 +103,7 @@ services:
       WHATSAPP_SECRET: ${WHATSAPP_SECRET:-}
       VOICE_ASSISTANT_URL: http://taxi-agent:5000
       SALES_AGENT_URL: http://taxi-agent:5000
+      TAXI_API_URL: http://taxi-api:5011
       CUSTOMER_APP_URL: https://taxi.nexoai.lat/
       REDIS_URL: redis://mandaya_redis:6379/3
       LLM_FIRST_MODE: ${LLM_FIRST_MODE:-always}

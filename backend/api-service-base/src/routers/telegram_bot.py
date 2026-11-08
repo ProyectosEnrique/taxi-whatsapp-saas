@@ -33,9 +33,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
-from ..models import Driver, Trip, TripStatus
+from ..models import BaseManager, Driver, TaxiGroup, Trip, TripStatus
 from ..config import settings
-from ..services import ride_notifs
+from ..services import ride_notifs, sos
 from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
     answer_callback,
@@ -291,6 +291,7 @@ async def telegram_webhook(
                 f"• /estado — ver tu viaje activo\n"
                 f"• /ganancias — ver tus ganancias del día\n"
                 f"• /ubicacion — compartir tu ubicación en tiempo real\n"
+                f"• /sos — 🚨 alerta de emergencia al encargado de tu base\n"
                 f"• /desvincular — dejar de recibir notificaciones"
             )
             await send_message(chat_id, _LOCATION_HELP)
@@ -310,6 +311,39 @@ async def telegram_webhook(
             )
             if not _location_fresh(driver):
                 await send_message(chat_id, _LOCATION_HELP)
+
+        elif text.startswith("/sos"):
+            # Escrito a mano ya es intencional: se manda sin pedir confirmación
+            driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
+            if not driver:
+                await send_message(chat_id, f"Si estás en peligro, llama al <b>{settings.EMERGENCY_PHONE}</b>.")
+                return {"ok": True}
+            await _driver_sos(driver, sos.trip_for(db, driver.phone, "driver"), db)
+
+        elif text.startswith("/encargado"):
+            parts = text.split()
+            if len(parts) < 2:
+                await send_message(chat_id, "Usa: <code>/encargado +52XXXXXXXXXX</code>")
+                return {"ok": True}
+            mgr = db.query(BaseManager).filter(BaseManager.phone == parts[1].strip(),
+                                               BaseManager.is_active == True).first()
+            if not mgr:
+                await send_message(chat_id, f"❌ No hay ningún encargado con el número <code>{parts[1]}</code>.")
+                return {"ok": True}
+            mgr.telegram_chat_id = chat_id
+            db.commit()
+            group = db.get(TaxiGroup, mgr.group_id) if mgr.group_id else None
+            logger.info(f"[TelegramBot] encargado {mgr.name} vinculado chat_id={chat_id}")
+            await send_message(
+                chat_id,
+                f"✅ <b>¡Listo, {mgr.name}!</b>\n"
+                f"Aquí te llegarán las alertas 🚨 SOS de los viajes"
+                f"{' de ' + group.name if group else ''}"
+                f"{' (como respaldo, si nadie atiende en ' + str(settings.SOS_ESCALATE_MIN) + ' min)' if mgr.priority == 2 else ''}.\n\n"
+                f"Cuando llegue una, toca <b>✅ Ya lo atiendo</b> para que los demás sepan que la tomaste "
+                f"y contacta a la persona. Si hay peligro, llama al {settings.EMERGENCY_PHONE}.\n\n"
+                f"<i>Activa el sonido de las notificaciones de este chat.</i>"
+            )
 
         elif text.startswith("/ubicacion") or text.startswith("/ubicación"):
             await send_message(chat_id, _LOCATION_HELP)
@@ -409,6 +443,7 @@ async def telegram_webhook(
                 "/estado — ver viaje activo\n"
                 "/ganancias — ver tus ganancias del día\n"
                 "/ubicacion — compartir tu ubicación en tiempo real\n"
+                "/sos — 🚨 alerta de emergencia al encargado de tu base\n"
                 "/desvincular — dejar de recibir notificaciones"
             )
 
@@ -418,6 +453,37 @@ async def telegram_webhook(
         cq_id   = cq["id"]
         chat_id = str(cq["from"]["id"])
         cq_data = cq.get("data", "")
+
+        # ── SOS ──────────────────────────────────────────────────────────────
+        # (antes que los demás: "sos_" no debe confundirse con otro prefijo)
+        if cq_data.startswith("sosack_"):
+            msg_chat = str((cq.get("message") or {}).get("chat", {}).get("id", ""))
+            reply = await sos.acknowledge(db, cq_data[len("sosack_"):], chat_id, msg_chat)
+            await answer_callback(cq_id, reply, alert=True)
+            return {"ok": True}
+
+        if cq_data.startswith("sos_"):
+            # Un toque por accidente no debe alertar a nadie: se pide confirmar
+            await answer_callback(cq_id)
+            await send_with_buttons(
+                chat_id,
+                "🚨 <b>¿Enviar alerta de emergencia?</b>\n"
+                "Se avisa al encargado de tu base con tu ubicación y los datos del viaje.\n"
+                f"Si estás en peligro, llama también al <b>{settings.EMERGENCY_PHONE}</b>.",
+                [[{"text": "🚨 Sí, enviar alerta", "callback_data": f"sosgo_{cq_data[len('sos_'):]}"}]],
+            )
+            return {"ok": True}
+
+        if cq_data.startswith("sosgo_"):
+            driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
+            if not driver:
+                await answer_callback(cq_id, f"Llama al {settings.EMERGENCY_PHONE}", alert=True)
+                return {"ok": True}
+            trip = db.query(Trip).filter(Trip.trip_id == cq_data[len("sosgo_"):],
+                                         Trip.driver_phone == driver.phone).first()
+            await answer_callback(cq_id, "🚨 Alerta enviada")
+            await _driver_sos(driver, trip or sos.trip_for(db, driver.phone, "driver"), db)
+            return {"ok": True}
 
         # ── Aceptar viaje ────────────────────────────────────────────────────
         if cq_data.startswith("accept_"):
@@ -548,6 +614,20 @@ def _get_driver_and_trip(chat_id: str, ride_id: str, db) -> tuple:
     return driver, trip, None
 
 
+def _sos_row(trip: Trip) -> list[list[dict]]:
+    return [[{"text": "🚨 SOS", "callback_data": f"sos_{trip.trip_id}"}]]
+
+
+async def _driver_sos(driver: Driver, trip: Trip | None, db: Session) -> None:
+    """El chofer pidió ayuda: alerta a su base + operador y le confirma."""
+    inc, new = await sos.raise_sos(db, reporter_type="driver", phone=driver.phone, name=driver.name,
+                                   trip=trip, source="telegram")
+    msg = sos.reporter_reply(inc, trip, for_whatsapp=False)
+    if not _location_fresh(driver):
+        msg += "\n\n" + _LOCATION_HELP
+    await send_message(driver.telegram_chat_id, msg if new else "🚨 Tu alerta ya está enviada. " + msg)
+
+
 async def _send_ride_action(chat_id: str, trip: Trip) -> None:
     """
     Envía el mensaje de estado del viaje con el botón de acción correspondiente
@@ -560,7 +640,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
             f"<i>🧭 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
             f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>",
             _pickup_nav_buttons(trip)
-            + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]],
+            + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]]
+            + _sos_row(trip),
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:
@@ -569,7 +650,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
             f"📍 <b>Llegaste — esperando al pasajero</b>\n\n"
             f"{_trip_summary(trip)}\n\nCuando suba el pasajero, arranca: el viaje se inicia solo "
             f"al alejarte del punto. El botón es por si no se marca.",
-            [[{"text": "🚗 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]],
+            [[{"text": "🚗 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]]
+            + _sos_row(trip),
         )
 
     elif trip.status == TripStatus.IN_PROGRESS:
@@ -578,7 +660,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
             f"🚗 <b>Viaje en curso</b>\n\n{_trip_summary(trip)}\n\n"
             f"<i>Cerca del destino te mando el botón para completar.</i>",
             _nav_buttons(trip.destination_lat, trip.destination_lng, "Ir al destino")
-            + [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
+            + [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]]
+            + _sos_row(trip),
         )
 
 

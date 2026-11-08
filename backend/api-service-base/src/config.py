@@ -115,6 +115,8 @@ class Settings(BaseSettings):
     # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.
     FARMACERCA_GIFT_URL: str = "https://farmacia.nexoai.lat/r/taxi"
     FARMACERCA_GIFT_AMOUNT: int = 5
+    # SOS (ver services/sos.py): si nadie toca "Ya lo atiendo" en este tiempo, se avisa al respaldo
+    SOS_ESCALATE_MIN: int = 2
     PROXIMITY_MIN_AGE_S: int = 60       # no antes de esto tras aceptar/iniciar (evita falsos al arrancar)
 
     # ==============================================================================

@@ -3,6 +3,7 @@ Taxi WhatsApp Gateway — Meta Cloud API + Twilio fallback
 Receives webhooks from Meta WhatsApp Cloud API, calls TaxiFSM, responds via Meta Graph API.
 """
 import os
+import re
 import time
 import logging
 import xml.etree.ElementTree as ET
@@ -83,6 +84,29 @@ LEGACY_REPLY = (
 )
 WHATSAPP_SECRET      = os.getenv("WHATSAPP_SECRET", "")
 PUBLIC_URL           = os.getenv("PUBLIC_URL", "https://taxi.nexoai.lat")
+TAXI_API_URL         = os.getenv("TAXI_API_URL", "http://taxi-api:5011")
+
+# ─── SOS: "sos", "auxilio", "socorro", "emergencia", "pánico" como mensaje
+# completo (no dentro de una frase: "es urgente, necesito taxi" no es alerta).
+# No pasa por la IA ni por el límite de mensajes: taxi-api avisa al encargado
+# de la base del taxi y al operador (services/sos.py) y devuelve la respuesta.
+_SOS_RE = re.compile(r"^\W*(sos|auxilio|socorro|emergencia|p[aá]nico|ayuda urgente)\W*$", re.IGNORECASE)
+_SOS_FALLBACK = ("🚨 Si estás en peligro, llama al *911* ahora. "
+                 "No pudimos enviar tu alerta al encargado; inténtalo de nuevo escribiendo *SOS*.")
+
+
+async def _handle_sos(phone: str, name: str) -> str:
+    try:
+        # < 15 s: la respuesta va en el TwiML y Twilio espera como máximo 15 s
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{TAXI_API_URL}/api/v1/sos/whatsapp",
+                                     json={"phone": phone, "name": name},
+                                     headers={"X-Taxi-Internal-Key": WHATSAPP_SECRET})
+            resp.raise_for_status()
+            return resp.json().get("reply") or _SOS_FALLBACK
+    except Exception as e:
+        logger.error(f"[TaxiGW] SOS de {phone} no se pudo enviar: {e}")
+        return _SOS_FALLBACK
 
 
 # ─── Verificación de firma del webhook de Twilio ───────────────────────────────
@@ -356,6 +380,10 @@ async def twilio_webhook(
 
     phone         = From.replace("whatsapp:", "").strip()
     customer_name = ProfileName or "Cliente"
+
+    if _SOS_RE.match(Body or "") and not (Latitude and Longitude):
+        logger.warning(f"[TaxiGW] 🚨 SOS por WhatsApp de {phone}")
+        return _twiml(await _handle_sos(phone, customer_name))
 
     if _is_rate_limited(phone):
         logger.warning(f"[TaxiGW] Rate limit alcanzado para {phone} — mensaje descartado")

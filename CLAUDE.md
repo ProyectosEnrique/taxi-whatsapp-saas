@@ -251,3 +251,21 @@ Este repo nació de una plantilla SaaS multi-tenant genérica (restaurante/farma
   `driver_rides.complete_ride`) y banner `gift` en `/seguimiento` (`public_track` → `TrackPublicView.vue`).
 - `taxi_number` se pone con `PUT /api/v1/admin/drivers/{phone}` (`{"taxi_number": "23"}`). Sin número no se promete nada.
 - Reglas: lema "Tu farmacia por WhatsApp", vender el servicio (no medicinas), sin nombres de ciudades.
+
+## 18. Botón de pánico SOS → encargado de la base (2026-11-08)
+Lógica central en `services/sos.py` (`raise_sos`, `acknowledge`, `escalate_pending`). Entradas:
+- **Chofer (Telegram):** botón "🚨 SOS" en cada mensaje del viaje (`sos_` → pide confirmar → `sosgo_`) o `/sos` (sin confirmar).
+- **Pasajero (WhatsApp):** el gateway (`main_taxi._SOS_RE`, mensaje completo "sos/auxilio/socorro/emergencia/pánico/ayuda urgente")
+  NO pasa por la IA ni por el rate limit → `POST /api/v1/sos/whatsapp` (clave `X-Taxi-Internal-Key` = `WHATSAPP_SECRET`,
+  obligatoria) → respuesta en el TwiML. Env del gateway: `TAXI_API_URL` (default `http://taxi-api:5011`).
+- **Pasajero (/seguimiento):** botón mantener presionado 2 s → `POST /api/v1/customer/rides/{id}/sos` (público; solo viaje
+  activo o terminado hace ≤ 30 min). Manda GPS del celular si lo da en 4 s.
+- **Apps con cuenta** (`routers/incidents.py`): mismo aviso + contacto de emergencia personal.
+
+Destino: encargados `priority=1` de la **base del taxi involucrado** (`drivers.group_id` → tabla `base_managers`), sin importar
+quién presionó + copia al operador (`TELEGRAM_ALERT_CHAT_ID`, avisa si la base no tiene encargado). Botón "✅ Ya lo atiendo"
+(`sosack_`, solo encargados u operador; una vez) → avisa a los demás y a quien presionó. Sin atender en `SOS_ESCALATE_MIN`
+(2) → encargados `priority=2` + operador ("SIN ATENDER"), loop `_dead_mans_switch` cada 30 s. Misma persona otra vez en
+10 min = misma alerta. Sin GPS de quien avisó se usa la ubicación del taxi; la alerta trae el link de `/seguimiento`.
+Alta de encargados: `POST /api/v1/admin/base-managers` `{name, phone, group_id, priority}` y la persona escribe al bot
+`/encargado +52…`. Chofer a su base: `PUT /api/v1/admin/drivers/{phone}` `{"group_id": N}`. Todo mensaje recalca el 911.
