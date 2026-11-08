@@ -98,7 +98,7 @@ const routes = [
     // teléfonos con un Service Worker viejo que sirva la app desde caché.
     path: '/pedir',
     beforeEnter() {
-      window.location.replace('https://wa.me/19785413145?text=Hola%2C%20quiero%20pedir%20un%20taxi')
+      window.location.replace('https://wa.me/13162412111?text=Hola%2C%20quiero%20pedir%20un%20taxi')
       return false
     }
   },
