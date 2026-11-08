@@ -65,6 +65,8 @@ class TaxiAgent:
             rev = taxi_client.reverse_geocode(lat, lng)
             if rev and rev.get("name"):
                 address_str = rev.get("short_address") or rev.get("name")
+                if rev.get("ciudad") and rev["ciudad"] not in address_str:
+                    address_str = f"{address_str}, {rev['ciudad']}"
                 message = (
                     f"Mi ubicación actual es: {address_str} "
                     f"(coordenadas: {lat}, {lng})"
@@ -178,7 +180,7 @@ class TaxiAgent:
                         args = json.loads(tc.function.arguments)
                     except Exception:
                         args = {}
-                    result_str = tools.run_tool(tc.function.name, args, phone)
+                    result_str = tools.run_tool(tc.function.name, args, phone, session)
                     tools.mark_ride_sent_if_success(session, tc.function.name, result_str)
                     logger.info(f"[TaxiAgent] {tc.function.name} → {result_str[:100]}")
                     messages.append({
@@ -203,7 +205,7 @@ class TaxiAgent:
                     logger.warning(f"[TaxiAgent] XML tool en contenido: {func_name}({args})")
                     import uuid
                     tc_id      = f"call_{uuid.uuid4().hex[:8]}"
-                    result_str = tools.run_tool(func_name, args, phone)
+                    result_str = tools.run_tool(func_name, args, phone, session)
                     tools.mark_ride_sent_if_success(session, func_name, result_str)
                     messages.append({
                         "role": "assistant", "content": None,

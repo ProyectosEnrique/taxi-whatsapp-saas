@@ -139,12 +139,22 @@ def mark_ride_sent_if_success(session: dict, name: str, result_str: str) -> None
         session["_ride_data"] = data
 
 
-def run_tool(name: str, args: dict, phone: str) -> str:
+def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> str:
     if name == "buscar_lugar":
-        results = client.geocode(args.get("query", ""))
+        # Buscar cerca del pasajero: su ubicación (GPS) o, si no la mandó, el último
+        # lugar ya encontrado en esta conversación (origen y destino suelen estar en
+        # la misma ciudad). Así "Hidalgo 45" sale en Salvatierra si está en Salvatierra.
+        ctx = session.setdefault("context", {}) if session is not None else {}
+        near = ctx.get("last_gps") or ctx.get("anchor")
+        results = client.geocode(args.get("query", ""), near=near)
         if not results:
-            return json.dumps({"error": "No encontré ese lugar. Pide al cliente que sea más específico o comparta su ubicación GPS."})
-        return json.dumps({"results": results[:3]})
+            return json.dumps({"error": "No encontré ese lugar con precisión. Pide una calle con número, "
+                                        "un lugar de referencia cercano o que comparta su ubicación."})
+        ctx["anchor"] = {"lat": results[0]["lat"], "lng": results[0]["lng"]}
+        return json.dumps({"results": [
+            {k: r.get(k) for k in ("name", "colonia", "ciudad", "aproximado", "lat", "lng", "short_address")}
+            for r in results[:3]
+        ]})
 
     if name == "estimar_tarifa":
         est = client.estimate(

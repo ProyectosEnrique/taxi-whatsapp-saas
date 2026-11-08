@@ -19,12 +19,16 @@ TRACKING_BASE     = CUSTOMER_APP_URL.replace('/cliente', '').rstrip('/')
 _HEADERS = {"X-Taxi-Internal-Key": WHATSAPP_SECRET} if WHATSAPP_SECRET else {}
 
 
-def geocode(query: str) -> list:
+def geocode(query: str, near: Optional[dict] = None) -> list:
+    """near = {"lat", "lng"} del pasajero: la búsqueda prefiere lugares cerca de ahí."""
+    params = {"q": query}
+    if near and near.get("lat") and near.get("lng"):
+        params.update(lat=near["lat"], lon=near["lng"])
     try:
-        with httpx.Client(timeout=8.0) as c:
+        with httpx.Client(timeout=12.0) as c:
             resp = c.get(
                 f"{API_BASE}/api/v1/whatsapp/geocode",
-                params={"q": query},
+                params=params,
                 headers=_HEADERS,
             )
             return resp.json().get("results", [])

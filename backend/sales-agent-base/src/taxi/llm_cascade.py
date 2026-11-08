@@ -47,7 +47,7 @@ def recover_tool_call(err_str: str, messages: list, phone: str, session: Optiona
     except Exception:
         return None
     tc_id      = f"call_{uuid.uuid4().hex[:8]}"
-    result_str = _tools.run_tool(func_name, args, phone)
+    result_str = _tools.run_tool(func_name, args, phone, session)
     if session is not None:
         _tools.mark_ride_sent_if_success(session, func_name, result_str)
     logger.info(f"[TaxiAgent] Recovered {func_name}({args}) → {result_str[:80]}")

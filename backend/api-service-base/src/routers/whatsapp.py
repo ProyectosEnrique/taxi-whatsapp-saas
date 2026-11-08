@@ -24,6 +24,10 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 _NOM_HEADERS  = {"User-Agent": "TaxiApp/1.0"}
 GMAPS_URL     = "https://maps.googleapis.com/maps/api/geocode/json"
 GMAPS_REV_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+PLACES_URL    = "https://places.googleapis.com/v1/places:searchText"
+PLACES_FIELDS = ("places.displayName,places.formattedAddress,places.location,"
+                 "places.types,places.addressComponents")
+PLACES_BIAS_RADIUS_M = 20000.0   # preferir lugares a ≤ 20 km del pasajero (máx. de Google: 50 km)
 
 # Common Spanish place-name aliases that Nominatim doesn't index literally
 _QUERY_SUBS = [
@@ -64,14 +68,17 @@ def _normalize_query(q: str) -> str:
     return q.strip()
 
 
-def _within_city_radius(result: dict) -> bool:
-    """Rechaza resultados fuera del radio operativo (CITY_BBOX_DEG x 111 x 1.5 km)."""
-    if not (settings.CITY_LAT and settings.CITY_LNG):
-        return True
+def _within_radius(result: dict, ref_lat: float | None = None, ref_lng: float | None = None) -> bool:
+    """Rechaza resultados fuera de zona: a más de CITY_BBOX_DEG x 111 x 1.5 km (~50 km)
+    del centro de operación Y del pasajero (si se conoce). Así sirve para otras bases."""
     d = settings.CITY_BBOX_DEG or 0.3
     max_km = d * 111 * 1.5
-    km = _haversine_km(settings.CITY_LAT, settings.CITY_LNG, result['lat'], result['lng'])
-    return km <= max_km
+    centers = [(c_lat, c_lng) for c_lat, c_lng in ((settings.CITY_LAT, settings.CITY_LNG), (ref_lat, ref_lng))
+               if c_lat and c_lng]
+    if not centers:
+        return True
+    return any(_haversine_km(c_lat, c_lng, result['lat'], result['lng']) <= max_km
+               for c_lat, c_lng in centers)
 
 
 def _parse_display_name(display_name: str) -> tuple[str, str]:
@@ -132,25 +139,107 @@ def get_driver_by_code(driver_code: str, db: Session = Depends(get_db), _=Depend
     return {"driver_code": driver.driver_code, "name": driver.name, "phone": driver.phone}
 
 
-async def _geocode_google(query: str, client: httpx.AsyncClient) -> list:
-    """Google Maps Geocoding — primario. Devuelve lista de resultados normalizados."""
+# ── Búsqueda de lugares (lo que escribe el pasajero → punto en el mapa) ───────
+# Orden: Google Places (nombres de lugares: "Hospital General", "Soriana") →
+# Google Geocoding (calle y número) → Nominatim. Cada resultado trae colonia,
+# ciudad y si es aproximado; los de nivel ciudad se descartan (el taxi
+# terminaría en el centro). Todo se busca cerca del pasajero (lat/lon) si se
+# conoce, para que "Hidalgo 45" salga en su ciudad y no en la de la base.
+
+# Tipos de Google que solo dicen la ciudad, municipio o estado
+_CITY_LEVEL = {"locality", "administrative_area_level_1", "administrative_area_level_2",
+               "administrative_area_level_3", "country", "postal_code", "postal_town"}
+# Tipos que dicen una zona (colonia, calle sin número): sirven, pero el punto es aproximado
+_AREA_LEVEL = {"sublocality", "sublocality_level_1", "sublocality_level_2", "neighborhood",
+               "route", "colloquial_area"}
+_PRECISE = {"street_address", "premise", "subpremise", "establishment", "point_of_interest",
+            "intersection", "plus_code"}
+# Lo mismo para Nominatim (campo addresstype de jsonv2)
+_NOM_CITY_LEVEL = {"city", "town", "village", "municipality", "county", "state", "country",
+                   "postcode", "region"}
+_NOM_AREA_LEVEL = {"suburb", "neighbourhood", "quarter", "city_district", "road", "residential",
+                   "hamlet", "isolated_dwelling"}
+
+
+def _precision(types: set, location_type: str | None = None) -> str:
+    """'ciudad' (se descarta), 'zona' (aproximado) o 'exacto'."""
+    if types & _PRECISE:
+        return "zona" if location_type == "APPROXIMATE" else "exacto"
+    if types & _CITY_LEVEL and not (types & _AREA_LEVEL):
+        return "ciudad"
+    if types & _AREA_LEVEL or location_type == "APPROXIMATE":
+        return "zona"
+    return "exacto"
+
+
+def _colonia_ciudad(components: list, text_key: str) -> tuple[str, str]:
+    """Colonia y ciudad de los address_components de Google (Geocoding: long_name,
+    Places: longText)."""
+    def pick(*wanted):
+        for t in wanted:
+            for c in components:
+                if t in (c.get("types") or []):
+                    return c.get(text_key) or ""
+        return ""
+    colonia = pick("sublocality_level_1", "neighborhood", "sublocality")
+    ciudad = pick("locality", "administrative_area_level_2")
+    return colonia, ciudad
+
+
+def _result(name, address, lat, lng, colonia, ciudad, precision) -> dict:
+    return {
+        "name":          name,
+        "short_address": ", ".join(p.strip() for p in address.split(",")[:2]),
+        "address":       address,
+        "lat":           lat,
+        "lng":           lng,
+        "colonia":       colonia,
+        "ciudad":        ciudad,
+        "aproximado":    precision != "exacto",
+        "_precision":    precision,
+    }
+
+
+async def _places_search(query: str, client: httpx.AsyncClient,
+                         ref_lat: float | None, ref_lng: float | None) -> list:
+    """Google Places Text Search (New): entiende nombres de lugares y negocios.
+    Requiere la "Places API (New)" habilitada en el proyecto de la clave."""
     key = settings.GOOGLE_MAPS_API_KEY
     if not key:
         return []
-    params = {
-        "address":  query,
-        "key":      key,
-        "language": "es",
-        "region":   "MX",
-        "components": "country:MX",
-    }
-    # Bias de ubicación hacia la ciudad operativa si está configurada
-    if settings.CITY_LAT and settings.CITY_LNG:
+    body: dict = {"textQuery": query, "languageCode": "es", "regionCode": "MX", "maxResultCount": 5}
+    if ref_lat and ref_lng:
+        body["locationBias"] = {"circle": {"center": {"latitude": ref_lat, "longitude": ref_lng},
+                                           "radius": PLACES_BIAS_RADIUS_M}}
+    resp = await client.post(PLACES_URL, json=body, headers={
+        "X-Goog-Api-Key": key, "X-Goog-FieldMask": PLACES_FIELDS})
+    if resp.status_code != 200:
+        # 403 = la Places API (New) no está habilitada para esta clave: se sigue con Geocoding
+        logger.warning(f"[Geocode/Places] HTTP {resp.status_code} para '{query}': {resp.text[:150]}")
+        return []
+    results = []
+    for p in resp.json().get("places", []):
+        loc = p.get("location") or {}
+        if "latitude" not in loc:
+            continue
+        colonia, ciudad = _colonia_ciudad(p.get("addressComponents") or [], "longText")
+        name = (p.get("displayName") or {}).get("text") or p.get("formattedAddress", "").split(",")[0]
+        results.append(_result(name, p.get("formattedAddress", ""), loc["latitude"], loc["longitude"],
+                               colonia, ciudad, _precision(set(p.get("types") or []))))
+    return results
+
+
+async def _geocode_google(query: str, client: httpx.AsyncClient,
+                          ref_lat: float | None = None, ref_lng: float | None = None) -> list:
+    """Google Geocoding: direcciones con calle y número."""
+    key = settings.GOOGLE_MAPS_API_KEY
+    if not key:
+        return []
+    params = {"address": query, "key": key, "language": "es", "region": "MX",
+              "components": "country:MX"}
+    if ref_lat and ref_lng:
         d = settings.CITY_BBOX_DEG or 0.3
-        params["bounds"] = (
-            f"{settings.CITY_LAT - d},{settings.CITY_LNG - d}"
-            f"|{settings.CITY_LAT + d},{settings.CITY_LNG + d}"
-        )
+        params["bounds"] = f"{ref_lat - d},{ref_lng - d}|{ref_lat + d},{ref_lng + d}"
     resp = await client.get(GMAPS_URL, params=params)
     resp.raise_for_status()
     data = resp.json()
@@ -159,22 +248,17 @@ async def _geocode_google(query: str, client: httpx.AsyncClient) -> list:
         return []
     results = []
     for r in data.get("results", []):
-        loc  = r["geometry"]["location"]
-        name = r.get("name") or r["formatted_address"].split(",")[0]
-        results.append({
-            "name":          name,
-            "short_address": ", ".join(r["formatted_address"].split(",")[:2]),
-            "address":       r["formatted_address"],
-            "lat":           loc["lat"],
-            "lng":           loc["lng"],
-        })
+        loc = r["geometry"]["location"]
+        colonia, ciudad = _colonia_ciudad(r.get("address_components") or [], "long_name")
+        results.append(_result(r["formatted_address"].split(",")[0], r["formatted_address"],
+                               loc["lat"], loc["lng"], colonia, ciudad,
+                               _precision(set(r.get("types") or []), r["geometry"].get("location_type"))))
     return results
 
 
 async def _geocode_nominatim(query: str, client: httpx.AsyncClient,
                               viewbox: str | None = None) -> list:
-    """Nominatim (OSM) — fallback. Devuelve lista de resultados normalizados."""
-    import re as _re
+    """Nominatim (OSM) — último recurso."""
     q_norm = _normalize_query(query)
     parts  = [p.strip() for p in query.split(",") if p.strip()]
     candidates = []
@@ -183,47 +267,41 @@ async def _geocode_nominatim(query: str, client: httpx.AsyncClient,
     candidates.append(query)
     if q_norm.lower() != query.lower():
         candidates.append(q_norm)
-    q_no_num = _re.sub(r"[0-9]+", "", query).strip(" ,")
+    q_no_num = re.sub(r"[0-9]+", "", query).strip(" ,")
     if q_no_num and q_no_num.lower() != query.lower():
         candidates.append(q_no_num)
     if len(parts) >= 2:
         candidates.append(", ".join(parts[-2:]))
-    if parts:
-        candidates.append(parts[-1])
     seen: set = set()
     candidates = [x for x in candidates if x.lower() not in seen and not seen.add(x.lower())]
 
+    base = {"format": "jsonv2", "limit": 4, "countrycodes": "mx", "addressdetails": 1}
     for q_str in candidates:
-        if viewbox:
-            params: dict = {
-                "q": q_str, "format": "json", "limit": 4,
-                "countrycodes": "mx", "addressdetails": 0,
-                "viewbox": viewbox, "bounded": 1,
-            }
+        tries = [{**base, "q": q_str, "viewbox": viewbox, "bounded": 1}] if viewbox else []
+        tries.append({**base, "q": q_str})
+        for params in tries:
             resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
             resp.raise_for_status()
             items = resp.json()
             if items:
                 return [_nom_to_result(i) for i in items]
-        params = {"q": q_str, "format": "json", "limit": 4,
-                  "countrycodes": "mx", "addressdetails": 0}
-        resp = await client.get(f"{NOMINATIM_URL}/search", params=params, headers=_NOM_HEADERS)
-        resp.raise_for_status()
-        items = resp.json()
-        if items:
-            return [_nom_to_result(i) for i in items]
     return []
 
 
 def _nom_to_result(item: dict) -> dict:
-    name, short = _parse_display_name(item.get("display_name", ""))
-    return {
-        "name":          name,
-        "short_address": short,
-        "address":       item.get("display_name", ""),
-        "lat":           float(item.get("lat", 0)),
-        "lng":           float(item.get("lon", 0)),
-    }
+    name, _ = _parse_display_name(item.get("display_name", ""))
+    addr = item.get("address") or {}
+    kind = item.get("addresstype") or item.get("type") or ""
+    if kind in _NOM_CITY_LEVEL:
+        precision = "ciudad"
+    elif kind in _NOM_AREA_LEVEL:
+        precision = "zona"
+    else:
+        precision = "exacto"
+    colonia = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
+    ciudad = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or ""
+    return _result(name, item.get("display_name", ""), float(item.get("lat", 0)),
+                   float(item.get("lon", 0)), colonia, ciudad, precision)
 
 
 _STOP_WORDS = {"de", "del", "la", "el", "los", "las", "en", "y", "a",
@@ -251,6 +329,19 @@ def _result_matches_query(result: dict, query: str) -> bool:
     return matches > 0
 
 
+def _keep(results: list, query: str, ref_lat, ref_lng) -> list:
+    """Quita lo de nivel ciudad, lo que no tiene que ver con lo que escribió y lo que
+    está fuera de zona; los exactos primero."""
+    out = [r for r in results
+           if r["_precision"] != "ciudad"
+           and _result_matches_query(r, query)
+           and _within_radius(r, ref_lat, ref_lng)]
+    out.sort(key=lambda r: r["aproximado"])   # estable: respeta el orden del proveedor
+    for r in out:
+        r.pop("_precision", None)
+    return out
+
+
 @router.get("/geocode")
 async def geocode_address(
     q: str,
@@ -258,8 +349,9 @@ async def geocode_address(
     lon: float | None = None,
     _=Depends(_auth),
 ):
-    q_google = _clean_query(q)     # Google Maps: sin aliases, entiende POIs nativamente
+    q_google = _clean_query(q)     # Google: sin aliases, entiende lugares por nombre
     q_nom    = _normalize_query(q)  # Nominatim: con aliases (terminal, hospital, etc.)
+    # Cerca de dónde: el pasajero (lat/lon) si se conoce; si no, el centro de operación
     ref_lat = lat if lat is not None else (settings.CITY_LAT or None)
     ref_lon = lon if lon is not None else (settings.CITY_LNG or None)
 
@@ -270,24 +362,24 @@ async def geocode_address(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Google Maps (primario) - query sin aliases para no confundir POIs
             if settings.GOOGLE_MAPS_API_KEY:
-                results = await _geocode_google(q_google, client)
-                results = [r for r in results
-                           if _result_matches_query(r, q_google) and _within_city_radius(r)]
+                results = _keep(await _places_search(q_google, client, ref_lat, ref_lon),
+                                q_google, lat, lon)
+                if results:
+                    logger.info(f"[Geocode] Places: '{q_google}' → {results[0]['name']}")
+                    return {"results": results}
+                results = _keep(await _geocode_google(q_google, client, ref_lat, ref_lon),
+                                q_google, lat, lon)
                 if results:
                     logger.info(f"[Geocode] GMaps: '{q_google}' → {results[0]['name']}")
                     return {"results": results}
-                logger.warning(f"[Geocode] GMaps sin resultados en radio para '{q_google}', usando Nominatim")
+                logger.warning(f"[Geocode] Google sin resultados útiles para '{q_google}', usando Nominatim")
 
-            # 2. Nominatim (fallback) - query con aliases de nombres de lugares
-            results = await _geocode_nominatim(q_nom, client, viewbox)
-            results = [r for r in results
-                       if _result_matches_query(r, q_nom) and _within_city_radius(r)]
+            results = _keep(await _geocode_nominatim(q_nom, client, viewbox), q_nom, lat, lon)
             if results:
                 logger.info(f"[Geocode] Nominatim: '{q_nom}' → {results[0]['name']}")
             else:
-                logger.warning(f"[Geocode] Sin resultados en radio para '{q_nom}' — cliente debe compartir GPS")
+                logger.warning(f"[Geocode] Sin resultados útiles para '{q_nom}' — pedir más detalle o GPS")
             return {"results": results}
 
     except Exception as e:
@@ -300,7 +392,7 @@ async def reverse_geocode(
     lon: float,
     _=Depends(_auth),
 ):
-    """Coordenadas GPS → dirección legible. Google Maps primario, Nominatim fallback."""
+    """Coordenadas GPS → dirección legible (con colonia y ciudad). Google primario, Nominatim fallback."""
     key = settings.GOOGLE_MAPS_API_KEY
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
@@ -314,19 +406,19 @@ async def reverse_geocode(
                 if data.get("status") == "OK" and data.get("results"):
                     r       = data["results"][0]
                     address = r["formatted_address"]
-                    name    = address.split(",")[0]
-                    return {"name": name, "short_address": ", ".join(address.split(",")[:2]),
-                            "address": address, "lat": lat, "lng": lon}
+                    colonia, ciudad = _colonia_ciudad(r.get("address_components") or [], "long_name")
+                    return {"name": address.split(",")[0], "short_address": ", ".join(address.split(",")[:2]),
+                            "address": address, "lat": lat, "lng": lon,
+                            "colonia": colonia, "ciudad": ciudad}
 
             # Fallback Nominatim
             resp = await client.get(f"{NOMINATIM_URL}/reverse",
-                params={"lat": lat, "lon": lon, "format": "json", "addressdetails": 0},
+                params={"lat": lat, "lon": lon, "format": "jsonv2", "addressdetails": 1},
                 headers=_NOM_HEADERS)
             resp.raise_for_status()
-            item    = resp.json()
-            display = item.get("display_name", "")
-            name, short = _parse_display_name(display)
-            return {"name": name, "short_address": short, "address": display, "lat": lat, "lng": lon}
+            r = _nom_to_result(resp.json())
+            return {"name": r["name"], "short_address": r["short_address"], "address": r["address"],
+                    "lat": lat, "lng": lon, "colonia": r["colonia"], "ciudad": r["ciudad"]}
 
     except Exception as e:
         raise HTTPException(503, f"Geocodificación inversa no disponible: {e}")

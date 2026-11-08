@@ -276,3 +276,18 @@ Tras la primera respuesta del bot a cada cliente, el gateway (`_send_contact_car
 como media de Twilio: WhatsApp la muestra como contacto y el cliente solo toca "Guardar". "Primera vez" lo decide
 taxi-api: `POST /api/v1/contact-card/claim` (clave interna, `claim_once("vcard", phone)` en Redis, 1 año). Si cambia el
 número de WhatsApp, actualizar el `.vcf`. `CONTACT_CARD_URL=""` en el gateway = apagado.
+
+## 20. Búsqueda de lugares más precisa (2026-11-08)
+`GET /api/v1/whatsapp/geocode` (`routers/whatsapp.py`): **Google Places Text Search (New)** primero (entiende nombres
+de lugares: "Hospital General", "Soriana"; requiere habilitar "Places API (New)" en el proyecto de la clave — si
+responde 403 se sigue solo con Geocoding) → Google Geocoding (calle y número) → Nominatim (`jsonv2`).
+- Cada resultado trae `colonia`, `ciudad` y `aproximado`. Los de **nivel ciudad** (locality/municipio/estado; en
+  Nominatim city/town/village…) se **descartan**: antes "Hospital X Celaya" sin coincidencia caía en el centro de
+  Celaya y se aceptaba. Colonia sola o calle sin número = `aproximado` (el bot pregunta calle o referencia una vez).
+  Exactos primero.
+- **Cerca del pasajero:** `lat`/`lon` = sesgo de búsqueda (Places `locationBias` 20 km, Geocoding `bounds`) y el
+  filtro de zona acepta ≤ ~50 km del centro de operación **o** del pasajero (`_within_radius`). El agente
+  (`tools.run_tool`) manda la ubicación GPS del pasajero o, si no la hay, el último lugar encontrado en la
+  conversación (`context.anchor`): origen y destino suelen estar en la misma ciudad.
+- El prompt ya no agrega "Celaya" por su cuenta; resumen y `crear_viaje` llevan "nombre, colonia, ciudad".
+- `reverse-geocode` también devuelve colonia y ciudad. Pruebas: `tests/test_geocode.py` (proveedores simulados).
