@@ -95,6 +95,29 @@ _SOS_FALLBACK = ("🚨 Si estás en peligro, llama al *911* ahora. "
                  "No pudimos enviar tu alerta al encargado; inténtalo de nuevo escribiendo *SOS*.")
 
 
+# ─── Tarjeta de contacto "TaxiCerca" en el primer mensaje de cada cliente ──
+# Así guardarnos es tocar "Guardar" (con el nombre ya puesto) en cualquier
+# celular. taxi-api recuerda a quién ya se le mandó (Redis), no este proceso.
+CONTACT_CARD_URL = os.getenv("CONTACT_CARD_URL", f"{PUBLIC_URL}/taxicerca.vcf")
+
+
+async def _send_contact_card_once(phone: str) -> None:
+    if not CONTACT_CARD_URL:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(f"{TAXI_API_URL}/api/v1/contact-card/claim",
+                                     json={"phone": phone},
+                                     headers={"X-Taxi-Internal-Key": WHATSAPP_SECRET})
+            resp.raise_for_status()
+            if not resp.json().get("send"):
+                return
+    except Exception as e:
+        logger.warning(f"[TaxiGW] tarjeta de contacto: no se pudo consultar ({e})")
+        return
+    _send_twilio(phone, "📇 Guárdanos: toca *Guardar* y nos tendrás como *TaxiCerca*.", CONTACT_CARD_URL)
+
+
 async def _handle_sos(phone: str, name: str) -> str:
     try:
         # < 15 s: la respuesta va en el TwiML y Twilio espera como máximo 15 s
@@ -156,7 +179,7 @@ async def _call_fsm(phone: str, message: str, customer_name: str) -> list[str]:
 
 # ─── Send via Twilio (primary for Twilio-managed WhatsApp numbers) ────────────
 
-def _send_twilio(to: str, body: str) -> None:
+def _send_twilio(to: str, body: str, media_url: str | None = None) -> None:
     """Send WhatsApp message via Twilio API."""
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
         logger.error("[TaxiGW] Twilio credentials not set")
@@ -166,8 +189,9 @@ def _send_twilio(to: str, body: str) -> None:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         raw = to.replace("whatsapp:", "").lstrip("+")
         wa_to = f"whatsapp:+{raw}"
-        client.messages.create(body=body, from_=TWILIO_WA_NUMBER, to=wa_to)
-        logger.info(f"[TaxiGW] Twilio sent to {to}: {body[:60]}...")
+        extra = {"media_url": [media_url]} if media_url else {}
+        client.messages.create(body=body, from_=TWILIO_WA_NUMBER, to=wa_to, **extra)
+        logger.info(f"[TaxiGW] Twilio sent to {to}: {(body or media_url)[:60]}...")
     except Exception as e:
         logger.error(f"[TaxiGW] Twilio send error: {e}")
 
@@ -426,6 +450,7 @@ async def twilio_webhook(
         for reply in responses:
             if reply:
                 _send_twilio(phone, reply)
+        await _send_contact_card_once(phone)
 
     _aio.create_task(_process())
     return _twiml()  # 200 inmediato a Twilio

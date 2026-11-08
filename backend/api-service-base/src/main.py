@@ -36,6 +36,7 @@ from .routers.admin import router as admin_router
 from .routers.whatsapp import router as whatsapp_router
 from .routers.telegram_bot import router as telegram_bot_router
 from .routers.sos import router as sos_router, admin_router as sos_admin_router
+from .routers.contact_card import router as contact_card_router
 from .routers.sse import router as sse_router
 from .database import engine, Base
 from .config import settings
@@ -510,6 +511,7 @@ app.include_router(whatsapp_router)
 app.include_router(telegram_bot_router)
 app.include_router(sos_router)
 app.include_router(sos_admin_router)
+app.include_router(contact_card_router)
 app.include_router(sse_router)
 
 # ==============================================================================

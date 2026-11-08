@@ -269,3 +269,10 @@ quién presionó + copia al operador (`TELEGRAM_ALERT_CHAT_ID`, avisa si la base
 10 min = misma alerta. Sin GPS de quien avisó se usa la ubicación del taxi; la alerta trae el link de `/seguimiento`.
 Alta de encargados: `POST /api/v1/admin/base-managers` `{name, phone, group_id, priority}` y la persona escribe al bot
 `/encargado +52…`. Chofer a su base: `PUT /api/v1/admin/drivers/{phone}` `{"group_id": N}`. Todo mensaje recalca el 911.
+
+## 19. Tarjeta de contacto "TaxiCerca" en el primer mensaje (2026-11-08)
+Tras la primera respuesta del bot a cada cliente, el gateway (`_send_contact_card_once`) manda
+`https://taxi.nexoai.lat/taxicerca.vcf` (archivo en `frontend/taxi-customer-app/public/`, nginx lo sirve como `text/vcard`)
+como media de Twilio: WhatsApp la muestra como contacto y el cliente solo toca "Guardar". "Primera vez" lo decide
+taxi-api: `POST /api/v1/contact-card/claim` (clave interna, `claim_once("vcard", phone)` en Redis, 1 año). Si cambia el
+número de WhatsApp, actualizar el `.vcf`. `CONTACT_CARD_URL=""` en el gateway = apagado.

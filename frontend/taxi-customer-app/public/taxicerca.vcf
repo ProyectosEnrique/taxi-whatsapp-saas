@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+N:;TaxiCerca;;;
+FN:TaxiCerca
+ORG:TaxiCerca
+TEL;type=CELL;type=VOICE;waid=13162412111:+1 316 241 2111
+URL:https://taxi.nexoai.lat
+NOTE:Pide tu taxi por WhatsApp
+END:VCARD
