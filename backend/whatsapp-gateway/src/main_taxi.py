@@ -115,7 +115,11 @@ async def _send_contact_card_once(phone: str) -> None:
     except Exception as e:
         logger.warning(f"[TaxiGW] tarjeta de contacto: no se pudo consultar ({e})")
         return
-    _send_twilio(phone, "📇 Guárdanos: toca *Guardar* y nos tendrás como *TaxiCerca*.", CONTACT_CARD_URL)
+    # WhatsApp no muestra el texto que acompaña a una tarjeta de contacto:
+    # la instrucción va en un mensaje propio, antes de la tarjeta.
+    _send_twilio(phone, "📇 Aquí va nuestra tarjeta: tócala y elige *Añadir a contactos* "
+                        "(o *Guardar*) para tenernos como *TaxiCerca*.")
+    _send_twilio(phone, "", CONTACT_CARD_URL)
 
 
 async def _handle_sos(phone: str, name: str) -> str:
