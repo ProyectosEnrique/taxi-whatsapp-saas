@@ -299,3 +299,11 @@ inmediato: mandaría un taxi ya) y `POST /api/v1/customer/rides/schedule` → 40
 `scheduled_at` y el prompt responde "Por ahora solo atendemos viajes para este momento…". Pago: solo efectivo
 (sin claves de Mercado Pago en el VPS). Para reactivar: `SCHEDULED_RIDES_ENABLED=true` en `.env` + compose,
 devolver `scheduled_at` a la herramienta y la regla del prompt.
+
+## 22. Alta de choferes con enlace de Telegram (2026-11-09)
+Panel → Conductores → botón **📲** → `POST /api/v1/admin/drivers/{phone}/telegram-link` → `t.me/<TELEGRAM_BOT_USERNAME>?start=<código>`
+(`services/telegram_link.py`: código secreto en Redis `taxi:tglink:*`, **un solo uso** (GETDEL), 7 días). El chofer toca el
+enlace → "Iniciar" → el bot recibe `/start <código>` → `_link_driver` (misma bienvenida que `/vincular`; si ese Telegram
+estaba ligado a otro chofer, se suelta). `/start` sin código responde con el ID de Telegram. La lista del panel marca
+"✓ Telegram vinculado / ⚠ Sin Telegram" (`telegram_linked`). Bot de taxis = @TaxiNexoaiBot (solo TaxiCerca; Mandaya,
+Ricomar y FarmaCerca tienen bots propios). `/vincular +52…` sigue funcionando.

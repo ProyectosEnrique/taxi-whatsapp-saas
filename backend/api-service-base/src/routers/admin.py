@@ -54,6 +54,7 @@ def _driver_to_dict(driver: Driver) -> dict:
             "year":   driver.vehicle_year,
         },
         "taxi_number": driver.taxi_number or "",
+        "telegram_linked": bool(driver.telegram_chat_id),
         "group_id": driver.group_id,
         "location": {
             "lat": float(driver.current_lat or 0),
@@ -210,6 +211,19 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(driver)
     return {"success": True, "driver": _driver_to_dict(driver)}
+
+
+@router.post("/drivers/{phone}/telegram-link")
+async def driver_telegram_link(phone: str, db: Session = Depends(get_db)):
+    """Enlace personal (un solo uso, 7 días) para que el chofer vincule su Telegram
+    con un toque. Ver services/telegram_link.py."""
+    from ..services import telegram_link
+    driver = db.query(Driver).filter(Driver.phone == phone, Driver.is_active == True).first()
+    if not driver:
+        raise HTTPException(404, "Conductor no encontrado o inactivo")
+    code = await telegram_link.create(driver.phone)
+    return {"url": telegram_link.bot_url(code), "expires_days": telegram_link.LINK_TTL // 86400,
+            "already_linked": bool(driver.telegram_chat_id)}
 
 
 @router.delete("/drivers/{phone}")

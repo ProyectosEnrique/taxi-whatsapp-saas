@@ -85,6 +85,9 @@
                 <div>
                   <p class="text-sm font-medium text-gray-900">{{ d.name }}</p>
                   <p class="text-xs text-gray-500">{{ d.phone }}</p>
+                  <p class="text-xs" :class="d.telegram_linked ? 'text-green-600' : 'text-amber-600'">
+                    {{ d.telegram_linked ? '✓ Telegram vinculado' : '⚠ Sin Telegram' }}
+                  </p>
                 </div>
               </div>
             </td>
@@ -105,6 +108,8 @@
             <td class="px-6 py-4">
               <div class="flex items-center space-x-2">
                 <button @click="openEdit(d)" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition" title="Editar">✏️</button>
+                <button v-if="d.is_active" @click="openTelegramLink(d)" class="p-1.5 hover:bg-blue-50 rounded transition"
+                  title="Enlace para vincular su Telegram">📲</button>
                 <button @click="toggleActive(d)" class="p-1.5 rounded transition"
                   :class="d.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'"
                   :title="d.is_active ? 'Desactivar' : 'Activar'">
@@ -118,6 +123,37 @@
       <div v-if="filtered.length === 0" class="text-center py-12 text-gray-400">
         <div class="text-5xl mb-3">🔍</div>
         <p>No hay conductores que coincidan</p>
+      </div>
+    </div>
+
+    <!-- Modal enlace de Telegram -->
+    <div v-if="tgLink.driver" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-900">📲 Telegram de {{ tgLink.driver.name }}</h2>
+          <button @click="tgLink.driver = null" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <p v-if="tgLink.loading" class="text-sm text-gray-500">Generando enlace…</p>
+        <p v-else-if="tgLink.error" class="text-sm text-red-600">{{ tgLink.error }}</p>
+        <template v-else>
+          <p v-if="tgLink.alreadyLinked" class="text-sm text-amber-700 bg-amber-50 rounded p-2">
+            Ya tiene Telegram vinculado. Si usa este enlace desde otro Telegram, se cambia a ese.
+          </p>
+          <p class="text-sm text-gray-600">
+            Mándaselo al chofer. Solo toca el enlace y luego <b>Iniciar</b>.
+            Sirve una sola vez y vence en {{ tgLink.days }} días.
+          </p>
+          <input :value="tgLink.url" readonly class="input font-mono text-xs" @focus="$event.target.select()" />
+          <div class="flex space-x-3">
+            <button @click="copyTgLink" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+              {{ tgLink.copied ? '✓ Copiado' : 'Copiar' }}
+            </button>
+            <a :href="tgWhatsApp" target="_blank" rel="noopener"
+               class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm text-center hover:bg-green-700">
+              Mandar por WhatsApp
+            </a>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -285,6 +321,37 @@ async function toggleActive(driver) {
   } catch (e) {
     console.error(e)
   }
+}
+
+// ── Enlace para vincular Telegram (un toque, sin /vincular) ──────────────────
+const tgLink = ref({ driver: null, url: '', days: 7, loading: false, error: '', copied: false, alreadyLinked: false })
+
+const tgWhatsApp = computed(() => {
+  const d = tgLink.value.driver
+  if (!d) return '#'
+  const text = `Hola ${d.name} 👋 Este es tu enlace para recibir viajes de TaxiCerca en Telegram. ` +
+    `Tócalo y luego presiona "Iniciar":\n${tgLink.value.url}`
+  return `https://wa.me/${d.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
+})
+
+async function openTelegramLink(driver) {
+  tgLink.value = { driver, url: '', days: 7, loading: true, error: '', copied: false, alreadyLinked: false }
+  try {
+    const res = await fetch(`${API}/drivers/${encodeURIComponent(driver.phone)}/telegram-link`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'No se pudo generar el enlace')
+    tgLink.value = { ...tgLink.value, url: data.url, days: data.expires_days,
+                     alreadyLinked: data.already_linked, loading: false }
+  } catch (e) {
+    tgLink.value = { ...tgLink.value, error: e.message, loading: false }
+  }
+}
+
+async function copyTgLink() {
+  try {
+    await navigator.clipboard.writeText(tgLink.value.url)
+    tgLink.value.copied = true
+  } catch (_) { /* el campo queda seleccionable para copiar a mano */ }
 }
 
 async function loadDrivers() {

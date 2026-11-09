@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""        # token del bot (@BotFather)
     TELEGRAM_ALERT_CHAT_ID: str = ""    # chat_id del grupo/canal del operador
     TELEGRAM_WEBHOOK_SECRET: str = ""   # secret para validar webhooks de Telegram
+    TELEGRAM_BOT_USERNAME: str = "TaxiNexoaiBot"   # para los enlaces t.me/<bot>?start=… de los choferes
 
     # Despacho por cercanía (telegram_bot.notify_drivers_new_ride): el viaje se
     # avisa primero a los choferes dentro del 1er círculo; si nadie acepta en

@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..models import BaseManager, Driver, TaxiGroup, Trip, TripStatus
 from ..config import settings
-from ..services import ride_notifs, sos
+from ..services import ride_notifs, sos, telegram_link
 from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
     answer_callback,
@@ -268,7 +268,26 @@ async def telegram_webhook(
         chat_id = str(msg["chat"]["id"])
         text    = (msg.get("text") or "").strip()
 
-        if text.startswith("/vincular"):
+        if text.startswith("/start"):
+            # Enlace personal del panel: t.me/<bot>?start=<código> → "/start <código>"
+            parts = text.split(maxsplit=1)
+            code = parts[1].strip() if len(parts) > 1 else ""
+            phone = await telegram_link.consume(code) if code else None
+            driver = (db.query(Driver).filter(Driver.phone == phone, Driver.is_active == True).first()
+                      if phone else None)
+            if driver:
+                await _link_driver(driver, chat_id, db)
+            elif code:
+                await send_message(chat_id, "❌ Este enlace ya se usó o venció. Pide uno nuevo a tu base.")
+            else:
+                await send_message(
+                    chat_id,
+                    "👋 <b>Bienvenido a TaxiCerca</b>\n"
+                    "Para recibir viajes, toca el enlace personal que te mandó tu base.\n"
+                    f"Tu ID de Telegram es <code>{chat_id}</code>."
+                )
+
+        elif text.startswith("/vincular"):
             parts = text.split()
             if len(parts) < 2:
                 await send_message(chat_id, "Usa: <code>/vincular +52XXXXXXXXXX</code>")
@@ -278,23 +297,7 @@ async def telegram_webhook(
             if not driver:
                 await send_message(chat_id, f"❌ No encontré ningún chofer con el número <code>{phone}</code>.")
                 return {"ok": True}
-            driver.telegram_chat_id = chat_id
-            db.commit()
-            logger.info(f"[TelegramBot] {driver.name} vinculó Telegram chat_id={chat_id}")
-            await send_message(
-                chat_id,
-                f"✅ <b>¡Listo, {driver.name}!</b>\n"
-                f"Cuenta vinculada. Recibirás viajes aquí con botón para aceptar.\n\n"
-                f"<b>Comandos disponibles:</b>\n"
-                f"• /disponible — activarte para recibir viajes\n"
-                f"• /descanso — ponerte offline\n"
-                f"• /estado — ver tu viaje activo\n"
-                f"• /ganancias — ver tus ganancias del día\n"
-                f"• /ubicacion — compartir tu ubicación en tiempo real\n"
-                f"• /sos — 🚨 alerta de emergencia al encargado de tu base\n"
-                f"• /desvincular — dejar de recibir notificaciones"
-            )
-            await send_message(chat_id, _LOCATION_HELP)
+            await _link_driver(driver, chat_id, db)
 
         elif text.startswith("/disponible"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
@@ -612,6 +615,30 @@ def _get_driver_and_trip(chat_id: str, ride_id: str, db) -> tuple:
     if trip.driver_phone != driver.phone:
         return None, None, "⚠️ Este viaje no te pertenece"
     return driver, trip, None
+
+
+async def _link_driver(driver: Driver, chat_id: str, db: Session) -> None:
+    """Liga este chat al chofer (enlace personal o /vincular) y le explica qué sigue."""
+    # Un chat = un chofer: si este Telegram estaba ligado a otra cuenta, se suelta
+    db.query(Driver).filter(Driver.telegram_chat_id == chat_id, Driver.id != driver.id) \
+        .update({Driver.telegram_chat_id: None})
+    driver.telegram_chat_id = chat_id
+    db.commit()
+    logger.info(f"[TelegramBot] {driver.name} vinculó Telegram chat_id={chat_id}")
+    await send_message(
+        chat_id,
+        f"✅ <b>¡Listo, {driver.name}!</b>\n"
+        f"Cuenta vinculada. Recibirás viajes aquí con botón para aceptar.\n\n"
+        f"<b>Comandos disponibles:</b>\n"
+        f"• /disponible — activarte para recibir viajes\n"
+        f"• /descanso — ponerte offline\n"
+        f"• /estado — ver tu viaje activo\n"
+        f"• /ganancias — ver tus ganancias del día\n"
+        f"• /ubicacion — compartir tu ubicación en tiempo real\n"
+        f"• /sos — 🚨 alerta de emergencia al encargado de tu base\n"
+        f"• /desvincular — dejar de recibir notificaciones"
+    )
+    await send_message(chat_id, _LOCATION_HELP)
 
 
 def _sos_row(trip: Trip) -> list[list[dict]]:
