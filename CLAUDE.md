@@ -307,3 +307,13 @@ enlace → "Iniciar" → el bot recibe `/start <código>` → `_link_driver` (mi
 estaba ligado a otro chofer, se suelta). `/start` sin código responde con el ID de Telegram. La lista del panel marca
 "✓ Telegram vinculado / ⚠ Sin Telegram" (`telegram_linked`). Bot de taxis = @TaxiNexoaiBot (solo TaxiCerca; Mandaya,
 Ricomar y FarmaCerca tienen bots propios). `/vincular +52…` sigue funcionando.
+
+## 23. Compartir ubicación = disponible (2026-11-09)
+Para que el chofer no escriba /disponible ni /descanso cada día (`telegram_bot._handle_location`):
+- Empieza a compartir **ubicación en tiempo real** (mensaje nuevo con `live_period`) → `is_online=True` y le avisa
+  "🟢 Ya estás disponible".
+- **Detiene** la ubicación (Telegram manda una última edición sin `live_period`) → `is_online=False` + aviso de descanso.
+- **Vence** sola (las 8 h): Telegram no avisa → `_live_location_monitor` (main.py, cada 2 min) llama
+  `expire_live_locations` → descanso + aviso. "Hasta que la desactive" se considera vigente mientras sigan llegando
+  posiciones (`location_live_until` se extiende 2 h en cada actualización).
+- Ubicación fija no cambia la disponibilidad. /disponible y /descanso siguen funcionando.

@@ -242,3 +242,52 @@ def test_everyone_flag_renotifies_all(db_session, sent):
     asyncio.run(telegram_bot._dispatch(trip, db_session, 0))
     asyncio.run(telegram_bot._dispatch(trip, db_session, 0, everyone=True))
     assert sorted(_chats(sent)[1:]) == ["chat1", "chat2"]
+
+
+# ── Compartir ubicación = disponible; detenerla o que venza = descanso ───────
+
+def _get(db, chat="chat1"):
+    db.expire_all()
+    return db.query(Driver).filter(Driver.telegram_chat_id == chat).one()
+
+
+def test_sharing_live_location_makes_driver_available(tg_client, db_session, sent):
+    _driver(db_session, 1, online=False)
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81, live=28800))
+    assert _get(db_session).is_online is True
+    assert "Ya estás disponible" in sent["text"][0][1]
+
+
+def test_stopping_live_location_puts_driver_on_break(tg_client, db_session, sent):
+    _driver(db_session, 1, online=False)
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81, live=28800))
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("edited_message", "chat1", 20.55, -100.81))
+    assert _get(db_session).is_online is False
+    assert "Estás en descanso" in sent["text"][-1][1]
+
+
+def test_fixed_location_does_not_change_availability(tg_client, db_session, sent):
+    _driver(db_session, 1, online=False)
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81))
+    assert _get(db_session).is_online is False
+
+
+def test_expired_live_location_puts_driver_on_break(db_session, sent):
+    d = _driver(db_session, 1, lat=20.55, lng=-100.81, online=True)
+    d.location_live_until = datetime.now(timezone.utc) - timedelta(minutes=5)
+    db_session.commit()
+    assert asyncio.run(telegram_bot.expire_live_locations(db_session)) == 1
+    assert _get(db_session).is_online is False
+    assert "Se terminó el tiempo" in sent["text"][-1][1]
+
+
+def test_open_ended_sharing_stays_valid_while_updates_arrive(tg_client, db_session, sent):
+    _driver(db_session, 1, online=False)
+    tg_client.post("/api/v1/telegram/webhook", json=_loc_update("message", "chat1", 20.55, -100.81, live=0x7FFFFFFF))
+    d = _get(db_session)
+    d.location_live_until = datetime.now(timezone.utc) - timedelta(minutes=1)   # como si pasaran 24 h
+    db_session.commit()
+    tg_client.post("/api/v1/telegram/webhook",
+                   json=_loc_update("edited_message", "chat1", 20.56, -100.81, live=0x7FFFFFFF))
+    assert asyncio.run(telegram_bot.expire_live_locations(db_session)) == 0
+    assert _get(db_session).is_online is True

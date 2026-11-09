@@ -107,6 +107,23 @@ async def _dead_mans_switch():
         await asyncio.sleep(30)
 
 
+async def _live_location_monitor():
+    """Cada 2 min: choferes cuya ubicación en vivo de Telegram ya venció → descanso
+    (compartir la ubicación = disponible; ver telegram_bot.expire_live_locations)."""
+    from .routers.telegram_bot import expire_live_locations
+    await asyncio.sleep(60)
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                await expire_live_locations(db)
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.error(f"[LiveLocation] Error: {exc}")
+        await asyncio.sleep(120)
+
+
 async def _ride_timeout_monitor():
     """
     Cada 60 s revisa viajes REQUESTED sin conductor asignado.
@@ -323,6 +340,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_activate_scheduled_rides())
     asyncio.create_task(_dead_mans_switch())
     asyncio.create_task(_ride_timeout_monitor())
+    asyncio.create_task(_live_location_monitor())
 
     # Registrar webhook del bot de Telegram con Telegram API
     if settings.TELEGRAM_BOT_TOKEN and settings.PUBLIC_URL:

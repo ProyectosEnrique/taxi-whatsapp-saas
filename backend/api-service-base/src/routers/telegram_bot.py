@@ -108,9 +108,43 @@ _LOCATION_HELP = (
     "2. Elige <b>Ubicación</b>\n"
     "3. Toca <b>Compartir ubicación en tiempo real</b>\n"
     "4. Elige <b>8 horas</b>\n\n"
-    "Así te llegan primero los viajes que están cerca de ti. "
-    "Funciona aunque apagues la pantalla; deja el celular cargando 🔌"
+    "Con eso <b>quedas disponible</b> y te llegan los viajes cerca de ti. "
+    "Funciona aunque apagues la pantalla; deja el celular cargando 🔌\n\n"
+    "Al terminar tu turno toca <b>Detener</b> en tu ubicación y quedas en descanso."
 )
+
+_OFF_LIVE_MSG = (
+    "🔴 <b>Estás en descanso</b>: dejaste de compartir tu ubicación y ya no te llegan viajes.\n"
+    "Para volver, comparte otra vez tu ubicación en tiempo real (📎 → Ubicación)."
+)
+
+
+async def expire_live_locations(db: Session) -> int:
+    """Choferes cuya ubicación en vivo ya venció (se acabaron las 8 h) → descanso.
+    Telegram no avisa cuando vence sola, así que lo revisa un ciclo de main.py."""
+    now = datetime.now(timezone.utc)
+    drivers = (db.query(Driver)
+                 .filter(Driver.is_online == True, Driver.location_live_until.isnot(None),
+                         Driver.location_live_until < now)
+                 .all())
+    for d in drivers:
+        d.is_online = False
+        d.location_live_until = None
+    if drivers:
+        db.commit()
+    for d in drivers:
+        logger.info(f"[TelegramBot] ubicación en vivo de {d.name} venció → descanso")
+        if d.telegram_chat_id:
+            await send_message(d.telegram_chat_id,
+                               "⏰ Se terminó el tiempo de tu ubicación en vivo.\n" + _OFF_LIVE_MSG)
+    return len(drivers)
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """La base de pruebas (SQLite) devuelve fechas sin zona: se asumen UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -133,6 +167,7 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
 
     now  = datetime.now(timezone.utc)
     live = loc.get("live_period")
+    was_live = driver.location_live_until is not None
     driver.current_lat = loc["latitude"]
     driver.current_lng = loc["longitude"]
     driver.location_updated_at = now
@@ -142,7 +177,24 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
         # live_period cuenta desde que se envió el mensaje; "hasta que la desactive" = 0x7FFFFFFF
         sent_at = datetime.fromtimestamp(msg.get("date") or now.timestamp(), timezone.utc)
         driver.location_live_until = sent_at + timedelta(seconds=min(live, 86400))
+    elif live >= 86400:
+        # "Hasta que la desactive": no tiene fin conocido; mientras siga mandando
+        # posiciones se considera vigente (si no, a las 24 h pasaría a descanso)
+        driver.location_live_until = max(_aware(driver.location_live_until) or now,
+                                         now + timedelta(hours=2))
+    # Compartir la ubicación en vivo = estar disponible; detenerla = descanso.
+    # Así el chofer no tiene que escribir /disponible ni /descanso cada día.
+    became_online = bool(live) and not edited and not driver.is_online
+    stopped_live = edited and not live and was_live
+    if became_online:
+        driver.is_online = True
+    if stopped_live and driver.is_online:
+        driver.is_online = False
     db.commit()
+    if stopped_live:
+        logger.info(f"[TelegramBot] {driver.name} detuvo su ubicación en vivo → descanso")
+        await send_message(chat_id, _OFF_LIVE_MSG)
+        return
     try:
         await _check_trip_proximity(driver, db)
     except Exception as e:  # nunca romper el guardado de ubicación por esto
@@ -160,11 +212,11 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
     # Telegram manda 0x7FFFFFFF cuando el chofer elige "hasta que la desactive"
     duration = "hasta que la desactives" if live >= 86400 else f"por {max(1, round(live / 3600))} h"
     logger.info(f"[TelegramBot] {driver.name} compartió ubicación en vivo ({live}s)")
-    extra = "" if driver.is_online else "\n\nAhora usa /disponible para empezar a recibir viajes."
     await send_message(
         chat_id,
         f"✅ <b>Ubicación en vivo activada</b> {duration}.\n"
-        f"Te llegarán primero los viajes cerca de ti.{extra}",
+        f"🟢 <b>Ya estás disponible</b>: te llegarán los viajes cerca de ti.\n\n"
+        f"Al terminar tu turno toca <b>Detener</b> en tu ubicación y quedas en descanso.",
     )
 
 
