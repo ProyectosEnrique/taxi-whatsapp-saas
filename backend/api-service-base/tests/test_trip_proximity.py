@@ -254,3 +254,9 @@ def test_in_progress_message_navigates_to_destination(db_session, bot):
     urls = [b.get("url", "") for row in buttons for b in row]
     assert any(f"destination={_DEST[0]}" in u for u in urls)
     assert "✅ Completar viaje" in _labels(buttons)
+
+
+def test_customer_label_uses_last_digits_when_name_unknown():
+    assert telegram_bot.customer_label("Cliente", "+5214771999661") == "Cliente …9661"
+    assert telegram_bot.customer_label(None, "+5214771999661") == "Cliente …9661"
+    assert telegram_bot.customer_label("Juan", "+5214771999661") == "Juan"

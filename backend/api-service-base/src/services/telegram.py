@@ -25,6 +25,8 @@ async def send_message(chat_id: str, text: str, parse_mode: str = "HTML") -> boo
                 "chat_id": chat_id,
                 "text": text,
                 "parse_mode": parse_mode,
+                # Sin vista previa de los links de Maps (mostraba un mapa de otro país)
+                "disable_web_page_preview": True,
             })
             if resp.status_code != 200:
                 logger.warning(f"[Telegram] sendMessage error {resp.status_code}: {resp.text[:200]}")
@@ -49,6 +51,7 @@ async def send_with_buttons(chat_id: str, text: str, buttons: list[list[dict]]) 
                 "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML",
+                "disable_web_page_preview": True,
                 "reply_markup": {"inline_keyboard": buttons},
             })
             if resp.status_code != 200:
@@ -71,6 +74,7 @@ async def edit_message_text(chat_id: str, message_id: int, text: str) -> bool:
                 "message_id": message_id,
                 "text": text,
                 "parse_mode": "HTML",
+                "disable_web_page_preview": True,
             })
             return resp.status_code == 200
     except Exception as e:

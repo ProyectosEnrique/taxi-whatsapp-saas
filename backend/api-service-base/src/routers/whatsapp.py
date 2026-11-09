@@ -575,8 +575,17 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
             logger.warning(f"[WA] Driver Telegram notify failed: {drv_err}")
 
     # ── Notificar al operador ─────────────────────────────────────────────────
+    # Si el chat del operador también es chofer y ya le llegó "Nuevo viaje
+    # disponible", no se le repite el mismo viaje (pasaba en pruebas del dueño).
+    try:
+        from ..services import ride_notifs
+        notified = {chat for chat, _ in await ride_notifs.get(trip.trip_id)}
+    except Exception:
+        notified = set()
+    operator_already_notified = bool(settings.TELEGRAM_ALERT_CHAT_ID) and settings.TELEGRAM_ALERT_CHAT_ID in notified
     try:
         from ..services.telegram import send_to_operator
+        from .telegram_bot import customer_label
         maps_orig = f"https://maps.google.com/?q={olat},{olng}" if (olat and olng) else "Sin coords"
         maps_dest = f"https://maps.google.com/?q={dlat},{dlng}"
         label = "📅 PROGRAMADO" if scheduled_at else "🚖 INMEDIATO"
@@ -584,7 +593,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
         msg = (
             f"{label} — <b>Viaje WhatsApp</b>\n"
             f"ID: <code>{trip.trip_id}</code>\n"
-            f"Cliente: {c_name} | <code>{phone}</code>\n"
+            f"Cliente: {customer_label(c_name, phone)} | <code>{phone}</code>\n"
             f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
             f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
             f"💰 Tarifa aprox.: ${fare:.0f} | {round(distance_km, 1)} km\n"
@@ -593,7 +602,8 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
         )
         if scheduled_at:
             msg += f"\n🕐 Hora: {scheduled_at.strftime('%d/%m %H:%M')}"
-        await send_to_operator(msg)
+        if not operator_already_notified:
+            await send_to_operator(msg)
     except Exception as tg_err:
         logger.warning(f"[WA] Telegram notify failed: {tg_err}")
 

@@ -59,13 +59,21 @@ def _verify_secret(x_telegram_bot_api_secret_token: str = Header(default="")):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def customer_label(name: str | None, phone: str | None) -> str:
+    """Nombre del pasajero; si no se sabe ("Cliente"), los últimos 4 dígitos del teléfono."""
+    if name and name.strip() not in ("Cliente", "Cliente WhatsApp"):
+        return name.strip()
+    digits = "".join(c for c in (phone or "") if c.isdigit())
+    return f"Cliente …{digits[-4:]}" if digits else "Cliente"
+
+
 def _trip_summary(trip: Trip) -> str:
     return (
         f"🚖 <b>Viaje {trip.trip_id}</b>\n"
         f"📍 Origen: {trip.origin_address}\n"
         f"🏁 Destino: {trip.destination_address}\n"
         f"💰 Tarifa aprox.: ${float(trip.fare):.0f} | {trip.distance_km} km\n"
-        f"👤 Cliente: {trip.customer_name}"
+        f"👤 Cliente: {customer_label(trip.customer_name, trip.customer_phone)}"
     )
 
 
@@ -845,7 +853,7 @@ async def _send_ride(trip: Trip, drivers: list[Driver], dist: dict[int, float]) 
         f"📍 {orig_link}: {trip.origin_address}\n"
         f"🏁 {dest_link}: {trip.destination_address}\n"
         f"💰 Tarifa aprox.: ${float(trip.fare):.0f} | {trip.distance_km} km\n"
-        f"👤 Cliente: {trip.customer_name}"
+        f"👤 Cliente: {customer_label(trip.customer_name, trip.customer_phone)}"
     )
     buttons = [[{"text": "✅ Aceptar viaje", "callback_data": f"accept_{trip.trip_id}"}]]
 
