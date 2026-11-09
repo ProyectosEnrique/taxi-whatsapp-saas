@@ -48,7 +48,7 @@ def test_calculate_fare_applies_peak_surge(monkeypatch):
     monkeypatch.setattr(fare_service, "datetime", _FixedDatetime)
 
     fare = fare_service.calculate_fare(_cfg(surge_enabled=True), distance_km=10)
-    assert fare == round((50 + 10 * 8) * 1.3, 2)
+    assert fare == 170.0  # (50 + 10*8) × 1.3 = 169 → múltiplo de $5
 
 
 def test_calculate_fare_applies_night_surge(monkeypatch):
@@ -66,4 +66,4 @@ def test_calculate_fare_applies_weekend_surge(monkeypatch):
     monkeypatch.setattr(fare_service, "datetime", _FixedDatetime)
 
     fare = fare_service.calculate_fare(_cfg(surge_enabled=True), distance_km=10)
-    assert fare == round((50 + 10 * 8) * 1.2, 2)
+    assert fare == 155.0  # (50 + 10*8) × 1.2 = 156 → múltiplo de $5

@@ -13,7 +13,7 @@ def test_uses_road_distance(monkeypatch):
     monkeypatch.setattr(fare_service, "_osrm_route", lambda *a: (6.2, 14.0))
     km, mins = fare_service.route_km_min(20.52, -100.81, 20.55, -100.80)
     assert (round(km, 1), mins) == (6.2, 14)
-    assert fare_service.calculate_fare(_Cfg, km) == 30 + 6.2 * 8
+    assert fare_service.calculate_fare(_Cfg, km) == 80   # 30 + 6.2 × 8 = 79.6 → $80
 
 
 def test_falls_back_to_straight_line_plus_30_percent():
@@ -40,3 +40,9 @@ def test_night_surcharge_uses_mexico_time(monkeypatch):
             return datetime(2026, 11, 10, 23, 30, tzinfo=timezone.utc)   # martes 5:30 pm en México
     monkeypatch.setattr(fare_service, "datetime", FakeDT)
     assert fare_service._surge_multiplier(Cfg) != 1.5
+
+
+def test_fare_is_rounded_to_5_pesos_without_going_below_minimum():
+    assert fare_service.calculate_fare(_Cfg, 6.0) == 80     # 78 → 80
+    assert fare_service.calculate_fare(_Cfg, 5.2) == 70     # 71.6 → 70
+    assert fare_service.calculate_fare(_Cfg, 1.0) == 50     # 38 → mínima 50

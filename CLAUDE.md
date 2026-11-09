@@ -323,5 +323,5 @@ Mientras llega el tabulador de la base: `fare_service.route_km_min` da km y minu
 /seguimiento; si no responde, línea recta × 1.3) con caché de 30 min por coordenadas (estimación y creación del viaje
 dan el mismo precio). Lo usan `whatsapp.estimate_fare/create`, y `customer_rides` estimate/request/schedule. El
 pasajero ve "$X MXN aprox." y el chofer "Tarifa aprox. … (cobra según tu base)". Recargos (`_surge_multiplier`) con
-hora de México (UTC-6); antes UTC: la "madrugada" empezaba a las 5 pm (surge sigue apagado). Pruebas sin red:
+hora de México (UTC-6); antes UTC: la "madrugada" empezaba a las 5 pm (surge sigue apagado). Tarifa redondeada al múltiplo de $5 más cercano (sin bajar de la mínima). Pruebas sin red:
 `conftest._no_osrm`. Pendiente: tabulador por base (mínima de ciudad, precios fijos por colonia/comunidad, nocturno).

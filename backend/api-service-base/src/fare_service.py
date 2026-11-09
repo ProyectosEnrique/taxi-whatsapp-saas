@@ -116,7 +116,13 @@ def calculate_fare(cfg: FareConfig, distance_km: float) -> float:
         multiplier = _surge_multiplier(cfg)
         raw *= multiplier
 
-    return round(max(raw, minimum), 2)
+    # En taxi se cobra en pesos redondos: al múltiplo de $5 más cercano (77.92 → 80),
+    # sin bajar de la mínima
+    return float(max(_round_to_5(raw), minimum))
+
+
+def _round_to_5(amount: float) -> int:
+    return int(5 * round(amount / 5))
 
 
 def _surge_multiplier(cfg: FareConfig) -> float:
