@@ -64,7 +64,7 @@ def _trip_summary(trip: Trip) -> str:
         f"🚖 <b>Viaje {trip.trip_id}</b>\n"
         f"📍 Origen: {trip.origin_address}\n"
         f"🏁 Destino: {trip.destination_address}\n"
-        f"💰 Tarifa: ${float(trip.fare):.2f} | {trip.distance_km} km\n"
+        f"💰 Tarifa aprox.: ${float(trip.fare):.0f} | {trip.distance_km} km\n"
         f"👤 Cliente: {trip.customer_name}"
     )
 
@@ -278,7 +278,7 @@ def _notify_customer_wa(
         "completed": (
             f"✅ *¡Llegaste a tu destino!*\n\n"
             f"Viaje completado con *{driver.name}*.\n"
-            f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
+            f"💰 Tarifa aproximada: *${float(trip.fare or 0):.0f} MXN*\n\n"
             f"¡Gracias por usar nuestro servicio! 🙌\n"
             f"Para agendar tu próximo viaje escríbeme aquí."
             f"{gift_line(trip, driver) if event == 'completed' else ''}"
@@ -801,7 +801,7 @@ async def _check_trip_proximity(driver: Driver, db: Session) -> None:
             await send_with_buttons(
                 driver.telegram_chat_id,
                 f"🏁 <b>Ya casi llegas al destino</b>\n{trip.destination_address}\n\n"
-                f"💰 Cobra <b>${float(trip.fare or 0):.0f}</b> y toca completar.",
+                f"💰 Tarifa aprox. <b>${float(trip.fare or 0):.0f}</b> (cobra según tu base) y toca completar.",
                 [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
             )
 
@@ -844,7 +844,7 @@ async def _send_ride(trip: Trip, drivers: list[Driver], dist: dict[int, float]) 
         f"ID: <code>{trip.trip_id}</code>\n"
         f"📍 {orig_link}: {trip.origin_address}\n"
         f"🏁 {dest_link}: {trip.destination_address}\n"
-        f"💰 Tarifa: ${float(trip.fare):.2f} | {trip.distance_km} km\n"
+        f"💰 Tarifa aprox.: ${float(trip.fare):.0f} | {trip.distance_km} km\n"
         f"👤 Cliente: {trip.customer_name}"
     )
     buttons = [[{"text": "✅ Aceptar viaje", "callback_data": f"accept_{trip.trip_id}"}]]

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Customer, Driver, Trip, TripStatus
 from ..auth import hash_password
-from ..fare_service import get_fare_config, calculate_fare
+from ..fare_service import get_fare_config, calculate_fare, route_km_min
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -430,13 +430,13 @@ def estimate_fare(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)
     dest = payload.get("destination") or {}
     olat, olng = float(orig.get("lat") or 0), float(orig.get("lng") or 0)
     dlat, dlng = float(dest.get("lat") or 0), float(dest.get("lng") or 0)
-    distance_km = _haversine_km(olat, olng, dlat, dlng) if (olat and dlat) else 5.0
+    distance_km, minutes = route_km_min(olat, olng, dlat, dlng)   # por calle, no línea recta
     cfg = get_fare_config(db)
     fare = calculate_fare(cfg, distance_km)
     return {
         "fare": round(fare, 2),
         "distance_km": round(distance_km, 2),
-        "duration_minutes": max(5, int(distance_km * 2.5)),
+        "duration_minutes": minutes,
     }
 
 
@@ -458,7 +458,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     olng = float(orig.get("lng") or 0)
     dlat = float(dest.get("lat") or 0)
     dlng = float(dest.get("lng") or 0)
-    distance_km = _haversine_km(olat, olng, dlat, dlng) if (olat and dlat) else 5.0
+    distance_km, _ = route_km_min(olat, olng, dlat, dlng)   # mismo cálculo que la estimación
     cfg = get_fare_config(db)
     fare = calculate_fare(cfg, distance_km)
 
@@ -587,7 +587,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
             f"Cliente: {c_name} | <code>{phone}</code>\n"
             f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
             f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
-            f"💰 Tarifa: ${fare:.2f} | {round(distance_km, 1)} km\n"
+            f"💰 Tarifa aprox.: ${fare:.0f} | {round(distance_km, 1)} km\n"
             f"🔍 <a href='{tracking_url}'>Seguimiento en vivo</a>"
             f"{asign_note}"
         )

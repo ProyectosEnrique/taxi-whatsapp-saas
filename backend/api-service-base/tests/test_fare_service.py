@@ -43,8 +43,8 @@ def test_calculate_fare_ignores_surge_when_disabled():
 
 
 def test_calculate_fare_applies_peak_surge(monkeypatch):
-    # 2026-07-08 08:00 UTC = miércoles, hora pico (7-9am)
-    _FixedDatetime._frozen = datetime(2026, 7, 8, 8, 0, tzinfo=timezone.utc)
+    # 2026-07-08 14:00 UTC = miércoles 8:00 am en México, hora pico (7-9am)
+    _FixedDatetime._frozen = datetime(2026, 7, 8, 14, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(fare_service, "datetime", _FixedDatetime)
 
     fare = fare_service.calculate_fare(_cfg(surge_enabled=True), distance_km=10)
@@ -52,8 +52,8 @@ def test_calculate_fare_applies_peak_surge(monkeypatch):
 
 
 def test_calculate_fare_applies_night_surge(monkeypatch):
-    # 2026-07-08 02:00 UTC = madrugada
-    _FixedDatetime._frozen = datetime(2026, 7, 8, 2, 0, tzinfo=timezone.utc)
+    # 2026-07-08 08:00 UTC = 2:00 am en México, madrugada
+    _FixedDatetime._frozen = datetime(2026, 7, 8, 8, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(fare_service, "datetime", _FixedDatetime)
 
     fare = fare_service.calculate_fare(_cfg(surge_enabled=True), distance_km=10)

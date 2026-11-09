@@ -317,3 +317,11 @@ Para que el chofer no escriba /disponible ni /descanso cada día (`telegram_bot.
   `expire_live_locations` → descanso + aviso. "Hasta que la desactive" se considera vigente mientras sigan llegando
   posiciones (`location_live_until` se extiende 2 h en cada actualización).
 - Ubicación fija no cambia la disponibilidad. /disponible y /descanso siguen funcionando.
+
+## 24. Tarifa por distancia de calle y "aproximada" (2026-11-09)
+Mientras llega el tabulador de la base: `fare_service.route_km_min` da km y minutos **por calle** (OSRM, el mismo de
+/seguimiento; si no responde, línea recta × 1.3) con caché de 30 min por coordenadas (estimación y creación del viaje
+dan el mismo precio). Lo usan `whatsapp.estimate_fare/create`, y `customer_rides` estimate/request/schedule. El
+pasajero ve "$X MXN aprox." y el chofer "Tarifa aprox. … (cobra según tu base)". Recargos (`_surge_multiplier`) con
+hora de México (UTC-6); antes UTC: la "madrugada" empezaba a las 5 pm (surge sigue apagado). Pruebas sin red:
+`conftest._no_osrm`. Pendiente: tabulador por base (mínima de ciudad, precios fijos por colonia/comunidad, nocturno).

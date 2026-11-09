@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, PromoCode
 from ..auth import hash_password, verify_password, create_token, get_current_customer
-from ..fare_service import get_fare_config, calculate_fare
+from ..fare_service import get_fare_config, calculate_fare, route_km_min
 from ..config import settings
 from ..services.farmacerca_gift import gift_for
 from ..rate_limit import limiter
@@ -300,16 +300,12 @@ def estimate_fare(payload: dict, current: Customer = Depends(get_current_custome
     destination = payload.get("destination", {})
     def _lng(obj): return float(obj.get("lng") or obj.get("lon") or 0)
     try:
-        dist = _haversine_km(
-            float(origin.get("lat", 0)), _lng(origin),
-            float(destination.get("lat", 0)), _lng(destination),
-        )
+        dist, mins = route_km_min(float(origin.get("lat", 0)), _lng(origin),
+                                  float(destination.get("lat", 0)), _lng(destination))
     except Exception:
-        dist = 3.0
-    dist  = max(dist, 1.0)
+        dist, mins = 3.0, 8
     cfg   = get_fare_config(db)
     fare  = calculate_fare(cfg, dist)
-    mins  = max(5, int(dist * 2.5))
     return {"estimate": {"fare": fare, "distance_km": round(dist, 2), "duration_minutes": mins, "currency": "MXN"}}
 
 
@@ -320,13 +316,10 @@ async def request_ride(payload: dict, current: Customer = Depends(get_current_cu
 
     def _lng(obj): return obj.get("lng") or obj.get("lon")
     try:
-        dist = _haversine_km(
-            float(origin.get("lat", 0)), float(_lng(origin) or 0),
-            float(destination.get("lat", 0)), float(_lng(destination) or 0),
-        )
+        dist, _ = route_km_min(float(origin.get("lat", 0)), float(_lng(origin) or 0),
+                               float(destination.get("lat", 0)), float(_lng(destination) or 0))
     except Exception:
         dist = 3.0
-    dist = max(dist, 1.0)
     cfg  = get_fare_config(db)
     fare = calculate_fare(cfg, dist)
     fare, promo_used = _apply_promo(payload.get("promo_code"), fare, db)
@@ -371,7 +364,7 @@ async def request_ride(payload: dict, current: Customer = Depends(get_current_cu
             f"Cliente: {current.name} | <code>{current.phone}</code>\n"
             f"📍 <a href='{maps_orig}'>Origen</a>: {trip.origin_address}\n"
             f"🏁 <a href='{maps_dest}'>Destino</a>: {trip.destination_address}\n"
-            f"💰 Tarifa: ${float(trip.fare):.2f} | {trip.distance_km} km"
+            f"💰 Tarifa aprox.: ${float(trip.fare):.0f} | {trip.distance_km} km"
         )
     except Exception as tg_err:
         logger.warning(f"[Rides] Telegram notify failed: {tg_err}")
@@ -432,13 +425,10 @@ def schedule_ride(payload: dict, current: Customer = Depends(get_current_custome
 
     def _lng(obj): return obj.get("lng") or obj.get("lon")
     try:
-        dist = _haversine_km(
-            float(origin.get("lat", 0)), float(_lng(origin) or 0),
-            float(destination.get("lat", 0)), float(_lng(destination) or 0),
-        )
+        dist, _ = route_km_min(float(origin.get("lat", 0)), float(_lng(origin) or 0),
+                               float(destination.get("lat", 0)), float(_lng(destination) or 0))
     except Exception:
         dist = 3.0
-    dist = max(dist, 1.0)
     cfg  = get_fare_config(db)
     fare = calculate_fare(cfg, dist)
 

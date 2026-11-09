@@ -23,6 +23,13 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 @pytest.fixture(autouse=True)
+def _no_osrm(monkeypatch):
+    """Las pruebas no salen a internet: la distancia por calle cae a línea recta × 1.3."""
+    monkeypatch.setattr(fare_service, "_osrm_route", lambda *a: None)
+    fare_service._route_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_db():
     """Tablas frescas, caché de tarifas limpia y contador de rate-limit
     reiniciado en cada test — TestClient siempre pega desde la misma IP

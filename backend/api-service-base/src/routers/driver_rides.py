@@ -634,7 +634,7 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
         trip.customer_phone,
         f"✅ *¡Llegaste a tu destino!*\n\n"
         f"Viaje completado con *{current.name}*.\n"
-        f"💰 Total: *${float(trip.fare or 0):.0f} MXN*\n\n"
+        f"💰 Tarifa aproximada: *${float(trip.fare or 0):.0f} MXN*\n\n"
         f"¡Gracias por usar nuestro servicio! 🙌\n"
         f"Para agendar tu próximo viaje escríbeme aquí o visita:\n"
         f"{settings.PUBLIC_URL}/cliente"
