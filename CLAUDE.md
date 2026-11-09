@@ -291,3 +291,11 @@ responde 403 se sigue solo con Geocoding) → Google Geocoding (calle y número)
   conversación (`context.anchor`): origen y destino suelen estar en la misma ciudad.
 - El prompt ya no agrega "Celaya" por su cuenta; resumen y `crear_viaje` llevan "nombre, colonia, ciudad".
 - `reverse-geocode` también devuelve colonia y ciudad. Pruebas: `tests/test_geocode.py` (proveedores simulados).
+
+## 21. Arranque solo con viajes al momento (2026-11-09)
+Decisión del dueño para las primeras pruebas reales: **sin viajes programados**. `SCHEDULED_RIDES_ENABLED=False`
+(config de taxi-api): `POST /api/v1/whatsapp/rides/create` con `scheduled_at` → **409** (NO se convierte en
+inmediato: mandaría un taxi ya) y `POST /api/v1/customer/rides/schedule` → 409. El bot: `crear_viaje` ya no tiene
+`scheduled_at` y el prompt responde "Por ahora solo atendemos viajes para este momento…". Pago: solo efectivo
+(sin claves de Mercado Pago en el VPS). Para reactivar: `SCHEDULED_RIDES_ENABLED=true` en `.env` + compose,
+devolver `scheduled_at` a la herramienta y la regla del prompt.

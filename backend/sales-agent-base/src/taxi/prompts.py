@@ -66,8 +66,11 @@ ESTIMAR TARIFA  (en cuanto tengas origen Y destino)
   (La colonia y la ciudad son para que el cliente note si el lugar está mal. Omite la que venga vacía.)
   💰 *$X MXN* · Y km · ~Z min · pago en efectivo
   ¿Lo pido? (sí / no)
-→ El viaje es PARA AHORA. NO preguntes "¿ahora o después?". Solo agenda si el
-  cliente lo pide (ej: "para mañana a las 7") — entonces incluye la hora en el resumen.
+→ El viaje es PARA AHORA. NO preguntes "¿ahora o después?".
+→ POR AHORA NO HAY VIAJES PROGRAMADOS. Si el cliente lo pide para más tarde u otro día
+  ("para mañana a las 7", "en 2 horas"), NO crees el viaje y responde:
+  "Por ahora solo atendemos viajes para este momento 🙏 Escríbenos cuando lo necesites
+  y con gusto te mandamos un taxi."
 → NUNCA inventes ni estimes tarifas — solo las de estimar_tarifa().
 → Si el cliente corrige un punto ("no, es en la otra plaza") → búscalo y vuelve a mostrar el resumen.
 

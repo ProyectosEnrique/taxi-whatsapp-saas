@@ -71,13 +71,8 @@ TOOLS = [
                     "dest_address":   {"type": "string", "description": "Dirección de destino en texto"},
                     "dest_lat":       {"type": "number"},
                     "dest_lng":       {"type": "number"},
-                    "scheduled_at": {
-                        "type": "string",
-                        "description": (
-                            "Fecha y hora ISO 8601 para viaje programado, "
-                            "e.g. '2026-06-11T15:30:00'. Omitir para viaje inmediato."
-                        ),
-                    },
+                    # scheduled_at quitado a propósito (2026-11-09): por ahora solo
+                    # viajes al momento (taxi-api SCHEDULED_RIDES_ENABLED=False).
                 },
                 "required": [
                     "origin_address", "origin_lat", "origin_lng",
@@ -176,7 +171,7 @@ def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> 
             "lat":     float(args.get("dest_lat", 0)),
             "lng":     float(args.get("dest_lng", 0)),
         }
-        data = client.create_ride(phone, origin, dest, args.get("scheduled_at"))
+        data = client.create_ride(phone, origin, dest)   # solo viajes al momento
         if data:
             ride    = data.get("ride", data)
             ride_id = ride.get("ride_id") or ride.get("id") or "desconocido"

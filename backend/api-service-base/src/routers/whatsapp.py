@@ -466,6 +466,8 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     scheduled_at_raw = payload.get("scheduled_at")
     scheduled_at = None
     trip_status = TripStatus.REQUESTED
+    if scheduled_at_raw and not settings.SCHEDULED_RIDES_ENABLED:
+        raise HTTPException(409, "Por ahora solo hay viajes para este momento")
     if scheduled_at_raw:
         try:
             scheduled_at = _dt.fromisoformat(scheduled_at_raw)

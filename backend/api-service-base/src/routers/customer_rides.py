@@ -414,6 +414,8 @@ def schedule_ride(payload: dict, current: Customer = Depends(get_current_custome
     destination = payload.get("destination", {})
     scheduled_at_str = payload.get("scheduled_at")
 
+    if not settings.SCHEDULED_RIDES_ENABLED:
+        raise HTTPException(409, "Por ahora solo hay viajes para este momento. Pide tu taxi cuando lo necesites.")
     if not scheduled_at_str:
         raise HTTPException(400, "scheduled_at es requerido (ISO 8601)")
 
