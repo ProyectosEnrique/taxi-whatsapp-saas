@@ -325,3 +325,12 @@ dan el mismo precio). Lo usan `whatsapp.estimate_fare/create`, y `customer_rides
 pasajero ve "$X MXN aprox." y el chofer "Tarifa aprox. … (cobra según tu base)". Recargos (`_surge_multiplier`) con
 hora de México (UTC-6); antes UTC: la "madrugada" empezaba a las 5 pm (surge sigue apagado). Tarifa redondeada al múltiplo de $5 más cercano (sin bajar de la mínima). Pruebas sin red:
 `conftest._no_osrm`. Pendiente: tabulador por base (mínima de ciudad, precios fijos por colonia/comunidad, nocturno).
+
+## 25. Solo WhatsApp: pedir desde la web apagado (2026-11-10)
+
+Para el arranque los viajes se piden solo por WhatsApp (número real; la web dejaba registrarse con cualquier dato y no
+tenía las mejoras de geocodificación/SOS). `settings.WEB_RIDES_ENABLED=False` → `customer_rides.web_rides_on` responde
+403 en register/login/forgot/reset-password y rides estimate/request/schedule. En la app (`router/index.js`,
+`WEB_RIDES_ENABLED=false`) las rutas de cuenta/pedido redirigen a `/` y la portada solo tiene "Pedir taxi por WhatsApp".
+Siguen igual: `/seguimiento/{id}` (public-track, SOS), `/track`, `/pedir`, `/privacidad`, `/conductor`. Para
+reabrir: poner ambos en true y redesplegar taxi-api y taxi-nginx.

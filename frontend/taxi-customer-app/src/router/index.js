@@ -116,13 +116,21 @@ const router = createRouter({
   routes
 })
 
+// Arranque solo por WhatsApp (2026-11-10): cuenta y pedidos desde la web
+// apagados (la API también los rechaza, WEB_RIDES_ENABLED). Siguen abiertas la
+// portada, /seguimiento, /track, /pedir, /privacidad y /conductor.
+const WEB_RIDES_ENABLED = false
+const WEB_ONLY = ['Login', 'Register', 'ForgotPassword', 'Home', 'RideTracking', 'History',
+  'Payment', 'Profile', 'ScheduleRide', 'ScheduledRides']
+
 router.beforeEach((to, from, next) => {
+  if (!WEB_RIDES_ENABLED && WEB_ONLY.includes(to.name)) return next('/')
   try {
     const authStore = useAuthStore()
 
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
       next('/login')
-    } else if ((to.path === '/' || to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
+    } else if (WEB_RIDES_ENABLED && (to.path === '/' || to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
       next('/home')
     } else {
       next()

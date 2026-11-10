@@ -8,7 +8,6 @@
             <img src="/logo-pin.svg" alt="" class="h-10 w-auto drop-shadow">
             <span class="text-2xl font-extrabold tracking-tight">Taxi<span class="text-white drop-shadow">Cerca</span></span>
           </div>
-          <router-link to="/login" class="text-sm font-semibold bg-white/80 hover:bg-white rounded-full px-4 py-2">Entrar</router-link>
         </div>
 
         <h1 class="mt-10 text-4xl sm:text-5xl font-extrabold leading-tight">Pide tu taxi<br>por WhatsApp</h1>
@@ -21,10 +20,6 @@
              class="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold text-lg rounded-xl px-6 py-4 shadow-lg">
             💬 Pedir taxi por WhatsApp
           </a>
-          <router-link to="/login"
-             class="inline-flex items-center justify-center bg-white hover:bg-gray-50 font-semibold rounded-xl px-6 py-4 shadow">
-            Pedir desde esta página
-          </router-link>
         </div>
       </div>
     </header>

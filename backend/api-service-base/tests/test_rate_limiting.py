@@ -1,3 +1,13 @@
+import pytest
+
+from src.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _web_on(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RIDES_ENABLED", True)
+
+
 def test_login_is_rate_limited_after_threshold(client):
     """El límite es 10/minuto — el intento 11 debe rechazarse con 429."""
     payload = {"phone": "+521111111111", "password": "wrong-password"}

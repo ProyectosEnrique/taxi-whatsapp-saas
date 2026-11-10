@@ -1,4 +1,13 @@
+import pytest
+
+from src.config import settings
 from src.models import Trip, TripStatus
+
+
+@pytest.fixture(autouse=True)
+def _web_on(monkeypatch):
+    monkeypatch.setattr(settings, "WEB_RIDES_ENABLED", True)
+
 
 _REGISTER_PAYLOAD = {"phone": "+521111111111", "password": "secret123", "name": "Ana"}
 _ROUTE = {

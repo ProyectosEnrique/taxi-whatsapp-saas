@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     # Viajes programados apagados para el arranque (2026-11-09): solo viajes al momento.
     # La API rechaza scheduled_at (no lo convierte en inmediato: mandaría un taxi ya).
     SCHEDULED_RIDES_ENABLED: bool = False
+    # Pedir desde la web (taxi.nexoai.lat/login → /home) apagado para el arranque (2026-11-10):
+    # solo WhatsApp, donde el número es real. Seguimiento, SOS y /pedir siguen igual.
+    WEB_RIDES_ENABLED: bool = False
     # SOS (ver services/sos.py): si nadie toca "Ya lo atiendo" en este tiempo, se avisa al respaldo
     SOS_ESCALATE_MIN: int = 2
     PROXIMITY_MIN_AGE_S: int = 60       # no antes de esto tras aceptar/iniciar (evita falsos al arrancar)

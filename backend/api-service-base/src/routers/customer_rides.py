@@ -23,6 +23,15 @@ from ..rate_limit import limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/customer", tags=["customer"])
 
+
+def web_rides_on():
+    """Cuenta y pedidos desde la web: apagados mientras solo se pide por WhatsApp."""
+    if not settings.WEB_RIDES_ENABLED:
+        raise HTTPException(403, "Por ahora los taxis se piden solo por WhatsApp: wa.me/13162412111")
+
+
+_WEB = [Depends(web_rides_on)]
+
 # OTP temporal en memoria: phone → {code, expires_at}
 _otp_store: dict = {}
 _OTP_TTL_MINUTES = 15
@@ -80,7 +89,7 @@ def _trip_to_dict(trip: Trip, driver: Driver | None = None) -> dict:
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
-@router.post("/register")
+@router.post("/register", dependencies=_WEB)
 @limiter.limit("5/minute")
 def register(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
@@ -99,7 +108,7 @@ def register(request: Request, payload: dict, db: Session = Depends(get_db)):
     return {"token": token, "customer": {"id": customer.id, "phone": customer.phone, "name": customer.name}}
 
 
-@router.post("/login")
+@router.post("/login", dependencies=_WEB)
 @limiter.limit("10/minute")
 def login(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
@@ -116,7 +125,7 @@ def logout():
     return {"status": "ok"}
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", dependencies=_WEB)
 @limiter.limit("3/minute")
 async def forgot_password(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone = (payload.get("phone") or "").strip()
@@ -155,7 +164,7 @@ async def forgot_password(request: Request, payload: dict, db: Session = Depends
     return {"message": "Si el número está registrado recibirás un código por WhatsApp"}
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", dependencies=_WEB)
 @limiter.limit("10/minute")
 def reset_password(request: Request, payload: dict, db: Session = Depends(get_db)):
     phone = (payload.get("phone") or "").strip()
@@ -294,7 +303,7 @@ def validate_promo(payload: dict, current: Customer = Depends(get_current_custom
     }
 
 
-@router.post("/rides/estimate")
+@router.post("/rides/estimate", dependencies=_WEB)
 def estimate_fare(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
@@ -309,7 +318,7 @@ def estimate_fare(payload: dict, current: Customer = Depends(get_current_custome
     return {"estimate": {"fare": fare, "distance_km": round(dist, 2), "duration_minutes": mins, "currency": "MXN"}}
 
 
-@router.post("/rides/request")
+@router.post("/rides/request", dependencies=_WEB)
 async def request_ride(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
@@ -401,7 +410,7 @@ def get_history(current: Customer = Depends(get_current_customer), db: Session =
     return {"rides": [_trip_to_dict(t) for t in trips]}
 
 
-@router.post("/rides/schedule")
+@router.post("/rides/schedule", dependencies=_WEB)
 def schedule_ride(payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     origin      = payload.get("origin", {})
     destination = payload.get("destination", {})
