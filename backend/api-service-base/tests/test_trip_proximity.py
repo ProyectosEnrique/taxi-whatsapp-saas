@@ -24,6 +24,7 @@ _DEST = (20.5200, -100.8150)
 _NEAR_ORIGIN = (20.5404, -100.8000)   # ~45 m
 _NEAR_DEST = (20.5210, -100.8150)     # ~110 m
 _FAR = (20.5600, -100.8000)           # ~2 km
+_APPROACHING = (20.5412, -100.8000)    # ~135 m: aviso "llegando", aún no "Llegué"
 
 
 @pytest.fixture
@@ -100,7 +101,7 @@ def test_arrives_automatically_near_pickup(tg_client, db_session, bot):
     _move(tg_client, *_NEAR_ORIGIN)
 
     assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
-    assert bot["wa"] == ["arrived"]
+    assert bot["wa"] == ["arriving"]
     assert "🚕 Iniciar viaje" in _labels(bot["buttons"][-1][2])
 
 
@@ -122,7 +123,7 @@ def test_auto_arrival_only_once(tg_client, db_session, bot):
     trip = _setup(db_session, TripStatus.CONFIRMED)
     _move(tg_client, *_NEAR_ORIGIN)
     _move(tg_client, *_NEAR_ORIGIN)
-    assert bot["wa"] == ["arrived"]
+    assert bot["wa"] == ["arriving"]
 
 
 def test_manual_button_after_auto_arrival_is_harmless(tg_client, db_session, bot):
@@ -131,7 +132,7 @@ def test_manual_button_after_auto_arrival_is_harmless(tg_client, db_session, bot
     cq = {"update_id": 2, "callback_query": {"id": "q1", "from": {"id": "chat1"},
                                               "data": f"arrived_{trip.trip_id}"}}
     tg_client.post("/api/v1/telegram/webhook", json=cq)
-    assert bot["wa"] == ["arrived"]
+    assert bot["wa"] == ["arriving"]
     assert "ya estaba registrada" in bot["callbacks"][-1]
 
 
@@ -140,6 +141,38 @@ def test_auto_arrival_can_be_disabled(tg_client, db_session, bot, monkeypatch):
     trip = _setup(db_session, TripStatus.CONFIRMED)
     _move(tg_client, *_NEAR_ORIGIN)
     assert _status(db_session, trip) == TripStatus.CONFIRMED
+
+
+# ── "Tu conductor está llegando" al pasajero ──────────────────────────────────
+
+def test_passenger_told_arriving_before_driver_is_there(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    _move(tg_client, *_APPROACHING)
+    assert bot["wa"] == ["arriving"]
+    assert _status(db_session, trip) == TripStatus.CONFIRMED      # "Llegué" todavía no
+
+    _move(tg_client, *_NEAR_ORIGIN)                                # ya llegó: sin segundo aviso
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+    assert bot["wa"] == ["arriving"]
+
+
+def test_arriving_button_after_notice_sends_nothing_more(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    _move(tg_client, *_APPROACHING)
+    cq = {"update_id": 2, "callback_query": {"id": "q1", "from": {"id": "chat1"},
+                                              "data": f"arrived_{trip.trip_id}"}}
+    tg_client.post("/api/v1/telegram/webhook", json=cq)
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+    assert bot["wa"] == ["arriving"]
+
+
+def test_arriving_button_without_location_still_tells_passenger(tg_client, db_session, bot):
+    # Sin ubicación en vivo el botón es el respaldo: el pasajero recibe el aviso una vez
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    cq = {"update_id": 2, "callback_query": {"id": "q1", "from": {"id": "chat1"},
+                                              "data": f"arrived_{trip.trip_id}"}}
+    tg_client.post("/api/v1/telegram/webhook", json=cq)
+    assert bot["wa"] == ["arriving"]
 
 
 # ── "Iniciar viaje" automático ────────────────────────────────────────────────
@@ -152,7 +185,7 @@ def test_starts_automatically_when_leaving_pickup(tg_client, db_session, bot):
     _move(tg_client, *_LEAVING_ORIGIN)
 
     assert _status(db_session, trip) == TripStatus.IN_PROGRESS
-    assert bot["wa"] == ["started"]
+    assert bot["wa"] == []          # el pasajero ya va en el taxi: sin aviso
     assert "✅ Completar viaje" in _labels(bot["buttons"][-1][2])
 
 
@@ -176,7 +209,7 @@ def test_manual_start_after_auto_start_is_harmless(tg_client, db_session, bot):
     cq = {"update_id": 2, "callback_query": {"id": "q1", "from": {"id": "chat1"},
                                               "data": f"start_{trip.trip_id}"}}
     tg_client.post("/api/v1/telegram/webhook", json=cq)
-    assert bot["wa"] == ["started"]
+    assert _status(db_session, trip) == TripStatus.IN_PROGRESS
     assert "ya estaba iniciado" in bot["callbacks"][-1]
 
 

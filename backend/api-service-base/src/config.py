@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     # "Llegué" se marca solo cerca del pasajero y, cerca del destino, se le
     # ofrece al chofer el botón de completar. 0 = desactivado.
     AUTO_ARRIVE_RADIUS_M: int = 120
+    # Aviso "tu conductor está llegando" al pasajero, sin que el chofer toque nada. Un poco más
+    # que los ~100 m pedidos: Telegram manda la ubicación cada tantos segundos. 0 = apagado.
+    ARRIVING_NOTICE_RADIUS_M: int = 150
     NEAR_DEST_RADIUS_M: int = 200
     AUTO_START_RADIUS_M: int = 200      # ya llegó y se aleja esto del origen → viaje iniciado solo
     # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.

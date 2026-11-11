@@ -271,17 +271,11 @@ def _notify_customer_wa(
             f"{vehicle}\n"
             f"📍 Sigue tu viaje:\n{settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
         ),
-        "arrived": (
-            f"🚕 *¡Tu taxi llegó!*\n\n"
-            f"Tu conductor *{driver.name}* está esperándote.\n"
+        "arriving": (
+            f"🚕 *¡Tu conductor está llegando!*\n\n"
+            f"Ve saliendo: *{driver.name}* está a unos pasos.\n"
             f"{vehicle}\n"
             f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
-        ),
-        "started": (
-            f"🚗 *¡Viaje en camino!*\n\n"
-            f"Tu conductor *{driver.name}* ha iniciado el trayecto.\n"
-            f"Destino: {trip.destination_address or 'Tu destino'}\n\n"
-            f"_Escribe *estado* en cualquier momento para consultar tu viaje._"
         ),
         "completed": (
             f"✅ *¡Llegaste a tu destino!*\n\n"
@@ -760,16 +754,23 @@ async def _mark_arrived(driver: Driver, trip: Trip, db: Session, auto: bool = Fa
     db.commit()
     logger.info(f"[TelegramBot] {driver.name} llegó al origen ({'auto' if auto else 'botón'}) — viaje {trip.trip_id}")
     await _send_ride_action(driver.telegram_chat_id, trip)
-    _notify_customer_wa(trip.customer_phone, driver, trip, "arrived")
+    await _notify_arriving(driver, trip)
 
 
 async def _mark_started(driver: Driver, trip: Trip, db: Session, auto: bool = False) -> None:
-    """Pasa el viaje a "en curso" y les avisa al chofer y al pasajero."""
+    """Pasa el viaje a "en curso" y le manda al chofer el botón al destino.
+    Al pasajero no se le avisa: ya va en el taxi."""
     trip.status = TripStatus.IN_PROGRESS
     db.commit()
     logger.info(f"[TelegramBot] {driver.name} inició viaje ({'auto' if auto else 'botón'}) {trip.trip_id}")
     await _send_ride_action(driver.telegram_chat_id, trip)
-    _notify_customer_wa(trip.customer_phone, driver, trip, "started")
+
+
+async def _notify_arriving(driver: Driver, trip: Trip) -> None:
+    """"Tu conductor está llegando": una sola vez por viaje, lo que pase primero
+    (acercarse a ARRIVING_NOTICE_RADIUS_M, el "Llegué" automático o el botón)."""
+    if await ride_notifs.claim_once("arriving_msg", trip.trip_id):
+        _notify_customer_wa(trip.customer_phone, driver, trip, "arriving")
 
 
 def _seconds_since(dt: datetime | None) -> float:
@@ -794,9 +795,12 @@ async def _check_trip_proximity(driver: Driver, db: Session) -> None:
         return
     here = (float(driver.current_lat), float(driver.current_lng))
 
-    if trip.status == TripStatus.CONFIRMED and settings.AUTO_ARRIVE_RADIUS_M and trip.origin_lat:
+    if trip.status == TripStatus.CONFIRMED and trip.origin_lat:
         meters = _haversine_km(*here, float(trip.origin_lat), float(trip.origin_lng)) * 1000
-        if meters <= settings.AUTO_ARRIVE_RADIUS_M and await ride_notifs.claim_once("arrived", trip.trip_id):
+        if meters <= settings.ARRIVING_NOTICE_RADIUS_M:
+            await _notify_arriving(driver, trip)
+        if (settings.AUTO_ARRIVE_RADIUS_M and meters <= settings.AUTO_ARRIVE_RADIUS_M
+                and await ride_notifs.claim_once("arrived", trip.trip_id)):
             await _mark_arrived(driver, trip, db, auto=True)
 
     elif trip.status == TripStatus.DRIVER_ARRIVED and settings.AUTO_START_RADIUS_M and trip.origin_lat:

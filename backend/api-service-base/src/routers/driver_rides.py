@@ -734,9 +734,12 @@ async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session =
     # Notificar cliente WhatsApp
     if driver and trip.customer_phone:
         try:
-            from .telegram_bot import _notify_customer_wa
-            event_map = {"arrived": "arrived", "start": "started", "complete": "completed"}
-            _notify_customer_wa(trip.customer_phone, driver, trip, event_map[body.action])
+            from .telegram_bot import _notify_arriving, _notify_customer_wa
+            # Igual que en Telegram: "está llegando" una sola vez y nada al iniciar
+            if body.action == "arrived":
+                await _notify_arriving(driver, trip)
+            elif body.action == "complete":
+                _notify_customer_wa(trip.customer_phone, driver, trip, "completed")
         except Exception as e:
             logger.warning(f"[WebAction] notify WA failed: {e}")
 

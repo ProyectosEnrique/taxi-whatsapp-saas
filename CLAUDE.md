@@ -343,3 +343,12 @@ que Telegram abre sin preguntar. `routers/nav_link.py` (`GET /r/{código}`, cód
 `location /r/` → taxi-api) redirige según el estado al tocarlo: aceptado → ruta completa (pasajero como parada);
 llegó/en curso → destino; terminado/desconocido → 404. `nav_link.maps_url` arma también las URLs de los botones.
 Pendiente: confirmar en el celular del chofer que de verdad abre sin preguntar; si no, quitar la línea.
+
+## 27. Avisos al pasajero: solo los necesarios (2026-11-11)
+
+Intervención mínima del chofer. El pasajero recibe: **"Conductor asignado"** (al aceptar) → **"Tu conductor está
+llegando"** (una sola vez, `telegram_bot._notify_arriving`, `claim_once("arriving_msg")`: lo que pase primero entre
+acercarse a `ARRIVING_NOTICE_RADIUS_M`=150 m con la ubicación en vivo, el "Llegué" automático a 120 m o el botón de
+respaldo) → **"Llegaste a tu destino"** (al completar). Se quitaron "¡Tu taxi llegó!" y "¡Viaje en camino!" (al
+iniciar no se avisa: ya va en el taxi). Mismo criterio en la acción web `driver_rides.driver_action_web`.
+Requiere que el chofer comparta su ubicación en tiempo real; sin ella, solo el botón "Llegué" manda el aviso.
