@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..models import BaseManager, Driver, TaxiGroup, Trip, TripStatus
 from ..config import settings
+from . import nav_link
 from ..services import ride_notifs, sos, telegram_link
 from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
@@ -87,9 +88,7 @@ def _nav_buttons(lat, lng, label: str) -> list[list[dict]]:
     """Un solo botón a lo ancho que abre Google Maps ya navegando (sin pasos extra)."""
     if not (lat and lng):
         return []
-    gmaps = (f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}"
-             f"&travelmode=driving&dir_action=navigate")
-    return [[{"text": f"🚕 {label}", "url": gmaps}]]
+    return [[{"text": f"🚕 {label}", "url": nav_link.maps_url(lat, lng)}]]
 
 
 def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
@@ -99,11 +98,15 @@ def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
         return []
     if not (trip.destination_lat and trip.destination_lng):
         return _nav_buttons(trip.origin_lat, trip.origin_lng, "Ir por el pasajero")
-    gmaps = (f"https://www.google.com/maps/dir/?api=1"
-             f"&destination={trip.destination_lat},{trip.destination_lng}"
-             f"&waypoints={trip.origin_lat},{trip.origin_lng}"
-             f"&travelmode=driving&dir_action=navigate")
-    return [[{"text": "🚕 Ruta completa", "url": gmaps}]]
+    url = nav_link.maps_url(trip.destination_lat, trip.destination_lng, via=(trip.origin_lat, trip.origin_lng))
+    return [[{"text": "🚕 Ruta completa", "url": url}]]
+
+
+def _short_link_line(trip: Trip) -> str:
+    """Enlace visible: Telegram lo abre sin preguntar "¿Abrir este enlace?" (el botón sí pregunta)."""
+    if not nav_link.route_url(trip):
+        return ""
+    return f"\n\n👉 Abre directo en Maps: {nav_link.short_url(trip)}"
 
 
 _LOCATION_HELP = (
@@ -722,7 +725,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
             chat_id,
             f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
             f"<i>🚕 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
-            f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>",
+            f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>"
+            f"{_short_link_line(trip)}",
             _pickup_nav_buttons(trip)
             + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]]
             + _sos_row(trip),
@@ -742,7 +746,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await send_with_buttons(
             chat_id,
             f"🚗 <b>Viaje en curso</b>\n\n{_trip_summary(trip)}\n\n"
-            f"<i>Cerca del destino te mando el botón para completar.</i>",
+            f"<i>Cerca del destino te mando el botón para completar.</i>"
+            f"{_short_link_line(trip)}",
             _nav_buttons(trip.destination_lat, trip.destination_lng, "Ir al destino")
             + [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]]
             + _sos_row(trip),

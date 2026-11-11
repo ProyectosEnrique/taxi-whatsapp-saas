@@ -334,3 +334,12 @@ tenía las mejoras de geocodificación/SOS). `settings.WEB_RIDES_ENABLED=False` 
 `WEB_RIDES_ENABLED=false`) las rutas de cuenta/pedido redirigen a `/` y la portada solo tiene "Pedir taxi por WhatsApp".
 Siguen igual: `/seguimiento/{id}` (public-track, SOS), `/track`, `/pedir`, `/privacidad`, `/conductor`. Para
 reabrir: poner ambos en true y redesplegar taxi-api y taxi-nginx.
+
+## 26. Enlace corto de navegación sin "¿Abrir este enlace?" (2026-11-11)
+
+Los botones URL de Telegram siempre piden confirmar. Los mensajes "Viaje aceptado" y "Viaje en curso" llevan además
+el texto visible `👉 Abre directo en Maps: https://taxi.nexoai.lat/r/<código>` (`telegram_bot._short_link_line`),
+que Telegram abre sin preguntar. `routers/nav_link.py` (`GET /r/{código}`, código = parte hex de `trip_id`; nginx
+`location /r/` → taxi-api) redirige según el estado al tocarlo: aceptado → ruta completa (pasajero como parada);
+llegó/en curso → destino; terminado/desconocido → 404. `nav_link.maps_url` arma también las URLs de los botones.
+Pendiente: confirmar en el celular del chofer que de verdad abre sin preguntar; si no, quitar la línea.
