@@ -1,7 +1,7 @@
 """Durante el viaje, con la ubicación en vivo del chofer:
 - cerca del pasajero "Llegué" se marca solo,
 - cerca del destino se le manda el botón de completar,
-y los mensajes del bot traen botones que abren Maps/Waze ya navegando.
+y los mensajes del bot traen botones que abren Maps ya navegando (un solo botón 🚕, sin Waze).
 
 Telegram y el aviso por WhatsApp se simulan: no sale nada a la red.
 """
@@ -101,7 +101,7 @@ def test_arrives_automatically_near_pickup(tg_client, db_session, bot):
 
     assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
     assert bot["wa"] == ["arrived"]
-    assert "🚗 Iniciar viaje" in _labels(bot["buttons"][-1][2])
+    assert "🚕 Iniciar viaje" in _labels(bot["buttons"][-1][2])
 
 
 def test_no_auto_arrival_while_far(tg_client, db_session, bot):
@@ -238,9 +238,9 @@ def test_accepted_message_has_direct_navigation_buttons(db_session, bot):
     # Una sola ruta: pasa por el pasajero (parada) y sigue al destino
     assert any("google.com/maps/dir/" in u and "dir_action=navigate" in u
                and f"destination={_DEST[0]}" in u and f"waypoints={_ORIGIN[0]}" in u for u in urls)
-    # Waze no acepta paradas: va solo al pasajero
-    assert any(u.startswith("https://waze.com/ul?") and f"ll={_ORIGIN[0]}" in u
-               and "navigate=yes" in u for u in urls)
+    assert not any("waze" in u for u in urls)
+    assert len(buttons[0]) == 1   # solo en su renglón: a lo ancho
+    assert buttons[0][0]["text"] == "🚕 Ruta completa"
     assert "🟢 Llegué al origen" in _labels(buttons)
     assert "/conductor/viaje/" not in text
 
@@ -253,6 +253,7 @@ def test_in_progress_message_navigates_to_destination(db_session, bot):
     buttons = bot["buttons"][-1][2]
     urls = [b.get("url", "") for row in buttons for b in row]
     assert any(f"destination={_DEST[0]}" in u for u in urls)
+    assert buttons[0] == [{"text": "🚕 Ir al destino", "url": urls[0]}]
     assert "✅ Completar viaje" in _labels(buttons)
 
 

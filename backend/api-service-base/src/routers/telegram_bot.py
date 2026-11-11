@@ -84,19 +84,17 @@ def _maps(lat, lng) -> str | None:
 
 
 def _nav_buttons(lat, lng, label: str) -> list[list[dict]]:
-    """Botones que abren Google Maps o Waze ya navegando (sin pasos extra)."""
+    """Un solo botón a lo ancho que abre Google Maps ya navegando (sin pasos extra)."""
     if not (lat and lng):
         return []
     gmaps = (f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}"
              f"&travelmode=driving&dir_action=navigate")
-    waze = f"https://waze.com/ul?ll={lat},{lng}&navigate=yes"
-    return [[{"text": f"🧭 {label}", "url": gmaps}, {"text": "🚙 Waze", "url": waze}]]
+    return [[{"text": f"🚕 {label}", "url": gmaps}]]
 
 
 def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
     """Al aceptar: una sola ruta de Maps pasando por el pasajero hasta el destino,
-    así el chofer no regresa a Telegram para navegar. Waze no acepta paradas,
-    por eso ese botón va solo al pasajero."""
+    así el chofer no regresa a Telegram para navegar. Sin Waze (no acepta paradas)."""
     if not (trip.origin_lat and trip.origin_lng):
         return []
     if not (trip.destination_lat and trip.destination_lng):
@@ -105,8 +103,7 @@ def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
              f"&destination={trip.destination_lat},{trip.destination_lng}"
              f"&waypoints={trip.origin_lat},{trip.origin_lng}"
              f"&travelmode=driving&dir_action=navigate")
-    waze = f"https://waze.com/ul?ll={trip.origin_lat},{trip.origin_lng}&navigate=yes"
-    return [[{"text": "🧭 Ruta completa", "url": gmaps}, {"text": "🚙 Waze (pasajero)", "url": waze}]]
+    return [[{"text": "🚕 Ruta completa", "url": gmaps}]]
 
 
 _LOCATION_HELP = (
@@ -724,7 +721,7 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await send_with_buttons(
             chat_id,
             f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
-            f"<i>🧭 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
+            f"<i>🚕 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
             f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>",
             _pickup_nav_buttons(trip)
             + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]]
@@ -737,7 +734,7 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
             f"📍 <b>Llegaste — esperando al pasajero</b>\n\n"
             f"{_trip_summary(trip)}\n\nCuando suba el pasajero, arranca: el viaje se inicia solo "
             f"al alejarte del punto. El botón es por si no se marca.",
-            [[{"text": "🚗 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]]
+            [[{"text": "🚕 Iniciar viaje", "callback_data": f"start_{trip.trip_id}"}]]
             + _sos_row(trip),
         )
 
