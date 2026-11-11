@@ -125,3 +125,31 @@ async def set_webhook(webhook_url: str, secret_token: str = "") -> bool:
 async def send_to_operator(text: str) -> bool:
     """Envía al chat_id del operador configurado en TELEGRAM_ALERT_CHAT_ID."""
     return await send_message(settings.TELEGRAM_ALERT_CHAT_ID, text)
+
+
+async def delete_message(chat_id: str, message_id: int) -> bool:
+    """Borra un mensaje del bot (Telegram solo deja los de las últimas 48 h)."""
+    if not settings.TELEGRAM_BOT_TOKEN or not chat_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(_url("deleteMessage"), json={"chat_id": chat_id, "message_id": message_id})
+            return resp.status_code == 200 and resp.json().get("ok", False)
+    except Exception as e:
+        logger.warning(f"[Telegram] deleteMessage exception: {e}")
+        return False
+
+
+async def remove_buttons(chat_id: str, message_id: int) -> bool:
+    """Quita los botones de un mensaje (cuando ya no se puede borrar)."""
+    if not settings.TELEGRAM_BOT_TOKEN or not chat_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(_url("editMessageReplyMarkup"), json={
+                "chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []},
+            })
+            return resp.status_code == 200
+    except Exception as e:
+        logger.warning(f"[Telegram] editMessageReplyMarkup exception: {e}")
+        return False

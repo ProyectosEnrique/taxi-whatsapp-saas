@@ -352,3 +352,15 @@ acercarse a `ARRIVING_NOTICE_RADIUS_M`=150 m con la ubicación en vivo, el "Lleg
 respaldo) → **"Llegaste a tu destino"** (al completar). Se quitaron "¡Tu taxi llegó!" y "¡Viaje en camino!" (al
 iniciar no se avisa: ya va en el taxi). Mismo criterio en la acción web `driver_rides.driver_action_web`.
 Requiere que el chofer comparta su ubicación en tiempo real; sin ella, solo el botón "Llegué" manda el aviso.
+
+## 28. Chat del chofer limpio al terminar cada viaje (2026-11-11)
+
+`services/trip_chat.py`: cada mensaje con botones del viaje (`telegram_bot._send_trip_msg`: aceptado, llegaste, en
+curso, ya casi llegas; más el aviso de "viaje nuevo" del que lo tomó) se anota en Redis `taxi:tripmsgs:{trip_id}` (48 h).
+Al **completar** (`trip_chat.finish`) se borran (`deleteMessage`; si Telegram no deja, `editMessageReplyMarkup` sin
+botones) y queda un solo resumen sin botones (`completed_summary`: "✅ Viaje terminado · origen → destino · $X aprox.").
+A los choferes que no alcanzaron el viaje, el "ya fue tomado" se borra a los `TAKEN_NOTICE_DELETE_S`=120 s
+(`drop_taken_notices`, `asyncio.create_task`; si el proceso se reinicia antes, ya no tiene botones). Al **cancelar**
+(`whatsapp.cancel_ride`, `customer_rides.cancel_ride` → `trip_chat.notify_cancelled`) se limpia igual, se borran los
+avisos con "Aceptar" aún vivos y el chofer asignado recibe "❌ Viaje cancelado por el cliente". SOS nunca se borra.
+Tests: `tests/test_trip_chat.py`.

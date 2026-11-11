@@ -17,6 +17,7 @@ from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, 
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare, route_km_min
 from ..config import settings
+from ..services import trip_chat
 from ..services.farmacerca_gift import gift_for
 from ..rate_limit import limiter
 
@@ -564,7 +565,7 @@ def get_ride(ride_id: str, current: Customer = Depends(get_current_customer), db
 
 
 @router.post("/rides/{ride_id}/cancel")
-def cancel_ride(ride_id: str, payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
+async def cancel_ride(ride_id: str, payload: dict, current: Customer = Depends(get_current_customer), db: Session = Depends(get_db)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.customer_phone == current.phone).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
@@ -576,6 +577,7 @@ def cancel_ride(ride_id: str, payload: dict, current: Customer = Depends(get_cur
     trip.cancellation_reason = payload.get("reason", "Cliente canceló")
     trip.cancelled_at        = datetime.now(timezone.utc)
     db.commit()
+    await trip_chat.notify_cancelled(trip, db)
     return {"success": True}
 
 

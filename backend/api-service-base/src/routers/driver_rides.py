@@ -636,8 +636,7 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
         f"Viaje completado con *{current.name}*.\n"
         f"💰 Tarifa aproximada: *${float(trip.fare or 0):.0f} MXN*\n\n"
         f"¡Gracias por usar nuestro servicio! 🙌\n"
-        f"Para agendar tu próximo viaje escríbeme aquí o visita:\n"
-        f"{settings.PUBLIC_URL}/cliente"
+        f"Para tu próximo viaje escríbeme aquí."
         f"{gift_line(trip, current)}",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
@@ -740,6 +739,9 @@ async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session =
                 await _notify_arriving(driver, trip)
             elif body.action == "complete":
                 _notify_customer_wa(trip.customer_phone, driver, trip, "completed")
+                from .telegram_bot import completed_summary
+                from ..services import trip_chat
+                await trip_chat.finish(trip.trip_id, driver.telegram_chat_id, completed_summary(trip))
         except Exception as e:
             logger.warning(f"[WebAction] notify WA failed: {e}")
 

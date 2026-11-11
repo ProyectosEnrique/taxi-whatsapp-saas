@@ -16,6 +16,7 @@ from ..models import Customer, Driver, Trip, TripStatus
 from ..auth import hash_password
 from ..fare_service import get_fare_config, calculate_fare, route_km_min
 from ..config import settings
+from ..services import trip_chat
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/whatsapp", tags=["whatsapp-internal"])
@@ -636,7 +637,7 @@ def get_ride(ride_id: str, db: Session = Depends(get_db), _=Depends(_auth)):
 
 
 @router.post("/rides/{ride_id}/cancel")
-def cancel_ride(ride_id: str, db: Session = Depends(get_db), _=Depends(_auth)):
+async def cancel_ride(ride_id: str, db: Session = Depends(get_db), _=Depends(_auth)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
@@ -644,4 +645,5 @@ def cancel_ride(ride_id: str, db: Session = Depends(get_db), _=Depends(_auth)):
         raise HTTPException(400, "El viaje ya está terminado")
     trip.status = TripStatus.CANCELLED
     db.commit()
+    await trip_chat.notify_cancelled(trip, db)
     return {"success": True, "ride_id": ride_id}

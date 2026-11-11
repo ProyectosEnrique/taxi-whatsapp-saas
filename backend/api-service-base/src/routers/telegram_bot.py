@@ -36,7 +36,7 @@ from ..database import SessionLocal, get_db
 from ..models import BaseManager, Driver, TaxiGroup, Trip, TripStatus
 from ..config import settings
 from . import nav_link
-from ..services import ride_notifs, sos, telegram_link
+from ..services import ride_notifs, sos, telegram_link, trip_chat
 from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
     answer_callback,
@@ -578,7 +578,9 @@ async def telegram_webhook(
 
             _notify_customer_wa(trip.customer_phone, driver, trip, "accepted")
 
-            # Marcar como tomado en los chats de los demás conductores
+            # Marcar como tomado en los chats de los demás conductores (y borrarlo
+            # al rato); el aviso del que lo tomó se borra junto con el viaje
+            others = []
             for d_chat, msg_id in await ride_notifs.get(ride_id):
                 if d_chat != chat_id:
                     await edit_message_text(
@@ -586,7 +588,11 @@ async def telegram_webhook(
                         f"🚫 <b>Viaje {ride_id} ya fue tomado</b>\n"
                         f"Otro conductor lo aceptó primero."
                     )
+                    others.append((d_chat, msg_id))
+                else:
+                    await trip_chat.track(ride_id, d_chat, {"message_id": msg_id})
             await ride_notifs.remove(ride_id)
+            asyncio.create_task(trip_chat.drop_taken_notices(others))
 
         # ── Llegué al origen ─────────────────────────────────────────────────
         elif cq_data.startswith("arrived_"):
@@ -643,22 +649,19 @@ async def telegram_webhook(
             logger.info(f"[TelegramBot] Viaje {ride_id} completado por {driver.name}")
 
             await answer_callback(cq_id, "✅ ¡Viaje completado!")
-            await send_message(
-                chat_id,
-                f"✅ <b>¡Viaje completado!</b>\n\n"
-                f"👤 Cliente: {trip.customer_name}\n"
-                f"🏁 Destino: {trip.destination_address}\n"
-                f"💰 Ganancia: <b>${float(trip.fare or 0):.2f} MXN</b>\n"
-                f"📏 Distancia: {trip.distance_km} km\n\n"
-                f"Acumulado total: ${float(driver.total_earnings or 0):.2f} MXN\n\n"
-                f"Usa /disponible para recibir el siguiente viaje. 🚕"
-            )
+            await trip_chat.finish(ride_id, chat_id, completed_summary(trip))
             _notify_customer_wa(trip.customer_phone, driver, trip, "completed")
 
     return {"ok": True}
 
 
 # ── Helpers internos ──────────────────────────────────────────────────────────
+
+def completed_summary(trip: Trip) -> str:
+    """Lo único que queda en el chat del chofer de un viaje terminado (sin botones)."""
+    return (f"✅ <b>Viaje terminado</b>\n{trip_chat.trip_summary_line(trip)}\n"
+            f"💰 ${float(trip.fare or 0):.0f} aprox. · {trip.distance_km} km")
+
 
 def _get_driver_and_trip(chat_id: str, ride_id: str, db) -> tuple:
     """Devuelve (driver, trip, error_msg). error_msg es None si todo está bien."""
@@ -709,14 +712,19 @@ async def _driver_sos(driver: Driver, trip: Trip | None, db: Session) -> None:
     await send_message(driver.telegram_chat_id, msg if new else "🚨 Tu alerta ya está enviada. " + msg)
 
 
+async def _send_trip_msg(trip: Trip, chat_id: str, text: str, buttons: list[list[dict]]) -> None:
+    """Mensaje del viaje para el chofer; se anota para borrarlo al terminar."""
+    await trip_chat.track(trip.trip_id, chat_id, await send_with_buttons(chat_id, text, buttons))
+
+
 async def _send_ride_action(chat_id: str, trip: Trip) -> None:
     """
     Envía el mensaje de estado del viaje con el botón de acción correspondiente
     al estado actual. Centraliza toda la lógica de qué botón mostrar.
     """
     if trip.status == TripStatus.CONFIRMED:
-        await send_with_buttons(
-            chat_id,
+        await _send_trip_msg(
+            trip, chat_id,
             f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
             f"<i>🚕 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
             f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>"
@@ -727,8 +735,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:
-        await send_with_buttons(
-            chat_id,
+        await _send_trip_msg(
+            trip, chat_id,
             f"📍 <b>Llegaste — esperando al pasajero</b>\n\n"
             f"{_trip_summary(trip)}\n\nCuando suba el pasajero, arranca: el viaje se inicia solo "
             f"al alejarte del punto. El botón es por si no se marca.",
@@ -737,8 +745,8 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         )
 
     elif trip.status == TripStatus.IN_PROGRESS:
-        await send_with_buttons(
-            chat_id,
+        await _send_trip_msg(
+            trip, chat_id,
             f"🚗 <b>Viaje en curso</b>\n\n{_trip_summary(trip)}\n\n"
             f"<i>Cerca del destino te mando el botón para completar.</i>"
             f"{_short_link_line(trip)}",
@@ -812,8 +820,8 @@ async def _check_trip_proximity(driver: Driver, db: Session) -> None:
         meters = _haversine_km(*here, float(trip.destination_lat), float(trip.destination_lng)) * 1000
         if meters <= settings.NEAR_DEST_RADIUS_M and await ride_notifs.claim_once("near_dest", trip.trip_id):
             logger.info(f"[TelegramBot] {driver.name} cerca del destino — viaje {trip.trip_id}")
-            await send_with_buttons(
-                driver.telegram_chat_id,
+            await _send_trip_msg(
+                trip, driver.telegram_chat_id,
                 f"🏁 <b>Ya casi llegas al destino</b>\n{trip.destination_address}\n\n"
                 f"💰 Tarifa aprox. <b>${float(trip.fare or 0):.0f}</b> (cobra según tu base) y toca completar.",
                 [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]],
