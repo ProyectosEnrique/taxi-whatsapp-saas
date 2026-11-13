@@ -136,6 +136,31 @@ async def _handle_sos(phone: str, name: str) -> str:
         return _SOS_FALLBACK
 
 
+# ─── QR de la tarjetita del taxi (2026-11-13, taxi-api routers/taxi_qr.py) ──
+# /t/23 abre este chat con "Hola TaxiCerca 🚕 voy en el taxi 23". No es un
+# pedido: no pasa por la IA; taxi-api contesta "guarda este chat" + el regalo
+# de FarmaCerca de ese taxi. Solo mensajes cortos, para no confundirlo con
+# "voy en el taxi 23 y se me olvidó mi bolsa".
+_TAXI_SCAN_RE = re.compile(r"^\W*(?:hola\W+)?(?:taxicerca\W+)?voy en el taxi\s*#?\s*([A-Za-z0-9]{1,10})\W*$",
+                           re.IGNORECASE)
+_TAXI_SCAN_FALLBACK = ("🚕 ¡Hola! Esto es *TaxiCerca*, tu taxi por WhatsApp.\n\n"
+                       "📲 *Guarda este chat:* la próxima vez pide tu taxi aquí. Solo escríbenos a dónde vas "
+                       "o mándanos tu ubicación 📍.")
+
+
+async def _handle_taxi_scan(phone: str, taxi: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(f"{TAXI_API_URL}/api/v1/whatsapp/taxi-scan",
+                                     json={"phone": phone, "taxi": taxi},
+                                     headers={"X-Taxi-Internal-Key": WHATSAPP_SECRET})
+            resp.raise_for_status()
+            return resp.json().get("reply") or _TAXI_SCAN_FALLBACK
+    except Exception as e:
+        logger.warning(f"[TaxiGW] QR del taxi {taxi}: no se pudo consultar ({e})")
+        return _TAXI_SCAN_FALLBACK
+
+
 # ─── Verificación de firma del webhook de Twilio ───────────────────────────────
 # Sin esto, cualquiera que conozca la URL del webhook puede mandar mensajes
 # falsos suplantando cualquier número de teléfono — cada mensaje falso dispara
@@ -447,6 +472,15 @@ async def twilio_webhook(
         if not text:
             return _twiml()
         logger.info(f"[TaxiGW] Twilio msg from {phone} ({customer_name}): {text[:80]}")
+        scan = _TAXI_SCAN_RE.match(text)
+        if scan:
+            # Respuesta y luego la tarjeta de contacto, en ese orden (por TwiML la tarjeta podía llegar antes)
+            async def _scan_reply():
+                _send_twilio(phone, await _handle_taxi_scan(phone, scan.group(1)))
+                await _send_contact_card_once(phone)
+
+            _aio.create_task(_scan_reply())
+            return _twiml()
 
     # Procesar en background — responder a Twilio inmediatamente para evitar timeout de 15s
     async def _process():

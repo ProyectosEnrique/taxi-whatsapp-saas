@@ -119,6 +119,8 @@ class Settings(BaseSettings):
     # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.
     FARMACERCA_GIFT_URL: str = "https://farmacia.nexoai.lat/r/taxi"
     FARMACERCA_GIFT_AMOUNT: int = 5
+    # Número público de TaxiCerca para los QR de la tarjetita y la calcomanía (routers/taxi_qr.py)
+    TAXICERCA_WA_NUMBER: str = "+13162412111"
     # Viajes programados apagados para el arranque (2026-11-09): solo viajes al momento.
     # La API rechaza scheduled_at (no lo convierte en inmediato: mandaría un taxi ya).
     SCHEDULED_RIDES_ENABLED: bool = False

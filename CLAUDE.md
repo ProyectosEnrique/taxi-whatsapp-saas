@@ -36,6 +36,7 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 | `taxi.nexoai.lat/webhook/*` | taxi-whatsapp:8000 | WhatsApp Twilio |
 | `taxi.nexoai.lat/agent/*` | taxi-agent:5000 | API agente |
 | `taxi.nexoai.lat/u/*` | taxi-api:5011 | Seguimiento público `/u/{id}` |
+| `taxi.nexoai.lat/t`, `/t/{taxi}` | taxi-api:5011 | QR de la calcomanía y de la tarjetita del taxi (§29) |
 
 ## 4. Agente LLM (`backend/sales-agent-base/`)
 
@@ -364,3 +365,19 @@ A los choferes que no alcanzaron el viaje, el "ya fue tomado" se borra a los `TA
 (`whatsapp.cancel_ride`, `customer_rides.cancel_ride` → `trip_chat.notify_cancelled`) se limpia igual, se borran los
 avisos con "Aceptar" aún vivos y el chofer asignado recibe "❌ Viaje cancelado por el cliente". SOS nunca se borra.
 Tests: `tests/test_trip_chat.py`.
+
+## 29. Tarjetita QR dentro del taxi + calcomanía de afuera (2026-11-13)
+
+Los pasajeros hoy paran el taxi en la calle: la tarjetita del respaldo les enseña a pedirlo por WhatsApp la próxima vez.
+Decisión del dueño: calcomanía de afuera 100% TaxiCerca; adentro también TaxiCerca primero, FarmaCerca solo como regalo.
+**Un solo QR** (dos QR = todos escanean el del dinero y nunca guardan TaxiCerca).
+- `routers/taxi_qr.py`: `GET /t/{taxi}` → `wa.me/<TAXICERCA_WA_NUMBER>?text=Hola TaxiCerca 🚕 voy en el taxi 23`;
+  `GET /t` (calcomanía de afuera) → "…quiero pedir un taxi" (lo atiende el bot normal). nginx `location ~ ^/t(/…)?$`.
+  Los QR impresos apuntan al link corto, nunca directo al número: si cambia el número, no se reimprime.
+- Gateway (`main_taxi._TAXI_SCAN_RE`, mensaje corto completo "voy en el taxi N"): NO pasa por la IA →
+  `POST /api/v1/whatsapp/taxi-scan` (clave interna) → "📲 Guarda este chat…" + regalo de FarmaCerca
+  (`FARMACERCA_GIFT_URL/{taxi}`) **solo si hay chofer activo con ese `taxi_number`**; luego la tarjeta de contacto (§19).
+  No crea viaje ni avisa a choferes. Los límites del regalo los pone FarmaCerca (uno al día por pasajero, tope por taxi).
+- Diseños: `Downloads\TaxiCerca - Tarjetita y calcomania\gen.py` (`python gen.py 23 8 …`).
+- Tests: `tests/test_taxi_qr.py` (6).
+

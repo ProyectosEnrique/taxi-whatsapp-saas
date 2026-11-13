@@ -38,6 +38,7 @@ from .routers.telegram_bot import router as telegram_bot_router
 from .routers.sos import router as sos_router, admin_router as sos_admin_router
 from .routers.contact_card import router as contact_card_router
 from .routers.nav_link import router as nav_link_router
+from .routers.taxi_qr import router as taxi_qr_router
 from .routers.sse import router as sse_router
 from .database import engine, Base
 from .config import settings
@@ -532,6 +533,7 @@ app.include_router(sos_router)
 app.include_router(sos_admin_router)
 app.include_router(contact_card_router)
 app.include_router(nav_link_router)
+app.include_router(taxi_qr_router)
 app.include_router(sse_router)
 
 # ==============================================================================
