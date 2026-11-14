@@ -209,6 +209,8 @@ services:
       CITY_LNG: ${CITY_LNG:-0.0}
       CITY_BBOX_DEG: ${CITY_BBOX_DEG:-0.3}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1234}
+      # Regalo de FarmaCerca a los choferes ($50 alta + $50 primer viaje). Vacío = apagado.
+      FARMACERCA_DRIVER_SECRET: ${FARMACERCA_DRIVER_SECRET:-}
     volumes:
       - taxi_db_data:/app/data
       - taxi_uploads:/app/uploads

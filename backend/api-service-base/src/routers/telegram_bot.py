@@ -37,6 +37,7 @@ from ..models import BaseManager, Driver, TaxiGroup, Trip, TripStatus
 from ..config import settings
 from . import nav_link
 from ..services import ride_notifs, sos, telegram_link, trip_chat
+from ..services import farmacerca_driver_gift
 from ..services.farmacerca_gift import gift_line
 from ..services.telegram import (
     answer_callback,
@@ -651,6 +652,8 @@ async def telegram_webhook(
             await answer_callback(cq_id, "✅ ¡Viaje completado!")
             await trip_chat.finish(ride_id, chat_id, completed_summary(trip))
             _notify_customer_wa(trip.customer_phone, driver, trip, "completed")
+            if farmacerca_driver_gift.is_first_trip(db, driver.phone):
+                await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id)
 
     return {"ok": True}
 
@@ -696,6 +699,7 @@ async def _link_driver(driver: Driver, chat_id: str, db: Session) -> None:
         f"• /desvincular — dejar de recibir notificaciones"
     )
     await send_message(chat_id, _LOCATION_HELP)
+    await farmacerca_driver_gift.give("alta", driver.phone, driver.name, chat_id)
 
 
 def _sos_row(trip: Trip) -> list[list[dict]]:

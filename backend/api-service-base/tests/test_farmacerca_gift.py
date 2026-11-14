@@ -1,5 +1,5 @@
-"""Regalo de FarmaCerca: solo en el primer viaje terminado del pasajero y solo
-si el taxi tiene número económico (el que da de alta FarmaCerca)."""
+"""Regalo de FarmaCerca: solo en el primer viaje terminado del pasajero. Desde 2026-11-13 el link no lleva
+número de taxi (FarmaCerca da $5 de bienvenida una sola vez por número)."""
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -31,12 +31,12 @@ def _trip(db, status=TripStatus.COMPLETED, phone=_PASSENGER):
     return t
 
 
-def test_first_trip_gets_gift_with_taxi_link(db_session):
+def test_first_trip_gets_gift_link(db_session):
     d = _driver(db_session)
     t = _trip(db_session)
-    assert gift_for(t, d) == {"amount": 5, "url": "https://farmacia.nexoai.lat/r/taxi/23"}
+    assert gift_for(t, d) == {"amount": 5, "url": "https://farmacia.nexoai.lat/r/taxi"}
     line = gift_line(t, d)
-    assert "$5" in line and "Tu farmacia por WhatsApp" in line and "/r/taxi/23" in line
+    assert "$5" in line and "Tu farmacia por WhatsApp" in line and line.rstrip().endswith("/r/taxi")
 
 
 def test_no_gift_on_second_trip(db_session):
@@ -60,10 +60,10 @@ def test_cancelled_trips_do_not_use_up_the_gift(db_session):
     assert gift_for(t, d) is not None
 
 
-def test_no_gift_without_taxi_number(db_session):
+def test_gift_without_taxi_number(db_session):
     d = _driver(db_session, taxi_number=None)
     t = _trip(db_session)
-    assert gift_for(t, d) is None
+    assert gift_for(t, d) is not None
 
 
 def test_gift_can_be_turned_off(db_session, monkeypatch):
@@ -81,4 +81,4 @@ def test_public_track_includes_gift(db_session):
     client = TestClient(app)
     paths = [r.path for r in app.routes if "public-track" in getattr(r, "path", "")]
     data = client.get(paths[0].replace("{ride_id}", t.trip_id)).json()
-    assert data["gift"]["url"].endswith("/r/taxi/23")
+    assert data["gift"]["url"].endswith("/r/taxi")

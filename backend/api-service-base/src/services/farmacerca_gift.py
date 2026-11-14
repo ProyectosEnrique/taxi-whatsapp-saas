@@ -1,9 +1,9 @@
 """Regalo de FarmaCerca para el pasajero en su PRIMER viaje terminado.
 
-El link (/r/taxi/{número}) lo maneja FarmaCerca: abre su WhatsApp, le abona el
-regalo al pasajero y $3 al chofer de ese taxi (aliado TAXI, tabla ally_units).
-Por eso solo se ofrece si el chofer tiene `taxi_number` y ese número está dado
-de alta en FarmaCerca con el mismo código; sin número no se promete nada.
+El link (FARMACERCA_GIFT_URL = /r/taxi, sin número de taxi desde 2026-11-13) lo maneja FarmaCerca: abre su
+WhatsApp y le abona $5 de bienvenida UNA sola vez por número (el mismo regalo que da la tarjetita QR; si ya lo
+recibió, FarmaCerca se lo dice). Ya no hay que dar de alta cada taxi en FarmaCerca: los choferes reciben su
+propio regalo de alta (services/farmacerca_driver_gift.py).
 
 Se menciona una sola vez: en el aviso de "Llegaste" y como banner en la página
 de seguimiento. FARMACERCA_GIFT_URL vacío = apagado.
@@ -17,8 +17,7 @@ from ..models import Driver, Trip, TripStatus
 def gift_for(trip: Trip, driver: Driver | None, db: Session | None = None) -> dict | None:
     """{"amount": 5, "url": ".../r/taxi/23"} si a este viaje le toca regalo."""
     base = (settings.FARMACERCA_GIFT_URL or "").rstrip("/")
-    unit = (driver.taxi_number or "").strip() if driver else ""
-    if not base or not unit or not trip.customer_phone or trip.status == TripStatus.CANCELLED:
+    if not base or not trip.customer_phone or trip.status == TripStatus.CANCELLED:
         return None
     db = db or object_session(trip)
     if db is None:
@@ -30,7 +29,7 @@ def gift_for(trip: Trip, driver: Driver | None, db: Session | None = None) -> di
                  .first())
     if earlier:
         return None
-    return {"amount": settings.FARMACERCA_GIFT_AMOUNT, "url": f"{base}/{unit.lower()}"}
+    return {"amount": settings.FARMACERCA_GIFT_AMOUNT, "url": base}
 
 
 def gift_line(trip: Trip, driver: Driver | None) -> str:

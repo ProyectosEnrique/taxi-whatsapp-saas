@@ -10,7 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from ..database import get_db
 from ..models import Driver, Trip, TripStatus, TaxiGroup
 from ..auth import hash_password, verify_password, create_token, get_current_driver, _decode
 from ..config import settings
+from ..services import farmacerca_driver_gift
 from ..services.farmacerca_gift import gift_line
 from ..rate_limit import limiter
 
@@ -618,7 +619,8 @@ def start_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: 
 
 
 @router.post("/rides/{ride_id}/complete")
-def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), db: Session = Depends(get_db)):
+def complete_ride(ride_id: str, background: BackgroundTasks, current: Driver = Depends(get_current_driver),
+                  db: Session = Depends(get_db)):
     trip = db.query(Trip).filter(Trip.trip_id == ride_id, Trip.driver_phone == current.phone).first()
     if not trip:
         raise HTTPException(404, "Viaje no encontrado")
@@ -639,6 +641,8 @@ def complete_ride(ride_id: str, current: Driver = Depends(get_current_driver), d
         f"Para tu próximo viaje escríbeme aquí."
         f"{gift_line(trip, current)}",
     )
+    if farmacerca_driver_gift.is_first_trip(db, current.phone):
+        background.add_task(farmacerca_driver_gift.give, "viaje", current.phone, current.name, current.telegram_chat_id)
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 
@@ -742,6 +746,8 @@ async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session =
                 from .telegram_bot import completed_summary
                 from ..services import trip_chat
                 await trip_chat.finish(trip.trip_id, driver.telegram_chat_id, completed_summary(trip))
+                if farmacerca_driver_gift.is_first_trip(db, driver.phone):
+                    await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id)
         except Exception as e:
             logger.warning(f"[WebAction] notify WA failed: {e}")
 

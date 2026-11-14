@@ -141,7 +141,8 @@ async def _handle_sos(phone: str, name: str) -> str:
 # pedido: no pasa por la IA; taxi-api contesta "guarda este chat" + el regalo
 # de FarmaCerca de ese taxi. Solo mensajes cortos, para no confundirlo con
 # "voy en el taxi 23 y se me olvidó mi bolsa".
-_TAXI_SCAN_RE = re.compile(r"^\W*(?:hola\W+)?(?:taxicerca\W+)?voy en el taxi\s*#?\s*([A-Za-z0-9]{1,10})\W*$",
+# "voy en un taxi" = tarjetita igual para todos (2026-11-13); "voy en el taxi 23" = QR viejos con número
+_TAXI_SCAN_RE = re.compile(r"^\W*(?:hola\W+)?(?:taxicerca\W+)?voy en (?:el|un) taxi(?:\s*#?\s*([A-Za-z0-9]{1,10}))?\W*$",
                            re.IGNORECASE)
 _TAXI_SCAN_FALLBACK = ("🚕 ¡Hola! Esto es *TaxiCerca*, tu taxi por WhatsApp.\n\n"
                        "📲 *Guarda este chat:* la próxima vez pide tu taxi aquí. Solo escríbenos a dónde vas "
@@ -476,7 +477,7 @@ async def twilio_webhook(
         if scan:
             # Respuesta y luego la tarjeta de contacto, en ese orden (por TwiML la tarjeta podía llegar antes)
             async def _scan_reply():
-                _send_twilio(phone, await _handle_taxi_scan(phone, scan.group(1)))
+                _send_twilio(phone, await _handle_taxi_scan(phone, scan.group(1) or ""))
                 await _send_contact_card_once(phone)
 
             _aio.create_task(_scan_reply())

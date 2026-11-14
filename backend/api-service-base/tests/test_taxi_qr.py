@@ -1,5 +1,6 @@
-"""QR de la tarjetita del taxi (/t/23) y de la calcomanía (/t): abren el WhatsApp de
-TaxiCerca; al escanear, "guarda este chat" + regalo de FarmaCerca solo si el taxi existe."""
+"""QR de la tarjetita del taxi (/tc, igual para todos; /t/23 de los QR viejos) y de la calcomanía (/t): abren el
+WhatsApp de TaxiCerca; al escanear, "guarda este chat" + regalo de FarmaCerca (sin número de taxi: FarmaCerca da
+$5 una sola vez por número)."""
 from urllib.parse import unquote
 
 import pytest
@@ -9,7 +10,6 @@ from fastapi.testclient import TestClient
 from conftest import _override_get_db
 from src.config import settings
 from src.database import get_db
-from src.models import Driver
 from src.routers import taxi_qr
 
 
@@ -24,21 +24,21 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-def _driver(db, taxi="23", active=True):
-    db.add(Driver(phone="+524610000023", name="Carlos Pérez", password_hash="x", is_active=active, taxi_number=taxi))
-    db.commit()
-
-
 def _scan(client, taxi, key="clave"):
     return client.post("/api/v1/whatsapp/taxi-scan", json={"phone": "+524611234567", "taxi": taxi},
                        headers={"X-Taxi-Internal-Key": key})
 
 
-def test_card_qr_opens_taxicerca_with_taxi_number(client):
-    r = client.get("/t/23", follow_redirects=False)
+def test_card_qr_same_for_every_taxi(client):
+    r = client.get("/tc", follow_redirects=False)
     assert r.status_code == 302
     loc = unquote(r.headers["location"])
     assert loc.startswith("https://wa.me/13162412111?text=")
+    assert "voy en un taxi" in loc
+
+
+def test_old_card_qr_with_taxi_number(client):
+    loc = unquote(client.get("/t/23", follow_redirects=False).headers["location"])
     assert "voy en el taxi 23" in loc
 
 
@@ -47,25 +47,21 @@ def test_street_qr_asks_for_a_taxi(client):
     assert "quiero pedir un taxi" in loc
 
 
-def test_known_taxi_gets_save_chat_and_gift(client, db_session):
-    _driver(db_session, "a7")
-    reply = _scan(client, "A7").json()["reply"]
-    assert "Guarda este chat" in reply
-    assert "https://farmacia.nexoai.lat/r/taxi/a7" in reply
+def test_scan_gets_save_chat_and_gift_without_taxi_number(client):
+    reply = _scan(client, "").json()["reply"]
+    assert "Vas en un taxi de *TaxiCerca*" in reply and "Guarda este chat" in reply
+    assert reply.rstrip().endswith("https://farmacia.nexoai.lat/r/taxi")
 
 
-def test_unknown_or_inactive_taxi_gets_no_gift(client, db_session):
-    _driver(db_session, "23", active=False)
-    for taxi in ("23", "99"):
-        reply = _scan(client, taxi).json()["reply"]
-        assert "Guarda este chat" in reply and "farmacia" not in reply
+def test_old_qr_names_the_taxi_and_still_gifts(client):
+    reply = _scan(client, "a7").json()["reply"]
+    assert "el taxi *A7*" in reply and "https://farmacia.nexoai.lat/r/taxi" in reply
 
 
-def test_gift_off(client, db_session, monkeypatch):
-    _driver(db_session)
+def test_gift_off(client, monkeypatch):
     monkeypatch.setattr(settings, "FARMACERCA_GIFT_URL", "")
-    assert "farmacia" not in _scan(client, "23").json()["reply"]
+    assert "farmacia" not in _scan(client, "").json()["reply"]
 
 
 def test_needs_internal_key(client):
-    assert _scan(client, "23", key="mala").status_code == 403
+    assert _scan(client, "", key="mala").status_code == 403

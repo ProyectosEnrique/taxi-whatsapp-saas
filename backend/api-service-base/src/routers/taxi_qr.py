@@ -3,7 +3,8 @@
 Hoy los pasajeros paran el taxi en la calle: la tarjetita del respaldo les enseña
 que la próxima vez lo pueden pedir por WhatsApp. Un solo QR, de TaxiCerca:
 
-  GET /t/{número}  → WhatsApp de TaxiCerca con "Hola TaxiCerca 🚕 voy en el taxi 23"
+  GET /tc          → tarjetita igual para todos los taxis (2026-11-13): "Hola TaxiCerca 🚕 voy en un taxi"
+  GET /t/{número}  → WhatsApp de TaxiCerca con "Hola TaxiCerca 🚕 voy en el taxi 23" (QR viejos con número)
   GET /t           → calcomanía de afuera: "Hola TaxiCerca 🚕 quiero pedir un taxi"
                      (ese mensaje lo atiende el bot como cualquier pedido)
 
@@ -12,11 +13,10 @@ la IA y pregunta aquí qué contestar:
 
   POST /api/v1/whatsapp/taxi-scan  {"phone", "taxi"}  → {"reply": "…"}
 
-La respuesta pide guardar el chat y, si el taxi está dado de alta con su número
-económico (`drivers.taxi_number`, el mismo código del taxi en FarmaCerca), trae
-el link del regalo de FarmaCerca: $5 al pasajero y $3 al chofer de ese taxi
-(FarmaCerca pone los límites: uno al día por pasajero). Taxi desconocido o
-regalo apagado (FARMACERCA_GIFT_URL vacío) = solo la parte de TaxiCerca.
+La respuesta pide guardar el chat y trae el link del regalo de FarmaCerca (FARMACERCA_GIFT_URL, sin número de
+taxi): $5 de bienvenida una sola vez por número, lo controla FarmaCerca. Ya no depende de dar de alta cada taxi;
+los choferes tienen su propio regalo de alta (services/farmacerca_driver_gift.py). Regalo apagado
+(FARMACERCA_GIFT_URL vacío) = solo la parte de TaxiCerca.
 Nada de esto pide un viaje ni avisa a choferes.
 """
 import logging
@@ -26,12 +26,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..models import Driver
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["taxi-qr"])
@@ -50,6 +48,12 @@ def street_qr():
     return RedirectResponse(_wa("Hola TaxiCerca 🚕 quiero pedir un taxi"), status_code=302)
 
 
+@router.get("/tc")
+def card_qr():
+    logger.info("[QR] tarjetita del taxi escaneada")
+    return RedirectResponse(_wa("Hola TaxiCerca 🚕 voy en un taxi"), status_code=302)
+
+
 @router.get("/t/{unit}")
 def taxi_qr(unit: str):
     if not _UNIT_RE.match(unit):
@@ -60,25 +64,21 @@ def taxi_qr(unit: str):
 
 class _Scan(BaseModel):
     phone: str = Field(min_length=8, max_length=30)
-    taxi: str = Field(min_length=1, max_length=10)
+    taxi: str = Field("", max_length=10)   # vacío = tarjetita igual para todos
 
 
 def scan_reply(db: Session, taxi: str) -> str:
-    unit = taxi.strip().upper()
-    driver = (db.query(Driver)
-                .filter(func.upper(Driver.taxi_number) == unit, Driver.is_active == True)  # noqa: E712
-                .first()) if _UNIT_RE.match(unit) else None
-    text = (f"🚕 ¡Hola! Vas en el taxi *{unit}* de *TaxiCerca*, tu taxi por WhatsApp.\n\n"
+    unit = (taxi or "").strip().upper()
+    where = f"el taxi *{unit}*" if _UNIT_RE.match(unit) else "un taxi"
+    text = (f"🚕 ¡Hola! Vas en {where} de *TaxiCerca*, tu taxi por WhatsApp.\n\n"
             "📲 *Guarda este chat:* la próxima vez pide tu taxi aquí. Te damos el precio antes "
             "y te avisamos cuando tu taxi esté llegando. Solo escríbenos a dónde vas o mándanos "
             "tu ubicación 📍.")
     base = (settings.FARMACERCA_GIFT_URL or "").rstrip("/")
-    if driver and base:
+    if base:
         text += (f"\n\n🎁 *De regalo:* ${settings.FARMACERCA_GIFT_AMOUNT} en tu Monedero FarmaCerca, "
                  "_Tu farmacia por WhatsApp_, con envío gratis a domicilio.\n"
-                 f"Recógelo aquí 👉 {base}/{unit.lower()}")
-    elif not driver:
-        logger.warning(f"[QR] taxi {unit} sin chofer con ese número económico: sin regalo")
+                 f"Recógelo aquí 👉 {base}")
     return text
 
 

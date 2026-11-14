@@ -36,7 +36,7 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 | `taxi.nexoai.lat/webhook/*` | taxi-whatsapp:8000 | WhatsApp Twilio |
 | `taxi.nexoai.lat/agent/*` | taxi-agent:5000 | API agente |
 | `taxi.nexoai.lat/u/*` | taxi-api:5011 | Seguimiento público `/u/{id}` |
-| `taxi.nexoai.lat/t`, `/t/{taxi}` | taxi-api:5011 | QR de la calcomanía y de la tarjetita del taxi (§29) |
+| `taxi.nexoai.lat/t`, `/tc`, `/t/{taxi}` | taxi-api:5011 | QR de la calcomanía, de la tarjetita (igual para todos) y QR viejos con número (§29, §30) |
 
 ## 4. Agente LLM (`backend/sales-agent-base/`)
 
@@ -381,3 +381,18 @@ Decisión del dueño: calcomanía de afuera 100% TaxiCerca; adentro también Tax
 - Diseños: `Downloads\TaxiCerca - Tarjetita y calcomania\gen.py` (`python gen.py 23 8 …`).
 - Tests: `tests/test_taxi_qr.py` (6).
 
+## 30. Tarjetita igual para todos + regalo de alta a los choferes (2026-11-13)
+Decisión del dueño: la tarjeta de contacto (§19) ya hace que el pasajero guarde TaxiCerca, así que el número de taxi en el
+QR solo servía para pagarle $3 al chofer por escaneo. Se quita: un solo diseño para imprimir y un solo registro por chofer.
+- **Tarjetita:** QR `taxi.nexoai.lat/tc` → "Hola TaxiCerca 🚕 voy en un taxi" → misma respuesta de §29 ("Guarda este chat"
+  + regalo) sin número de taxi. `_TAXI_SCAN_RE` acepta "voy en un taxi" y "voy en el taxi 23" (QR viejos siguen sirviendo).
+- **Pasajero:** el link del regalo es `FARMACERCA_GIFT_URL` sin número (`/r/taxi`) en el escaneo y en el primer viaje (§17);
+  FarmaCerca da **$5 una sola vez por número** (un QR igual para todos se puede compartir en un grupo). Ya no depende de
+  `drivers.taxi_number` ni de dar de alta cada taxi en FarmaCerca.
+- **Chofer:** `services/farmacerca_driver_gift.py` → **$50 al ligar su Telegram** (`telegram_bot._link_driver`) y **$50 al
+  terminar su primer viaje** (`is_first_trip`; botón Completar de Telegram, `driver_rides.complete_ride` y la acción web).
+  `POST https://farmacia.nexoai.lat/api/v1/allies/partner-credit` con aliado `FARMACERCA_DRIVER_ALLY` (TAXICHOFER) y
+  `X-Ally-Secret: FARMACERCA_DRIVER_SECRET` (solo en `.env`; vacío = apagado). Refs `AL{tel10}` / `V1{tel10}`: FarmaCerca no
+  repite el abono, y el aviso por Telegram (monto, vigencia, link al WhatsApp de FarmaCerca) solo sale si sí se abonó.
+  En FarmaCerca ese aliado tiene vigencia de 90 días y se usa completo (sin "hasta la mitad"), ver farmacia CLAUDE.md §37.
+- Tests: `tests/test_taxi_qr.py` (7), `tests/test_farmacerca_driver_gift.py` (4), `tests/test_farmacerca_gift.py`.
