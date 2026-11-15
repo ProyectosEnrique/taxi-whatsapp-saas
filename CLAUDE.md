@@ -46,13 +46,18 @@ Plataforma SaaS de taxi con atención por WhatsApp:
 - App entry point: `src/api/app_v2.py` — solo registra `sales_bp` (blueprint de `sales_routes.py`) + healthcheck
 - **`src/taxi/` — módulos por responsabilidad** (antes un solo `agent.py` de 775 líneas):
   - `agent.py` — orquestador delgado: bucle de tool calling, manejo de GPS entrante, recovery de errores
-  - `llm_cascade.py` — cascada de proveedores (Groq → Cerebras → Gemini → OpenRouter) + recuperación de tool calls XML malformados de Groq
+  - `llm_cascade.py` — cascada de proveedores (Cerebras → Groq → Groq-fast → OpenRouter → Gemini, igual que FarmaCerca) + recuperación de tool calls XML malformados de Groq
   - `prompts.py` — `SYSTEM_PROMPT` (formato intención→acción)
   - `tools.py` — definiciones de function calling + dispatcher `run_tool()`
   - `taxi_client.py` — llamadas HTTP a taxi-api (geocoding, tarifas, viajes)
   - `session.py` — sesión de conversación en Redis (`MAX_HISTORY=30`, TTL 30min / 24h con viaje activo)
 - **Config centralizada:** `src/config.py` (Pydantic Settings) — todas las variables de entorno del agente (LLM keys, `REDIS_URL`, `MENU_SERVICE_URL`, `WHATSAPP_SECRET`, `CUSTOMER_APP_URL`) se leen de `settings`, no de `os.getenv()` disperso
-- **LLM fallback chain:** Groq → Cerebras → Gemini → OpenRouter
+- **LLM fallback chain (2026-11-15, mismo orden y modelos que FarmaCerca):** Cerebras `gpt-oss-120b` → Groq `openai/gpt-oss-120b`
+  → Groq `openai/gpt-oss-20b` → OpenRouter `openai/gpt-oss-20b:free` (hoy 404: ya no es gratis) → Gemini `gemini-3.6-flash`.
+  Antes Groq llama-3.3-70b y Gemini 2.0 flash: los dos retirados (404), solo Cerebras contestaba.
+  - Gemini 3 exige la `thought_signature` de cada tool call (`extra_content.google`): `agent.py` la guarda al repetir el
+    tool call y `llm_cascade._for_provider` la quita para los demás (Cerebras responde 400 si la ve) y pone la firma comodín
+    `skip_thought_signature_validator` en tool calls de otro proveedor. Sin esto, Gemini daba 400 en la 2a vuelta.
   - `parallel_tool_calls=False` (crítico para flujos secuenciales de tool calling)
   - Cerebras model: `gpt-oss-120b` — Cerebras retiró todos los modelos Llama (2026-06-28). Únicos disponibles: `gpt-oss-120b`, `zai-glm-4.7`
   - OpenRouter: `max_retries=0`, `timeout=20s` — evita esperar 60s cuando rate-limited y superar el timeout del gateway

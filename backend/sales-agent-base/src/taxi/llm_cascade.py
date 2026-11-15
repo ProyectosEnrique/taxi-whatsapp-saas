@@ -1,8 +1,17 @@
 """
-Cascada de proveedores LLM (Groq → Cerebras → Gemini → OpenRouter, todos
-vía el SDK de OpenAI con base_url distinto) + recuperación de tool calls
-malformados que a veces genera Groq llama-3.3.
+Cascada de proveedores LLM, mismo orden y modelos que FarmaCerca (2026-11-15):
+Cerebras gpt-oss-120b → Groq gpt-oss-120b → Groq gpt-oss-20b → OpenRouter → Gemini 3.6 flash,
+todos vía el SDK de OpenAI con base_url distinto. Antes: Groq llama-3.3-70b → Cerebras → Gemini 2.0 →
+OpenRouter, pero llama-3.3-70b y gemini-2.0-flash ya no existen y gpt-oss-20b:free dejó de ser gratis
+(solo Cerebras contestaba).
+
+Gemini 3 exige de vuelta la "thought_signature" de cada tool call (extra_content.google); Cerebras rechaza
+ese campo. _for_provider() lo quita para los demás y, para Gemini, pone la firma comodín de Google en los tool
+calls que generó otro proveedor (o la recuperación de abajo).
+
+También recupera tool calls malformados que a veces genera Groq (XML en vez de JSON).
 """
+import copy
 import json
 import logging
 import re
@@ -13,6 +22,11 @@ from src.config import settings
 from . import tools as _tools
 
 logger = logging.getLogger(__name__)
+
+GROQ_MODEL        = "openai/gpt-oss-120b"
+GROQ_MODEL_FAST   = "openai/gpt-oss-20b"
+GEMINI_MODEL      = "gemini-3.6-flash"
+_GEMINI_SKIP_SIGNATURE = "skip_thought_signature_validator"   # firma comodín documentada por Google
 
 GROQ_API_KEY      = settings.GROQ_API_KEY
 CEREBRAS_API_KEY  = settings.CEREBRAS_API_KEY
@@ -68,6 +82,20 @@ def recover_tool_call(err_str: str, messages: list, phone: str, session: Optiona
             "content":      result_str,
         },
     ]
+
+
+def _for_provider(messages: list, name: str) -> list:
+    """Copia de los mensajes con extra_content solo donde el proveedor lo entiende (Gemini)."""
+    if not any(m.get("tool_calls") for m in messages if isinstance(m, dict)):
+        return messages
+    out = copy.deepcopy(messages)
+    for m in out:
+        for tc in (m.get("tool_calls") or []) if isinstance(m, dict) else []:
+            if name == "Gemini":
+                tc.setdefault("extra_content", {"google": {"thought_signature": _GEMINI_SKIP_SIGNATURE}})
+            else:
+                tc.pop("extra_content", None)
+    return out
 
 
 class LLMCascade:
@@ -130,21 +158,22 @@ class LLMCascade:
         return bool(self._client or self._fallback)
 
     def create(self, messages: list, tools: list | None = None, **kwargs):
-        """Intenta Groq primero; ante cualquier error cae al siguiente proveedor disponible."""
+        """Intenta Cerebras primero; ante cualquier error cae al siguiente proveedor disponible."""
         providers = []
-        if self._client:
-            providers.append((self._client,   "llama-3.3-70b-versatile", "Groq"))
         if self._fallback:
-            providers.append((self._fallback, "gpt-oss-120b",           "Cerebras"))
-        if self._gemini:
-            providers.append((self._gemini,   "gemini-2.0-flash",        "Gemini"))
+            providers.append((self._fallback, "gpt-oss-120b",            "Cerebras"))
+        if self._client:
+            providers.append((self._client,   GROQ_MODEL,                "Groq"))
+            providers.append((self._client,   GROQ_MODEL_FAST,           "Groq-fast"))
         if self._openrouter:
             providers.append((self._openrouter, "openai/gpt-oss-20b:free", "OpenRouter"))
+        if self._gemini:
+            providers.append((self._gemini,   GEMINI_MODEL,              "Gemini"))
 
         last_exc = RuntimeError("Sin proveedores LLM configurados")
         for i, (client, model, name) in enumerate(providers):
             try:
-                kwargs_merged = {"model": model, "messages": messages, **kwargs}
+                kwargs_merged = {"model": model, "messages": _for_provider(messages, name), **kwargs}
                 if tools:
                     kwargs_merged["tools"] = tools
                     kwargs_merged.setdefault("tool_choice", "auto")

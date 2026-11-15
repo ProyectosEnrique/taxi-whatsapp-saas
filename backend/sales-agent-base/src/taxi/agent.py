@@ -1,6 +1,6 @@
 """
 TaxiAgent — Agente LLM para reserva de taxis via WhatsApp.
-Usa Groq (llama-3.3-70b) con function calling en lugar de FSM.
+Usa LLM con function calling (cascada de proveedores en llm_cascade.py) en lugar de FSM.
 
 Orquestador delgado: la cascada de proveedores vive en llm_cascade.py,
 las herramientas en tools.py, la sesión en session.py, las llamadas a
@@ -170,6 +170,9 @@ class TaxiAgent:
                                 "name":      tc.function.name,
                                 "arguments": tc.function.arguments,
                             },
+                            # Firma de Gemini 3 (llm_cascade._for_provider la quita para los demás)
+                            **({"extra_content": (tc.model_extra or {})["extra_content"]}
+                               if (tc.model_extra or {}).get("extra_content") else {}),
                         }
                         for tc in msg.tool_calls
                     ],
