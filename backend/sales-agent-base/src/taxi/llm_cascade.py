@@ -1,9 +1,9 @@
 """
 Cascada de proveedores LLM, mismo orden y modelos que FarmaCerca (2026-11-15):
-Cerebras gpt-oss-120b → Groq gpt-oss-120b → Groq gpt-oss-20b → OpenRouter → Gemini 3.6 flash,
+Cerebras gpt-oss-120b → Groq gpt-oss-120b → Groq gpt-oss-20b → Gemini 3.6 flash,
 todos vía el SDK de OpenAI con base_url distinto. Antes: Groq llama-3.3-70b → Cerebras → Gemini 2.0 →
 OpenRouter, pero llama-3.3-70b y gemini-2.0-flash ya no existen y gpt-oss-20b:free dejó de ser gratis
-(solo Cerebras contestaba).
+(solo Cerebras contestaba). OpenRouter se quitó por eso mismo.
 
 Gemini 3 exige de vuelta la "thought_signature" de cada tool call (extra_content.google); Cerebras rechaza
 ese campo. _for_provider() lo quita para los demás y, para Gemini, pone la firma comodín de Google en los tool
@@ -31,7 +31,6 @@ _GEMINI_SKIP_SIGNATURE = "skip_thought_signature_validator"   # firma comodín d
 GROQ_API_KEY      = settings.GROQ_API_KEY
 CEREBRAS_API_KEY  = settings.CEREBRAS_API_KEY
 GEMINI_API_KEY    = settings.GEMINI_API_KEY
-OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY
 
 # Groq a veces genera el tool call como XML en vez de JSON:
 # 'failed_generation': '<function=name{...}</function>'
@@ -105,7 +104,6 @@ class LLMCascade:
         self._client   = None
         self._fallback = None
         self._gemini   = None
-        self._openrouter = None
         try:
             from openai import OpenAI
             if GROQ_API_KEY:
@@ -132,29 +130,20 @@ class LLMCascade:
                     max_retries=0,
                 )
                 logger.info("[TaxiAgent] Gemini fallback inicializado")
-            if OPENROUTER_API_KEY:
-                self._openrouter = OpenAI(
-                    api_key=OPENROUTER_API_KEY,
-                    base_url="https://openrouter.ai/api/v1",
-                    timeout=20.0,
-                    max_retries=0,
-                    default_headers={"HTTP-Referer": "https://taxi.nexoai.lat", "X-Title": "TaxiNexoAI"},
-                )
-                logger.info("[TaxiAgent] OpenRouter fallback inicializado")
-            if not self._client and not self._fallback and not self._gemini and not self._openrouter:
+            if not self._client and not self._fallback and not self._gemini:
                 logger.error("[TaxiAgent] Sin API keys configuradas")
         except Exception as e:
             logger.error(f"[TaxiAgent] init error: {e}")
 
     @property
     def has_any_provider(self) -> bool:
-        return bool(self._client or self._fallback or self._gemini or self._openrouter)
+        return bool(self._client or self._fallback or self._gemini)
 
     @property
     def has_primary_provider(self) -> bool:
         """Groq o Cerebras configurados (comportamiento original: process()
         solo consideraba estos dos para el guard de "servicio no disponible",
-        aunque Gemini/OpenRouter sí participan en la cascada real)."""
+        aunque Gemini sí participa en la cascada real)."""
         return bool(self._client or self._fallback)
 
     def create(self, messages: list, tools: list | None = None, **kwargs):
@@ -165,8 +154,6 @@ class LLMCascade:
         if self._client:
             providers.append((self._client,   GROQ_MODEL,                "Groq"))
             providers.append((self._client,   GROQ_MODEL_FAST,           "Groq-fast"))
-        if self._openrouter:
-            providers.append((self._openrouter, "openai/gpt-oss-20b:free", "OpenRouter"))
         if self._gemini:
             providers.append((self._gemini,   GEMINI_MODEL,              "Gemini"))
 

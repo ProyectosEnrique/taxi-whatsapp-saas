@@ -6,11 +6,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # ── Cascada LLM (Groq → Cerebras → Gemini → OpenRouter) ────────────────
+    # ── Cascada LLM (Cerebras → Groq → Groq-fast → Gemini, ver taxi/llm_cascade.py) ──
     GROQ_API_KEY: str = ""
     CEREBRAS_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
-    OPENROUTER_API_KEY: str = ""
 
     # ── Redis (sesiones de conversación) ────────────────────────────────────
     REDIS_URL: str = ""
