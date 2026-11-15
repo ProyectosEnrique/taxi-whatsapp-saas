@@ -119,10 +119,12 @@ class Settings(BaseSettings):
     # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.
     FARMACERCA_GIFT_URL: str = "https://farmacia.nexoai.lat/r/taxi"
     FARMACERCA_GIFT_AMOUNT: int = 5
-    # Regalo de los choferes: $50 al alta + $50 en su primer viaje (services/farmacerca_driver_gift.py).
+    # Regalo de los choferes: $30 al alta + $5 por cada uno de sus primeros 10 viajes (services/farmacerca_driver_gift.py).
     # FARMACERCA_DRIVER_SECRET vacío = apagado (el secreto del aliado vive solo en .env)
     FARMACERCA_API_URL: str = "https://farmacia.nexoai.lat"
     FARMACERCA_DRIVER_ALLY: str = "TAXICHOFER"
+    FARMACERCA_DRIVER_TRIP_ALLY: str = "TAXIVIAJE"
+    FARMACERCA_DRIVER_TRIP_AMOUNT: int = 5   # solo para el texto; el monto real lo pone el aliado en FarmaCerca
     FARMACERCA_DRIVER_SECRET: str = ""
     FARMACERCA_WA_NUMBER: str = "+13158175577"
     # Número público de TaxiCerca para los QR de la tarjetita y la calcomanía (routers/taxi_qr.py)

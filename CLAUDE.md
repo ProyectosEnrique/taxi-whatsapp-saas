@@ -389,10 +389,14 @@ QR solo servía para pagarle $3 al chofer por escaneo. Se quita: un solo diseño
 - **Pasajero:** el link del regalo es `FARMACERCA_GIFT_URL` sin número (`/r/taxi`) en el escaneo y en el primer viaje (§17);
   FarmaCerca da **$5 una sola vez por número** (un QR igual para todos se puede compartir en un grupo). Ya no depende de
   `drivers.taxi_number` ni de dar de alta cada taxi en FarmaCerca.
-- **Chofer:** `services/farmacerca_driver_gift.py` → **$50 al ligar su Telegram** (`telegram_bot._link_driver`) y **$50 al
-  terminar su primer viaje** (`is_first_trip`; botón Completar de Telegram, `driver_rides.complete_ride` y la acción web).
-  `POST https://farmacia.nexoai.lat/api/v1/allies/partner-credit` con aliado `FARMACERCA_DRIVER_ALLY` (TAXICHOFER) y
-  `X-Ally-Secret: FARMACERCA_DRIVER_SECRET` (solo en `.env`; vacío = apagado). Refs `AL{tel10}` / `V1{tel10}`: FarmaCerca no
-  repite el abono, y el aviso por Telegram (monto, vigencia, link al WhatsApp de FarmaCerca) solo sale si sí se abonó.
-  En FarmaCerca ese aliado tiene vigencia de 90 días y se usa completo (sin "hasta la mitad"), ver farmacia CLAUDE.md §37.
-- Tests: `tests/test_taxi_qr.py` (7), `tests/test_farmacerca_driver_gift.py` (4), `tests/test_farmacerca_gift.py`.
+- **Chofer** (2026-11-15, antes $50 + $50): `services/farmacerca_driver_gift.py` → **$30 al ligar su Telegram**
+  (`telegram_bot._link_driver`) y **$5 por cada uno de sus primeros 10 viajes terminados**, dentro de los 14 días desde su
+  primer viaje y **un viaje por pasajero** (`trip_gift_number`; botón Completar de Telegram,
+  `driver_rides.complete_ride` y la acción web). Máximo $80 por chofer.
+  `POST https://farmacia.nexoai.lat/api/v1/allies/partner-credit`: alta con `FARMACERCA_DRIVER_ALLY` (TAXICHOFER, $30),
+  viajes con `FARMACERCA_DRIVER_TRIP_ALLY` (TAXIVIAJE, $5), ambos con `X-Ally-Secret: FARMACERCA_DRIVER_SECRET` (solo en
+  `.env`; vacío = apagado). Refs `AL{tel10}` / `V01{tel10}`…`V10{tel10}`: FarmaCerca no repite el abono, y el aviso por
+  Telegram (monto, vigencia, link al WhatsApp de FarmaCerca) solo sale si sí se abonó. Los montos los pone FarmaCerca
+  (script `alta_taxichofer.py`); `FARMACERCA_DRIVER_TRIP_AMOUNT` solo es para el texto de bienvenida.
+  En FarmaCerca esos aliados tienen vigencia de 90 días y se usan completos (sin "hasta la mitad"), ver farmacia CLAUDE.md §37.
+- Tests: `tests/test_taxi_qr.py` (7), `tests/test_farmacerca_driver_gift.py` (6), `tests/test_farmacerca_gift.py`.

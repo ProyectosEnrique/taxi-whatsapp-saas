@@ -652,8 +652,9 @@ async def telegram_webhook(
             await answer_callback(cq_id, "✅ ¡Viaje completado!")
             await trip_chat.finish(ride_id, chat_id, completed_summary(trip))
             _notify_customer_wa(trip.customer_phone, driver, trip, "completed")
-            if farmacerca_driver_gift.is_first_trip(db, driver.phone):
-                await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id)
+            n = farmacerca_driver_gift.trip_gift_number(db, driver.phone, trip)
+            if n:
+                await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id, n)
 
     return {"ok": True}
 

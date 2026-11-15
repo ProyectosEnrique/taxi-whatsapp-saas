@@ -641,8 +641,10 @@ def complete_ride(ride_id: str, background: BackgroundTasks, current: Driver = D
         f"Para tu próximo viaje escríbeme aquí."
         f"{gift_line(trip, current)}",
     )
-    if farmacerca_driver_gift.is_first_trip(db, current.phone):
-        background.add_task(farmacerca_driver_gift.give, "viaje", current.phone, current.name, current.telegram_chat_id)
+    n = farmacerca_driver_gift.trip_gift_number(db, current.phone, trip)
+    if n:
+        background.add_task(farmacerca_driver_gift.give, "viaje", current.phone, current.name,
+                            current.telegram_chat_id, n)
     return {"success": True, "ride": _trip_to_dict(trip)}
 
 
@@ -746,8 +748,9 @@ async def driver_action_web(ride_id: str, body: _DriverActionBody, db: Session =
                 from .telegram_bot import completed_summary
                 from ..services import trip_chat
                 await trip_chat.finish(trip.trip_id, driver.telegram_chat_id, completed_summary(trip))
-                if farmacerca_driver_gift.is_first_trip(db, driver.phone):
-                    await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id)
+                n = farmacerca_driver_gift.trip_gift_number(db, driver.phone, trip)
+                if n:
+                    await farmacerca_driver_gift.give("viaje", driver.phone, driver.name, driver.telegram_chat_id, n)
         except Exception as e:
             logger.warning(f"[WebAction] notify WA failed: {e}")
 
