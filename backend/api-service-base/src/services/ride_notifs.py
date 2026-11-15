@@ -17,7 +17,6 @@ Si REDIS_URL no esta configurado, cae a un dict en memoria como antes
 """
 import json
 import logging
-from typing import Optional
 
 from ..config import settings
 

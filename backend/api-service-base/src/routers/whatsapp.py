@@ -535,7 +535,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
                 # Telegram solo al conductor asignado
                 if best_driver.telegram_chat_id:
                     try:
-                        from ..services.telegram import send_message, send_with_buttons
+                        from ..services.telegram import send_with_buttons
                         from .telegram_bot import _maps
                         maps_o = _maps(olat, olng) or ""
                         maps_d = _maps(dlat, dlng) or ""

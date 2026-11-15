@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Customer, Driver, Trip, TripRating, TripStatus, TaxiGroup, PromoCode
+from ..models import Customer, Driver, Trip, TripRating, TripStatus, PromoCode
 from ..auth import hash_password, verify_password, create_token, get_current_customer
 from ..fare_service import get_fare_config, calculate_fare, route_km_min
 from ..config import settings

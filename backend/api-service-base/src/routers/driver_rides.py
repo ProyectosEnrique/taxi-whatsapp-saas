@@ -3,7 +3,6 @@ Endpoints para conductores: auth, estado, ubicación, gestión de viajes.
 Rutas: /api/v1/driver/*
 """
 import logging
-import os
 import time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal

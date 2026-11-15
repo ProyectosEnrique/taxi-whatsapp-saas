@@ -21,7 +21,6 @@ from prometheus_client import Counter, Histogram, generate_latest
 from starlette.responses import Response
 
 # Importar routers
-from .routers import products, categories, agent, promotions, aliases, upload
 from .routers.payments import router as payments_router, cleanup_expired_pending_payments
 from .models import Trip, TripStatus, Incident, LocalPOI  # noqa: F401 — needed for create_all
 from .database import SessionLocal
@@ -68,7 +67,7 @@ logging.basicConfig(
     handlers=[_log_handler]
 )
 
-logger = logging.getLogger("menu_service")
+logger = logging.getLogger("taxi_api")
 
 # ==============================================================================
 # MÉTRICAS PROMETHEUS
@@ -362,7 +361,7 @@ async def lifespan(app: FastAPI):
 # ==============================================================================
 
 app = FastAPI(
-    title="Menu Service API",
+    title="TaxiCerca API",
     description="API para gestión de menú y productos del restaurante",
     version=settings.VERSION,
     lifespan=lifespan,
@@ -481,42 +480,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ==============================================================================
 # ROUTERS
 # ==============================================================================
-
-app.include_router(
-    products.router,
-    prefix="/api/v1/products",
-    tags=["Products"]
-)
-
-app.include_router(
-    categories.router,
-    prefix="/api/v1/categories",
-    tags=["Categories"]
-)
-
-app.include_router(
-    agent.router,
-    prefix="/api/v1/agent",
-    tags=["Agent"]
-)
-
-app.include_router(
-    promotions.router,
-    prefix="/api/v1/promotions",
-    tags=["Promotions"]
-)
-
-app.include_router(
-    aliases.router,
-    prefix="/api/v1",
-    tags=["Aliases"]
-)
-
-app.include_router(
-    upload.router,
-    prefix="/api/v1/upload",
-    tags=["Upload"]
-)
 
 app.include_router(payments_router)
 app.include_router(customer_router)

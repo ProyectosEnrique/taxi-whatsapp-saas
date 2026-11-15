@@ -34,10 +34,6 @@ _KEEPALIVE_SECS = 25   # nginx cierra conexiones inactivas ~60s; latidos cada 25
 
 # ── API pública ────────────────────────────────────────────────────────────────
 
-def connected_phones() -> set[str]:
-    """Retorna el conjunto de teléfonos de conductores con SSE activo."""
-    return set(_connections.keys())
-
 
 async def push_event(driver_phone: str, event_type: str, data: dict) -> None:
     """Envía un evento a UN conductor específico."""

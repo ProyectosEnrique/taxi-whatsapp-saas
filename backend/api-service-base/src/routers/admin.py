@@ -5,7 +5,7 @@ Rutas: /api/v1/admin/*
 """
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import func

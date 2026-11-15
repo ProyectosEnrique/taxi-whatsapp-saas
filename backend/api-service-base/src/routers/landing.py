@@ -8,7 +8,6 @@ GET  /api/v1/groups        → Listar grupos
 POST /api/v1/driver/{id}/assign-group → Asignar conductor a grupo
 """
 import io
-import secrets
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
