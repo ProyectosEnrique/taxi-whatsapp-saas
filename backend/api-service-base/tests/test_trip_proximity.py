@@ -254,8 +254,12 @@ def test_no_eta_without_recent_location(db_session, bot):
 def test_vehicle_line_skips_missing_data():
     d = Driver(vehicle_brand="Nissan", vehicle_model="Tsuru", vehicle_color="blanco",
                vehicle_plates="ABC-123")
-    assert telegram_bot._vehicle_line(d) == "Vehículo: Nissan Tsuru (blanco) — *ABC-123*\n"
-    assert telegram_bot._vehicle_line(Driver(vehicle_color="rojo")) == "Vehículo: rojo\n"
+    assert telegram_bot._vehicle_line(d) == "Vehículo: Nissan Tsuru — *ABC-123*\n"
+    d.taxi_number = "23"
+    assert telegram_bot._vehicle_line(d) == "Vehículo: Taxi *23* · Nissan Tsuru — *ABC-123*\n"
+    assert telegram_bot._vehicle_line(Driver(taxi_number="7")) == "Vehículo: Taxi *7*\n"
+    # Sin color: los taxis de la base son del mismo color
+    assert telegram_bot._vehicle_line(Driver(vehicle_color="rojo")) == ""
     assert telegram_bot._vehicle_line(Driver()) == ""
 
 

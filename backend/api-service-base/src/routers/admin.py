@@ -184,7 +184,7 @@ def create_driver(payload: dict, db: Session = Depends(get_db)):
         vehicle_plates = payload.get("vehicle_plates", ""),
         vehicle_color  = payload.get("vehicle_color", ""),
         vehicle_year   = payload.get("vehicle_year"),
-        taxi_number    = payload.get("taxi_number") or None,
+        taxi_number    = (str(payload.get("taxi_number") or "")).strip() or None,
         driver_code    = driver_code,
         is_active      = True,
         is_online      = False,
@@ -204,6 +204,8 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
                   "taxi_number", "group_id"):
         if field in payload:
             setattr(driver, field, payload[field])
+    if "taxi_number" in payload:
+        driver.taxi_number = (str(payload["taxi_number"] or "")).strip() or None
     if "is_active" in payload:
         driver.is_active = payload["is_active"]
     if "password" in payload and payload["password"]:

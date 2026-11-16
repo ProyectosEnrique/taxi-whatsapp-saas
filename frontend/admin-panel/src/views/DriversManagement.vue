@@ -57,7 +57,7 @@
       <input
         v-model="search"
         type="text"
-        placeholder="Buscar por nombre, teléfono o placas..."
+        placeholder="Buscar por nombre, teléfono, placas o número de taxi..."
         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
       />
     </div>
@@ -92,8 +92,8 @@
               </div>
             </td>
             <td class="px-6 py-4 text-sm text-gray-700">
-              <p>{{ d.vehicle.brand }} {{ d.vehicle.model }}</p>
-              <p class="text-xs text-gray-500">{{ d.vehicle.plates }} · {{ d.vehicle.color }}</p>
+              <p><span v-if="d.taxi_number" class="font-semibold">Taxi {{ d.taxi_number }}</span> {{ d.vehicle.brand }} {{ d.vehicle.model }}</p>
+              <p class="text-xs text-gray-500">{{ d.vehicle.plates }}</p>
             </td>
             <td class="px-6 py-4">
               <span :class="statusClass(d.status)" class="px-2 py-1 text-xs font-semibold rounded-full">
@@ -190,10 +190,10 @@
           <div class="border-t pt-4">
             <p class="text-sm font-medium text-gray-700 mb-3">Vehículo</p>
             <div class="grid grid-cols-2 gap-3">
+              <input v-model="form.taxi_number" class="input" placeholder="Número de taxi (el de la base)" />
+              <input v-model="form.vehicle_plates" class="input" placeholder="Placas (ABC-123)" />
               <input v-model="form.vehicle_brand" class="input" placeholder="Marca (Nissan)" />
               <input v-model="form.vehicle_model" class="input" placeholder="Modelo (Versa)" />
-              <input v-model="form.vehicle_plates" class="input" placeholder="Placas (ABC-123)" />
-              <input v-model="form.vehicle_color" class="input" placeholder="Color" />
               <input v-model.number="form.vehicle_year" type="number" class="input" placeholder="Año (2020)" />
             </div>
           </div>
@@ -227,7 +227,7 @@ const formError      = ref('')
 
 const form = ref({
   name: '', phone: '', password: '',
-  vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_color: '', vehicle_year: null,
+  taxi_number: '', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_year: null,
 })
 
 const filtered = computed(() => {
@@ -236,7 +236,8 @@ const filtered = computed(() => {
     !q ||
     d.name.toLowerCase().includes(q) ||
     d.phone.includes(q) ||
-    (d.vehicle.plates || '').toLowerCase().includes(q)
+    (d.vehicle.plates || '').toLowerCase().includes(q) ||
+    (d.taxi_number || '').toLowerCase().includes(q)
   )
 })
 
@@ -260,7 +261,7 @@ function statusClass(s) {
 function openAdd() {
   editingDriver.value = null
   formError.value = ''
-  form.value = { name: '', phone: '', password: '1234', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_color: '', vehicle_year: null }
+  form.value = { name: '', phone: '', password: '1234', taxi_number: '', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_year: null }
   showModal.value = true
 }
 
@@ -271,10 +272,10 @@ function openEdit(driver) {
     name: driver.name,
     phone: driver.phone,
     password: '',
+    taxi_number:    driver.taxi_number,
     vehicle_brand:  driver.vehicle.brand,
     vehicle_model:  driver.vehicle.model,
     vehicle_plates: driver.vehicle.plates,
-    vehicle_color:  driver.vehicle.color,
     vehicle_year:   driver.vehicle.year,
   }
   showModal.value = true

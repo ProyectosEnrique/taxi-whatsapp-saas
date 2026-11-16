@@ -527,8 +527,9 @@ def public_track(ride_id: str, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.phone == trip.driver_phone).first() if trip.driver_phone else None
     vehicle = ""
     if driver:
-        parts = [driver.vehicle_brand or "", driver.vehicle_model or "", driver.vehicle_color or ""]
-        vehicle = " ".join(p for p in parts if p).strip()
+        parts = [f"Taxi {driver.taxi_number} ·" if driver.taxi_number else "",
+                 driver.vehicle_brand or "", driver.vehicle_model or "", driver.vehicle_plates or ""]
+        vehicle = " ".join(p for p in parts if p).strip().rstrip("·").strip()
     return {
         "ride_id": trip.trip_id,
         "status": trip.status.value if trip.status else "requested",

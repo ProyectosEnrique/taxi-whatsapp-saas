@@ -234,11 +234,12 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
 
 
 def _vehicle_line(driver: Driver) -> str:
-    """'Vehículo: Nissan Tsuru (blanco) — *ABC-123*' con solo los datos que hay
-    (nada de "N/D": da desconfianza)."""
+    """'Vehículo: Taxi *23* · Nissan Tsuru — *ABC-123*' con solo los datos que hay
+    (nada de "N/D": da desconfianza). Sin color: los taxis de la base son del mismo
+    color, lo que distingue es el número que les pone la base."""
     car = " ".join(p for p in (driver.vehicle_brand, driver.vehicle_model) if p)
-    if driver.vehicle_color:
-        car = f"{car} ({driver.vehicle_color})" if car else driver.vehicle_color
+    if driver.taxi_number:
+        car = f"Taxi *{driver.taxi_number}* · {car}" if car else f"Taxi *{driver.taxi_number}*"
     if driver.vehicle_plates:
         car = f"{car} — *{driver.vehicle_plates}*" if car else f"Placas *{driver.vehicle_plates}*"
     return f"Vehículo: {car}\n" if car else ""

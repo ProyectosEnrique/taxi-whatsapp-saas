@@ -256,6 +256,9 @@ Este repo nació de una plantilla SaaS multi-tenant genérica (restaurante/farma
 - Se menciona una sola vez: línea extra en el aviso "Llegaste" (`telegram_bot._notify_customer_wa` y
   `driver_rides.complete_ride`) y banner `gift` en `/seguimiento` (`public_track` → `TrackPublicView.vue`).
 - `taxi_number` se pone con `PUT /api/v1/admin/drivers/{phone}` (`{"taxi_number": "23"}`). Sin número no se promete nada.
+- (2026-11-16) El panel tiene el campo "Número de taxi (el de la base)" y ya no pide color (los taxis de la base son del
+  mismo color). El pasajero ve "Taxi *23* · marca modelo — *placas*" (`telegram_bot._vehicle_line`, `public_track`).
+  El número se puede repetir: un taxi puede tener chofer de día y de noche.
 - Reglas: lema "Tu farmacia por WhatsApp", vender el servicio (no medicinas), sin nombres de ciudades.
 
 ## 18. Botón de pánico SOS → encargado de la base (2026-11-08)
