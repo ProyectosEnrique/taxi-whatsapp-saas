@@ -115,6 +115,7 @@
                   :title="d.is_active ? 'Desactivar' : 'Activar'">
                   {{ d.is_active ? '🚫' : '✅' }}
                 </button>
+                <button @click="deleteDriver(d)" class="p-1.5 text-red-600 hover:bg-red-50 rounded transition" title="Eliminar">🗑️</button>
               </div>
             </td>
           </tr>
@@ -320,6 +321,19 @@ async function toggleActive(driver) {
     if (res.ok) await loadDrivers()
   } catch (e) {
     console.error(e)
+  }
+}
+
+async function deleteDriver(driver) {
+  if (!confirm(`¿Eliminar a ${driver.name} (${driver.phone})? No se puede deshacer.`)) return
+  try {
+    const res = await fetch(`${API}/drivers/${encodeURIComponent(driver.phone)}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'Error al eliminar')
+    if (!data.deleted) alert(`${driver.name} ya tiene viajes registrados: se desactivó en lugar de borrarse, para no perder el historial.`)
+    await loadDrivers()
+  } catch (e) {
+    alert(e.message)
   }
 }
 

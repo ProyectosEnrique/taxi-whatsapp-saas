@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Driver, Trip, TripStatus, Incident, FareConfig, PromoCode, TaxiGroup
+from ..models import Driver, Trip, TripStatus, Incident, FareConfig, PromoCode, TaxiGroup, Customer
 from ..auth import hash_password
 from ..config import settings as app_settings
 from ..fare_service import get_fare_config, fare_config_to_dict, invalidate_cache
@@ -231,10 +231,17 @@ def delete_driver(phone: str, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.phone == phone).first()
     if not driver:
         raise HTTPException(404, "Conductor no encontrado")
-    driver.is_active = False
-    driver.is_online = False
+    # Con viajes hechos solo se desactiva, para no perder el historial
+    if db.query(Trip.id).filter(Trip.driver_phone == phone).first():
+        driver.is_active = False
+        driver.is_online = False
+        db.commit()
+        return {"success": True, "deleted": False}
+    db.query(Customer).filter(Customer.preferred_driver_id == driver.id).update(
+        {Customer.preferred_driver_id: None}, synchronize_session=False)
+    db.delete(driver)
     db.commit()
-    return {"success": True}
+    return {"success": True, "deleted": True}
 
 
 # ── Fare Config ───────────────────────────────────────────────────────────────
