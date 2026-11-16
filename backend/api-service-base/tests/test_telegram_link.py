@@ -74,3 +74,28 @@ def test_admin_key_required(setup):
     client, _ = setup
     r = client.post("/api/v1/admin/drivers/+524610000001/telegram-link", headers={"x-admin-key": "mala"})
     assert r.status_code == 401
+
+
+def test_vincular_with_phone_no_longer_links(setup, db_session):
+    client, sent = setup
+    _start(client, "chat-intruso", "/vincular +524610000001")
+    db_session.expire_all()
+    assert db_session.query(Driver).one().telegram_chat_id is None
+    assert "enlace personal" in sent[-1][1]
+
+
+def test_previous_telegram_is_warned_when_relinked(setup, db_session):
+    client, sent = setup
+    _start(client, "chat-viejo", f"/start {_link(client).split('start=')[1]}")
+    _start(client, "chat-nuevo", f"/start {_link(client).split('start=')[1]}")
+    db_session.expire_all()
+    assert db_session.query(Driver).one().telegram_chat_id == "chat-nuevo"
+    warned = [t for c, t in sent if c == "chat-viejo" and "otro Telegram" in t]
+    assert len(warned) == 1
+
+
+def test_same_telegram_relinked_is_not_warned(setup):
+    client, sent = setup
+    _start(client, "chat-pedro", f"/start {_link(client).split('start=')[1]}")
+    _start(client, "chat-pedro", f"/start {_link(client).split('start=')[1]}")
+    assert not any("otro Telegram" in t for _, t in sent)

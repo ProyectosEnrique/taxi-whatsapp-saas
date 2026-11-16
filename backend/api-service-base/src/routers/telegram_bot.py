@@ -2,7 +2,7 @@
 Webhook del bot de Telegram para choferes.
 
 Comandos:
-  /vincular <tel>  — vincula la cuenta del chofer con Telegram
+  /start <código>  — vincula la cuenta (enlace personal que da el panel; /vincular <tel> ya no sirve)
   /disponible      — marcar como online (recibir viajes)
   /descanso        — marcar como offline
   /estado          — ver viaje activo con botones de acción
@@ -49,6 +49,10 @@ from ..services.telegram import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/telegram", tags=["telegram-bot"])
+
+# La cuenta solo se liga con el enlace personal del panel (un solo uso):
+# /vincular +52… dejaba que cualquiera que supiera el teléfono se quedara con los viajes
+_NOT_LINKED = "❌ No estás vinculado. Toca el enlace personal que te mandó tu base."
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -171,7 +175,7 @@ async def _handle_location(msg: dict, edited: bool, db: Session) -> None:
     driver  = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
     if not driver:
         if not edited:
-            await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+            await send_message(chat_id, _NOT_LINKED)
         return
 
     now  = datetime.now(timezone.utc)
@@ -343,21 +347,16 @@ async def telegram_webhook(
                 )
 
         elif text.startswith("/vincular"):
-            parts = text.split()
-            if len(parts) < 2:
-                await send_message(chat_id, "Usa: <code>/vincular +52XXXXXXXXXX</code>")
-                return {"ok": True}
-            phone  = parts[1].strip()
-            driver = db.query(Driver).filter(Driver.phone == phone, Driver.is_active == True).first()
-            if not driver:
-                await send_message(chat_id, f"❌ No encontré ningún chofer con el número <code>{phone}</code>.")
-                return {"ok": True}
-            await _link_driver(driver, chat_id, db)
+            await send_message(
+                chat_id,
+                "🔒 Ya no se vincula con el número.\n"
+                "Pide a tu base tu <b>enlace personal</b>, tócalo y presiona \"Iniciar\"."
+            )
 
         elif text.startswith("/disponible"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
             if not driver:
-                await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+                await send_message(chat_id, _NOT_LINKED)
                 return {"ok": True}
             driver.is_online = True
             db.commit()
@@ -409,7 +408,7 @@ async def telegram_webhook(
         elif text.startswith("/descanso"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
             if not driver:
-                await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+                await send_message(chat_id, _NOT_LINKED)
                 return {"ok": True}
             driver.is_online = False
             db.commit()
@@ -423,7 +422,7 @@ async def telegram_webhook(
         elif text.startswith("/estado"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
             if not driver:
-                await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+                await send_message(chat_id, _NOT_LINKED)
                 return {"ok": True}
             trip = (
                 db.query(Trip)
@@ -451,7 +450,7 @@ async def telegram_webhook(
         elif text.startswith("/ganancias"):
             driver = db.query(Driver).filter(Driver.telegram_chat_id == chat_id).first()
             if not driver:
-                await send_message(chat_id, "❌ No estás vinculado. Usa /vincular primero.")
+                await send_message(chat_id, _NOT_LINKED)
                 return {"ok": True}
 
             now        = datetime.now(timezone.utc)
@@ -495,7 +494,6 @@ async def telegram_webhook(
             await send_message(
                 chat_id,
                 "<b>Comandos disponibles:</b>\n"
-                "/vincular +52XXXXXXXXXX — vincular tu cuenta\n"
                 "/disponible — activarte para recibir viajes\n"
                 "/descanso — ponerte offline\n"
                 "/estado — ver viaje activo\n"
@@ -679,13 +677,21 @@ def _get_driver_and_trip(chat_id: str, ride_id: str, db) -> tuple:
 
 
 async def _link_driver(driver: Driver, chat_id: str, db: Session) -> None:
-    """Liga este chat al chofer (enlace personal o /vincular) y le explica qué sigue."""
+    """Liga este chat al chofer (enlace personal del panel) y le explica qué sigue."""
     # Un chat = un chofer: si este Telegram estaba ligado a otra cuenta, se suelta
     db.query(Driver).filter(Driver.telegram_chat_id == chat_id, Driver.id != driver.id) \
         .update({Driver.telegram_chat_id: None})
+    previous_chat = driver.telegram_chat_id
     driver.telegram_chat_id = chat_id
     db.commit()
     logger.info(f"[TelegramBot] {driver.name} vinculó Telegram chat_id={chat_id}")
+    if previous_chat and previous_chat != chat_id:
+        # El Telegram anterior deja de recibir viajes: que se entere por si no fue él
+        await send_message(
+            previous_chat,
+            f"⚠️ <b>Tu cuenta de TaxiCerca ({driver.name}) se vinculó en otro Telegram.</b>\n"
+            "Aquí ya no recibirás viajes. Si no fuiste tú, avisa a tu base de inmediato."
+        )
     await send_message(
         chat_id,
         f"✅ <b>¡Listo, {driver.name}!</b>\n"

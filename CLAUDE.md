@@ -312,7 +312,10 @@ Panel → Conductores → botón **📲** → `POST /api/v1/admin/drivers/{phone
 enlace → "Iniciar" → el bot recibe `/start <código>` → `_link_driver` (misma bienvenida que `/vincular`; si ese Telegram
 estaba ligado a otro chofer, se suelta). `/start` sin código responde con el ID de Telegram. La lista del panel marca
 "✓ Telegram vinculado / ⚠ Sin Telegram" (`telegram_linked`). Bot de taxis = @TaxiNexoaiBot (solo TaxiCerca; Mandaya,
-Ricomar y FarmaCerca tienen bots propios). `/vincular +52…` sigue funcionando.
+Ricomar y FarmaCerca tienen bots propios). **`/vincular +52…` desactivado (2026-11-16):** dejaba que cualquiera que
+supiera el teléfono de un chofer se quedara con sus viajes; ahora solo responde "pide tu enlace personal". Si un chofer
+se liga desde otro Telegram, el anterior recibe "⚠️ Tu cuenta se vinculó en otro Telegram… avisa a tu base".
+Telegram no deja limitar aparatos: la misma cuenta puede estar abierta en celular y computadora.
 
 ## 23. Compartir ubicación = disponible (2026-11-09)
 Para que el chofer no escriba /disponible ni /descanso cada día (`telegram_bot._handle_location`):
