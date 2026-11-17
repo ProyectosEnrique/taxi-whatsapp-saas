@@ -209,8 +209,17 @@ async def _call_fsm(phone: str, message: str, customer_name: str) -> list[str]:
 
 # ─── Send via Twilio (primary for Twilio-managed WhatsApp numbers) ────────────
 
+_DOUBLE_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.S)
+
+
+def _wa_format(text: str) -> str:
+    """WhatsApp marca negritas con *un* asterisco: '**Zona Centro**' se veía con asteriscos."""
+    return _DOUBLE_BOLD_RE.sub(r"*\1*", text or "")
+
+
 def _send_twilio(to: str, body: str, media_url: str | None = None) -> None:
     """Send WhatsApp message via Twilio API."""
+    body = _wa_format(body)
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
         logger.error("[TaxiGW] Twilio credentials not set")
         return
@@ -252,7 +261,7 @@ def _twiml(*messages: str) -> Response:
     root = ET.Element("Response")
     for msg in messages:
         if msg:
-            ET.SubElement(root, "Message").text = msg
+            ET.SubElement(root, "Message").text = _wa_format(msg)
     xml_str = ET.tostring(root, encoding="unicode")
     return Response(
         content=f'<?xml version="1.0" encoding="UTF-8"?>{xml_str}',

@@ -368,6 +368,9 @@ acercarse a `ARRIVING_NOTICE_RADIUS_M`=150 m con la ubicación en vivo, el "Lleg
 respaldo) → **"Llegaste a tu destino"** (al completar). Se quitaron "¡Tu taxi llegó!" y "¡Viaje en camino!" (al
 iniciar no se avisa: ya va en el taxi). (La acción web `driver_action_web` se quitó 2026-11-16, §12.)
 Requiere que el chofer comparta su ubicación en tiempo real; sin ella, solo el botón "Llegué" manda el aviso.
+**Enlace de seguimiento (2026-11-16):** va SOLO en "Conductor asignado" (antes también en "¡Viaje solicitado!" —
+el pasajero abría el mapa sin taxi— y en "está llegando"). `crear_viaje` ya no devuelve `tracking_url`.
+El gateway convierte `**negritas**` del modelo a `*negritas*` (`_wa_format`, en `_send_twilio` y `_twiml`).
 
 ## 28. Chat del chofer limpio al terminar cada viaje (2026-11-11)
 

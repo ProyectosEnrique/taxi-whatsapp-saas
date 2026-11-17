@@ -181,7 +181,6 @@ def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> 
                 "ride_id":      ride_id,
                 "status":       ride.get("status", "requested"),
                 "fare":         ride.get("total_fare"),
-                "tracking_url": f"{client.TRACKING_BASE}/seguimiento/{ride_id}",
             })
         return json.dumps({"error": "No se pudo crear el viaje. Intenta de nuevo."})
 

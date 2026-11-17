@@ -280,8 +280,7 @@ def _notify_customer_wa(
         "arriving": (
             f"🚕 *¡Tu conductor está llegando!*\n\n"
             f"Ve saliendo: *{driver.name}* está a unos pasos.\n"
-            f"{vehicle}\n"
-            f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}"
+            f"{vehicle}"
         ),
         "completed": (
             f"✅ *¡Llegaste a tu destino!*\n\n"

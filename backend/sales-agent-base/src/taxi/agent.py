@@ -25,9 +25,8 @@ def _ride_confirmation_text(session: dict) -> str:
     lleve a pensar que necesita solicitar el taxi de nuevo (doble viaje real)."""
     data       = session.get("_ride_data") or {}
     ride_id    = data.get("ride_id", "—")
-    tracking   = data.get("tracking_url", "")
-    tracking_line = f"\n\nSigue tu viaje aquí:\n{tracking}" if tracking else ""
-    return f"¡Listo! Tu viaje *{ride_id}* ya está confirmado. 🚕{tracking_line}"
+    return (f"¡Listo! Tu viaje *{ride_id}* ya está confirmado. 🚕\n"
+            f"Te aviso en cuanto un conductor lo acepte.")
 
 
 class AgentResult:

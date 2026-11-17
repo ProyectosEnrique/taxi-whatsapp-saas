@@ -592,8 +592,7 @@ def driver_arrived(ride_id: str, current: Driver = Depends(get_current_driver), 
         trip.customer_phone,
         f"🚕 *¡Tu taxi llegó!*\n\n"
         f"Tu conductor *{current.name}* está esperándote.\n"
-        f"{_vehicle_line(current)}\n"
-        f"📍 {settings.PUBLIC_URL}/seguimiento/{trip.trip_id}",
+        f"{_vehicle_line(current)}",
     )
     return {"success": True, "ride": _trip_to_dict(trip)}
 

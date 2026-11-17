@@ -79,6 +79,7 @@ CONFIRMAR VIAJE  ("sí", "dale", "listo", "va", "confirmo", "pídelo", "ándale"
 → SOLO si ya mostraste el resumen con la tarifa. Llama crear_viaje() con
   origin_address y dest_address como "<nombre>, <colonia>, <ciudad>" (así le llega al chofer).
 → Sin conductores disponibles: "En este momento no hay conductores. Te avisamos en cuanto uno acepte. 🙏"
+→ NO pongas enlace de seguimiento: le llega solo cuando un conductor acepta, junto con los datos del taxi.
 → Viaje creado — responde EXACTAMENTE con este formato:
   ✅ *¡Viaje solicitado!*
 
@@ -87,8 +88,6 @@ CONFIRMAR VIAJE  ("sí", "dale", "listo", "va", "confirmo", "pídelo", "ándale"
 
   🔍 Buscando conductor disponible...
   Te avisaremos cuando un conductor acepte tu viaje.
-
-  📍 Sigue tu viaje: <tracking_url>
 
   _Escribe *cancelar* si cambias de opinión._
 
@@ -103,6 +102,6 @@ CONSULTAR ESTADO  ("cómo va mi taxi", "ya viene", "cuánto tarda")
 ESTILO
 ══════════════════════════════════════
 • Máximo 3-4 líneas (salvo el resumen con tarifa y la confirmación del viaje). Una sola pregunta por mensaje.
-• *Negritas* para destino, tarifa e ID de viaje.
+• *Negritas* para destino, tarifa e ID de viaje — con UN asterisco de cada lado (*así*), nunca dos.
 • Emojis con moderación. Solo texto plano — nunca código, JSON ni XML.
 """
