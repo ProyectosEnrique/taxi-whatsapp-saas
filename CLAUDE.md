@@ -208,16 +208,13 @@ function _placeDriverMarker(pos) {
 - Resto → trayecto completo origen→destino
 - Solo se redibuja cuando `data.status` cambia (`lastRouteStatus` guard)
 
-**URL del endpoint de acción del conductor:**
-- Correcto: `POST /api/v1/driver/rides/{id}/driver-action`
-- Error común: omitir el prefijo `/driver/` → 404
+## 12. Página web del chofer por viaje — QUITADA (2026-11-16)
 
-## 12. App conductor (`/driver/`)
-
-- Ruta en frontend: `/conductor/viaje/{ride_id}?p=<phone_base64>` (Vue Router)
-- `?p=` es el teléfono del conductor en Base64 — autenticación sin login completo
-- Mapa: `<div id="driver-map">` dentro de `v-else-if="ride"` → necesita `nextTick()` antes de `initMap()`
-- `watchPosition()` actualiza marcador 🚕 del conductor cada movimiento GPS real
+`/conductor/viaje/{ride_id}?p=<teléfono base64>` (`DriverNavigateView.vue`) y sus rutas sin login
+`POST /driver/rides/{id}/driver-action` y `/driver-location` se borraron: bastaba el teléfono del chofer y el código
+del viaje para cambiar el estado o mover el taxi en el mapa del pasajero, y desde 2026-11-07 nada enlazaba a esa
+página. Las apps (incluida la futura app nativa) usan las rutas con login JWT: `/driver/rides/{id}/arrived`, `/start`,
+`/complete` y `PUT /driver/location`. (Las notas de Leaflet de §11 sobre `DriverNavigateView` quedan como referencia.)
 
 ## 13. Tests (`backend/api-service-base/tests/`)
 
@@ -369,7 +366,7 @@ Intervención mínima del chofer. El pasajero recibe: **"Conductor asignado"** (
 llegando"** (una sola vez, `telegram_bot._notify_arriving`, `claim_once("arriving_msg")`: lo que pase primero entre
 acercarse a `ARRIVING_NOTICE_RADIUS_M`=150 m con la ubicación en vivo, el "Llegué" automático a 120 m o el botón de
 respaldo) → **"Llegaste a tu destino"** (al completar). Se quitaron "¡Tu taxi llegó!" y "¡Viaje en camino!" (al
-iniciar no se avisa: ya va en el taxi). Mismo criterio en la acción web `driver_rides.driver_action_web`.
+iniciar no se avisa: ya va en el taxi). (La acción web `driver_action_web` se quitó 2026-11-16, §12.)
 Requiere que el chofer comparta su ubicación en tiempo real; sin ella, solo el botón "Llegué" manda el aviso.
 
 ## 28. Chat del chofer limpio al terminar cada viaje (2026-11-11)
@@ -410,7 +407,7 @@ QR solo servía para pagarle $3 al chofer por escaneo. Se quita: un solo diseño
 - **Chofer** (2026-11-15, antes $50 + $50): `services/farmacerca_driver_gift.py` → **$30 al ligar su Telegram**
   (`telegram_bot._link_driver`) y **$5 por cada uno de sus primeros 10 viajes terminados**, dentro de los 14 días desde su
   primer viaje y **un viaje por pasajero** (`trip_gift_number`; botón Completar de Telegram,
-  `driver_rides.complete_ride` y la acción web). Máximo $80 por chofer.
+  `driver_rides.complete_ride`). Máximo $80 por chofer.
   `POST https://farmacia.nexoai.lat/api/v1/allies/partner-credit`: alta con `FARMACERCA_DRIVER_ALLY` (TAXICHOFER, $30),
   viajes con `FARMACERCA_DRIVER_TRIP_ALLY` (TAXIVIAJE, $5), ambos con `X-Ally-Secret: FARMACERCA_DRIVER_SECRET` (solo en
   `.env`; vacío = apagado). Refs `AL{tel10}` / `V01{tel10}`…`V10{tel10}`: FarmaCerca no repite el abono, y el aviso por
