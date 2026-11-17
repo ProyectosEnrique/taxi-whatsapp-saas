@@ -135,6 +135,22 @@ let destMarker = null
 let routeLayer = null
 let pollTimer = null
 let lastRouteStatus = null
+let lastRouteFrom = null   // desde dónde se trazó la ruta del taxi (se retraza si se movió)
+let lastRouteAt = 0
+const ROUTE_REDRAW_M = 150
+const ROUTE_REDRAW_MS = 20000
+
+function mkIcon(Lm, emoji, size = 32) {
+  return Lm.divIcon({
+    html: `<span style="font-size:${size}px;line-height:1">${emoji}</span>`,
+    iconSize: [size, size], iconAnchor: [size / 2, size / 2], className: '',
+  })
+}
+
+function addDriverMarker(Lm, data) {
+  driverMarker = Lm.marker([data.driver.lat, data.driver.lng], { icon: mkIcon(Lm, '🚕', 36) })
+    .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`).addTo(map)
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -336,25 +352,19 @@ function initMap(data) {
     map = Lm.map(el, { zoomControl: true, attributionControl: false }).setView(center, 14)
     Lm.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
 
-    const mkIcon = (emoji, size = 32) => Lm.divIcon({
-      html: `<span style="font-size:${size}px;line-height:1">${emoji}</span>`,
-      iconSize: [size, size], iconAnchor: [size / 2, size / 2], className: '',
-    })
-
     const pts = []
     if (data.origin?.lat != null) {
-      originMarker = Lm.marker([data.origin.lat, data.origin.lng], { icon: mkIcon('📍') })
+      originMarker = Lm.marker([data.origin.lat, data.origin.lng], { icon: mkIcon(Lm, '📍') })
         .bindPopup(`<b>Origen</b><br>${data.origin.address}`).addTo(map)
       pts.push([data.origin.lat, data.origin.lng])
     }
     if (data.destination?.lat != null) {
-      destMarker = Lm.marker([data.destination.lat, data.destination.lng], { icon: mkIcon('🏁') })
+      destMarker = Lm.marker([data.destination.lat, data.destination.lng], { icon: mkIcon(Lm, '🏁') })
         .bindPopup(`<b>Destino</b><br>${data.destination.address}`).addTo(map)
       pts.push([data.destination.lat, data.destination.lng])
     }
     if (data.driver?.lat != null) {
-      driverMarker = Lm.marker([data.driver.lat, data.driver.lng], { icon: mkIcon('🚕', 36) })
-        .bindPopup(`<b>${data.driver.name}</b><br>${data.driver.vehicle}`).addTo(map)
+      addDriverMarker(Lm, data)
       pts.push([data.driver.lat, data.driver.lng])
     }
 
@@ -371,9 +381,15 @@ async function _updateRoute(data) {
   const dLat = data.destination?.lat, dLng = data.destination?.lng
   const drLat = data.driver?.lat, drLng = data.driver?.lng
 
-  // Solo redibujar cuando cambia el estado
-  if (s === lastRouteStatus) return
+  // Redibujar al cambiar el estado, o si el taxi ya se alejó de donde se trazó la ruta
+  const taxiLeg = ['confirmed', 'in_progress'].includes(s) && drLat != null
+  const moved = taxiLeg && lastRouteFrom &&
+    _haversineKm(drLat, drLng, ...lastRouteFrom) * 1000 > ROUTE_REDRAW_M &&
+    Date.now() - lastRouteAt > ROUTE_REDRAW_MS
+  if (s === lastRouteStatus && !moved) return
   lastRouteStatus = s
+  lastRouteFrom = taxiLeg ? [drLat, drLng] : null
+  lastRouteAt = Date.now()
 
   if (s === 'confirmed' && drLat != null && oLat != null) {
     // Taxi en camino al cliente — ruta amarilla conductor→origen
@@ -400,6 +416,11 @@ async function updateMarkers(data) {
       if (!map.getBounds().contains(pos)) {
         map.panTo(pos, { animate: true, duration: 0.6 })
       }
+    } else {
+      // La página se abrió antes de que hubiera taxi (el enlace llega al pedir el viaje)
+      addDriverMarker(Lm, data)
+      const target = data.status === 'in_progress' ? data.destination : data.origin
+      if (target?.lat != null) map.fitBounds([pos, [target.lat, target.lng]], { padding: [40, 40] })
     }
   }
 
