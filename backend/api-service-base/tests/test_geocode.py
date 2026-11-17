@@ -162,3 +162,41 @@ def test_nominatim_last_resort_also_drops_city_level(client, google):
     data["nominatim"] = [{"display_name": "Celaya, Guanajuato, México", "lat": str(CELAYA[0]),
                           "lon": str(CELAYA[1]), "addresstype": "city", "address": {"city": "Celaya"}}]
     assert _search(client, "Calle Rara Celaya") == []
+
+
+def _rated(place, reviews):
+    place["userRatingCount"] = reviews
+    return place
+
+
+def test_salvatierra_bus_station_duplicates_are_dropped(client, google):
+    # Caso real (2026-11-16): Google regresó la Central 5 veces y el bot le dio 4 opciones al pasajero
+    _, data = google
+    poi = ["point_of_interest", "establishment"]
+    data["places"] = [
+        _rated(_place("Central de Autobuses de Salvatierra", 20.2189, -100.8801, poi, "Zona Centro", "Salvatierra"), 1231),
+        _rated(_place("Salvatierra Autobuses", 20.21895, -100.88013, ["bus_station"] + poi, "Zona Centro", "Salvatierra"), 28),
+        _place("Central de Autobuses Salvt Ocampo 1200", 20.21910, -100.88029, poi, "Zona Centro", "Salvatierra"),
+        _place("Central de autobuses", 20.2135, -100.8804, ["parking_lot"] + poi, "Zona Centro", "Salvatierra"),
+        _place("Central de autobuses Salvatierra", 20.2011, -100.9071, ["travel_agency"] + poi, "", "El Marquesado"),
+    ]
+    res = _search(client, "Central autobuses Salvatierra", near=SALVATIERRA)
+    assert [r["name"] for r in res] == ["Central de Autobuses de Salvatierra"]
+
+
+def test_places_without_reviews_stay_when_none_is_well_known(client, google):
+    _, data = google
+    poi = ["point_of_interest", "establishment"]
+    data["places"] = [_place("Tienda Doña Mary", 20.2189, -100.8801, poi, "Centro", "Salvatierra"),
+                      _place("Tienda Doña Mary 2", 20.2250, -100.8700, poi, "San Juan", "Salvatierra")]
+    assert len(_search(client, "Tienda Doña Mary", near=SALVATIERRA)) == 2
+
+
+def test_addresses_are_never_dropped_for_having_no_reviews(client, google):
+    _, data = google
+    data["places"] = [
+        _rated(_place("Hidalgo Plaza", 20.2189, -100.8801, ["point_of_interest", "establishment"], "Centro", "Salvatierra"), 300),
+        _place("Hidalgo 23", 20.2250, -100.8700, ["street_address"], "San Juan", "Salvatierra"),
+    ]
+    names = [r["name"] for r in _search(client, "Hidalgo", near=SALVATIERRA)]
+    assert "Hidalgo 23" in names

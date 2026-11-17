@@ -300,6 +300,13 @@ responde 403 se sigue solo con Geocoding) → Google Geocoding (calle y número)
   conversación (`context.anchor`): origen y destino suelen estar en la misma ciudad.
 - El prompt ya no agrega "Celaya" por su cuenta; resumen y `crear_viaje` llevan "nombre, colonia, ciudad".
 - `reverse-geocode` también devuelve colonia y ciudad. Pruebas: `tests/test_geocode.py` (proveedores simulados).
+- **Sin repetidos (2026-11-16):** la Central de Salvatierra salía 5 veces (registros duplicados/mal dados de alta en
+  Google) y el bot daba 4 opciones. (a) `_keep` junta resultados a < `SAME_PLACE_M` (150 m): se queda el primero.
+  (b) Places pide `userRatingCount`: si algún lugar tiene ≥ `PLACES_TRUSTED_REVIEWS` (20) reseñas, se quitan los de 0
+  (los domicilios — `_ADDRESS_TYPES` — nunca se quitan). Ojo costo: `userRatingCount` sube la búsqueda al SKU
+  "Text Search Enterprise" de Google (menos búsquedas gratis al mes que Pro).
+- La sección "Lugares locales" del panel (`local_pois`) NO se consulta en este endpoint (solo en la búsqueda web,
+  apagada). Pendiente conectarla (decisión del dueño: después).
 
 ## 21. Arranque solo con viajes al momento (2026-11-09)
 Decisión del dueño para las primeras pruebas reales: **sin viajes programados**. `SCHEDULED_RIDES_ENABLED=False`

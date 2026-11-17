@@ -27,8 +27,13 @@ GMAPS_URL     = "https://maps.googleapis.com/maps/api/geocode/json"
 GMAPS_REV_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 PLACES_URL    = "https://places.googleapis.com/v1/places:searchText"
 PLACES_FIELDS = ("places.displayName,places.formattedAddress,places.location,"
-                 "places.types,places.addressComponents")
+                 "places.types,places.addressComponents,places.userRatingCount")
 PLACES_BIAS_RADIUS_M = 20000.0   # preferir lugares a ≤ 20 km del pasajero (máx. de Google: 50 km)
+# Google tiene registros repetidos o mal dados de alta (la Central de Salvatierra salía 5 veces):
+# si un lugar ya tiene reseñas, los que tienen 0 son ruido. Los domicilios nunca tienen reseñas.
+PLACES_TRUSTED_REVIEWS = 20
+SAME_PLACE_M = 150               # resultados a menos de esto son el mismo lugar
+_ADDRESS_TYPES = {"street_address", "premise", "subpremise", "route", "intersection", "plus_code"}
 
 # Common Spanish place-name aliases that Nominatim doesn't index literally
 _QUERY_SUBS = [
@@ -218,11 +223,13 @@ async def _places_search(query: str, client: httpx.AsyncClient,
         # 403 = la Places API (New) no está habilitada para esta clave: se sigue con Geocoding
         logger.warning(f"[Geocode/Places] HTTP {resp.status_code} para '{query}': {resp.text[:150]}")
         return []
+    places = [p for p in resp.json().get("places", []) if "latitude" in (p.get("location") or {})]
+    if any((p.get("userRatingCount") or 0) >= PLACES_TRUSTED_REVIEWS for p in places):
+        places = [p for p in places
+                  if (p.get("userRatingCount") or 0) > 0 or set(p.get("types") or []) & _ADDRESS_TYPES]
     results = []
-    for p in resp.json().get("places", []):
-        loc = p.get("location") or {}
-        if "latitude" not in loc:
-            continue
+    for p in places:
+        loc = p["location"]
         colonia, ciudad = _colonia_ciudad(p.get("addressComponents") or [], "longText")
         name = (p.get("displayName") or {}).get("text") or p.get("formattedAddress", "").split(",")[0]
         results.append(_result(name, p.get("formattedAddress", ""), loc["latitude"], loc["longitude"],
@@ -331,16 +338,21 @@ def _result_matches_query(result: dict, query: str) -> bool:
 
 
 def _keep(results: list, query: str, ref_lat, ref_lng) -> list:
-    """Quita lo de nivel ciudad, lo que no tiene que ver con lo que escribió y lo que
-    está fuera de zona; los exactos primero."""
+    """Quita lo de nivel ciudad, lo que no tiene que ver con lo que escribió, lo que
+    está fuera de zona y los repetidos (a < SAME_PLACE_M); los exactos primero."""
     out = [r for r in results
            if r["_precision"] != "ciudad"
            and _result_matches_query(r, query)
            and _within_radius(r, ref_lat, ref_lng)]
     out.sort(key=lambda r: r["aproximado"])   # estable: respeta el orden del proveedor
+    # El mismo lugar con otro nombre: se queda el primero
+    unique = []
     for r in out:
+        if all(_haversine_km(r["lat"], r["lng"], u["lat"], u["lng"]) * 1000 > SAME_PLACE_M for u in unique):
+            unique.append(r)
+    for r in unique:
         r.pop("_precision", None)
-    return out
+    return unique
 
 
 @router.get("/geocode")
