@@ -111,13 +111,14 @@ async def _dead_mans_switch():
 async def _live_location_monitor():
     """Cada 2 min: choferes cuya ubicación en vivo de Telegram ya venció → descanso
     (compartir la ubicación = disponible; ver telegram_bot.expire_live_locations)."""
-    from .routers.telegram_bot import expire_live_locations
+    from .routers.telegram_bot import check_waiting_drivers, expire_live_locations
     await asyncio.sleep(60)
     while True:
         try:
             db = SessionLocal()
             try:
                 await expire_live_locations(db)
+                await check_waiting_drivers(db)
             finally:
                 db.close()
         except Exception as exc:

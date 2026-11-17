@@ -5,6 +5,7 @@ y los mensajes del bot traen botones que abren Maps ya navegando (un solo botón
 
 Telegram y el aviso por WhatsApp se simulan: no sale nada a la red.
 """
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -298,3 +299,65 @@ def test_customer_label_uses_last_digits_when_name_unknown():
     assert telegram_bot.customer_label("Cliente", "+5214771999661") == "Cliente …9661"
     assert telegram_bot.customer_label(None, "+5214771999661") == "Cliente …9661"
     assert telegram_bot.customer_label("Juan", "+5214771999661") == "Juan"
+
+
+# ── "Llegué" por espera y botón "Llegué" solo cuando hace falta ─────────────
+
+_WAITING_SPOT = (20.5430, -100.8000)   # ~330 m del punto que dio el pasajero
+
+
+def test_arrives_when_waiting_still_near_a_misplaced_pickup(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    telegram_bot._waiting_since.clear()
+    _move(tg_client, *_WAITING_SPOT)                    # llega y se estaciona
+    assert _status(db_session, trip) == TripStatus.CONFIRMED
+    lat, lng, since = telegram_bot._waiting_since[trip.trip_id]
+    telegram_bot._waiting_since[trip.trip_id] = (lat, lng, since - 130)   # 2 min quieto
+    _move(tg_client, *_WAITING_SPOT)
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+
+
+def test_no_waiting_arrival_while_still_driving(tg_client, db_session, bot):
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    telegram_bot._waiting_since.clear()
+    _move(tg_client, *_WAITING_SPOT)
+    lat, lng, since = telegram_bot._waiting_since[trip.trip_id]
+    telegram_bot._waiting_since[trip.trip_id] = (lat, lng, since - 130)
+    _move(tg_client, 20.5418, -100.8000)                # se movió ~130 m: sigue en camino
+    assert _status(db_session, trip) == TripStatus.CONFIRMED
+
+
+def test_waiting_arrival_checked_without_new_location(tg_client, db_session, bot):
+    # Estacionado, Telegram casi no manda ubicaciones: lo revisa el ciclo de main.py
+    trip = _setup(db_session, TripStatus.CONFIRMED)
+    telegram_bot._waiting_since.clear()
+    _move(tg_client, *_WAITING_SPOT)
+    lat, lng, since = telegram_bot._waiting_since[trip.trip_id]
+    telegram_bot._waiting_since[trip.trip_id] = (lat, lng, since - 130)
+    d = db_session.query(Driver).one()
+    d.location_live_until = datetime.now(timezone.utc) + timedelta(hours=2)
+    db_session.commit()
+    asyncio.run(telegram_bot.check_waiting_drivers(db_session))
+    assert _status(db_session, trip) == TripStatus.DRIVER_ARRIVED
+
+
+def _accept_msg(db, live: bool):
+    trip = _setup(db, TripStatus.CONFIRMED)
+    d = db.query(Driver).one()
+    d.current_lat, d.current_lng = _FAR
+    d.location_live_until = datetime.now(timezone.utc) + timedelta(hours=2) if live else None
+    db.commit()
+    asyncio.run(telegram_bot._send_ride_action("chat1", trip, d))
+
+
+def test_accepted_without_arrived_button_when_sharing_live(db_session, bot):
+    _accept_msg(db_session, live=True)
+    labels = _labels(bot["buttons"][-1][2])
+    assert "🟢 Llegué al origen" not in labels
+    assert "🚕 Ruta completa" in labels and "🚨 SOS" in labels
+    assert "Abre directo" not in bot["buttons"][-1][1]
+
+
+def test_accepted_keeps_arrived_button_without_live_location(db_session, bot):
+    _accept_msg(db_session, live=False)
+    assert "🟢 Llegué al origen" in _labels(bot["buttons"][-1][2])

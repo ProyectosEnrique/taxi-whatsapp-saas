@@ -52,7 +52,8 @@ def test_finished_or_unknown_trip_is_404(db_session):
     assert _go("ffffffff").status_code == 404
 
 
-def test_bot_message_has_visible_short_link(db_session, monkeypatch):
+def test_bot_message_has_no_short_link(db_session, monkeypatch):
+    # 2026-11-16: el dueño pidió quitar "Abre directo en Maps" (basta el botón Ruta completa)
     sent = []
 
     async def fake_send_with_buttons(chat_id, text, buttons):
@@ -61,4 +62,4 @@ def test_bot_message_has_visible_short_link(db_session, monkeypatch):
     monkeypatch.setattr(telegram_bot, "send_with_buttons", fake_send_with_buttons)
     t = _trip(db_session, TripStatus.CONFIRMED)
     asyncio.run(telegram_bot._send_ride_action("chat1", t))
-    assert "https://taxi.nexoai.lat/r/1a2b3c4d" in sent[-1]
+    assert "/r/1a2b3c4d" not in sent[-1]

@@ -26,6 +26,7 @@ Callbacks inline:
 import asyncio
 import logging
 import math
+import time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
@@ -105,13 +106,6 @@ def _pickup_nav_buttons(trip: Trip) -> list[list[dict]]:
         return _nav_buttons(trip.origin_lat, trip.origin_lng, "Ir por el pasajero")
     url = nav_link.maps_url(trip.destination_lat, trip.destination_lng, via=(trip.origin_lat, trip.origin_lng))
     return [[{"text": "🚕 Ruta completa", "url": url}]]
-
-
-def _short_link_line(trip: Trip) -> str:
-    """Enlace visible: Telegram lo abre sin preguntar "¿Abrir este enlace?" (el botón sí pregunta)."""
-    if not nav_link.route_url(trip):
-        return ""
-    return f"\n\n👉 Abre directo en Maps: {nav_link.short_url(trip)}"
 
 
 _LOCATION_HELP = (
@@ -445,6 +439,7 @@ async def telegram_webhook(
                     f"Estado: {status_icon} {'Disponible' if driver.is_online else 'En descanso'}"
                 )
             else:
+                # /estado es el respaldo: aquí siempre va el botón "Llegué"
                 await _send_ride_action(chat_id, trip)
 
         elif text.startswith("/ganancias"):
@@ -566,7 +561,7 @@ async def telegram_webhook(
             logger.info(f"[TelegramBot] {driver.name} aceptó viaje {ride_id} vía Telegram")
 
             await answer_callback(cq_id, "✅ ¡Viaje aceptado!")
-            await _send_ride_action(chat_id, trip)
+            await _send_ride_action(chat_id, trip, driver)
 
             try:
                 await send_to_operator(
@@ -728,21 +723,25 @@ async def _send_trip_msg(trip: Trip, chat_id: str, text: str, buttons: list[list
     await trip_chat.track(trip.trip_id, chat_id, await send_with_buttons(chat_id, text, buttons))
 
 
-async def _send_ride_action(chat_id: str, trip: Trip) -> None:
+async def _send_ride_action(chat_id: str, trip: Trip, driver: Driver | None = None) -> None:
     """
     Envía el mensaje de estado del viaje con el botón de acción correspondiente
     al estado actual. Centraliza toda la lógica de qué botón mostrar.
+    "Llegué al origen" solo aparece si el chofer no comparte su ubicación en vivo
+    (sin ella no se marca solo) o si no se sabe quién es (/estado, respaldo).
     """
     if trip.status == TripStatus.CONFIRMED:
+        if driver is not None and _sharing_live(driver):
+            hint = "Llegué e Iniciar se marcan solos con tu ubicación en vivo."
+            arrived_row = []
+        else:
+            hint = "Toca Llegué cuando estés con el pasajero."
+            arrived_row = [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]]
         await _send_trip_msg(
             trip, chat_id,
             f"✅ <b>Viaje aceptado — en camino al pasajero</b>\n\n{_trip_summary(trip)}\n\n"
-            f"<i>🚕 Ruta completa: Maps te lleva al pasajero y sigue al destino. "
-            f"Llegué e Iniciar se marcan solos; el botón verde es por si no se marca.</i>"
-            f"{_short_link_line(trip)}",
-            _pickup_nav_buttons(trip)
-            + [[{"text": "🟢 Llegué al origen", "callback_data": f"arrived_{trip.trip_id}"}]]
-            + _sos_row(trip),
+            f"<i>🚕 Ruta completa: Maps te lleva al pasajero y sigue al destino. {hint}</i>",
+            _pickup_nav_buttons(trip) + arrived_row + _sos_row(trip),
         )
 
     elif trip.status == TripStatus.DRIVER_ARRIVED:
@@ -759,8 +758,7 @@ async def _send_ride_action(chat_id: str, trip: Trip) -> None:
         await _send_trip_msg(
             trip, chat_id,
             f"🚗 <b>Viaje en curso</b>\n\n{_trip_summary(trip)}\n\n"
-            f"<i>Cerca del destino te mando el botón para completar.</i>"
-            f"{_short_link_line(trip)}",
+            f"<i>Cerca del destino te mando el botón para completar.</i>",
             _nav_buttons(trip.destination_lat, trip.destination_lng, "Ir al destino")
             + [[{"text": "✅ Completar viaje", "callback_data": f"complete_{trip.trip_id}"}]]
             + _sos_row(trip),
@@ -800,6 +798,36 @@ def _seconds_since(dt: datetime | None) -> float:
     return (datetime.now(timezone.utc) - dt).total_seconds()
 
 
+def _sharing_live(driver: Driver) -> bool:
+    """Tiene activa la ubicación en tiempo real de Telegram."""
+    until = _aware(driver.location_live_until)
+    return bool(until and until > datetime.now(timezone.utc) and driver.current_lat is not None)
+
+
+# trip_id → (lat, lng, desde cuándo está ahí): para el "Llegué" por espera
+_waiting_since: dict[str, tuple[float, float, float]] = {}
+
+
+def _waiting_long_enough(trip_id: str, here: tuple[float, float]) -> bool:
+    """True si el taxi lleva WAITING_ARRIVE_S casi sin moverse (está esperando al pasajero)."""
+    now = time.time()
+    prev = _waiting_since.get(trip_id)
+    if prev is None or _haversine_km(*here, prev[0], prev[1]) * 1000 > settings.WAITING_STILL_M:
+        _waiting_since[trip_id] = (here[0], here[1], now)
+        return False
+    return now - prev[2] >= settings.WAITING_ARRIVE_S
+
+
+async def check_waiting_drivers(db: Session) -> None:
+    """Cada ciclo de main.py: estacionado, Telegram casi no manda ubicaciones, así que
+    el "Llegué" por espera se revisa también sin que llegue una nueva."""
+    trips = db.query(Trip).filter(Trip.status == TripStatus.CONFIRMED, Trip.driver_phone.isnot(None)).all()
+    for trip in trips:
+        driver = db.query(Driver).filter(Driver.phone == trip.driver_phone).first()
+        if driver and _sharing_live(driver):
+            await _check_trip_proximity(driver, db)
+
+
 async def _check_trip_proximity(driver: Driver, db: Session) -> None:
     """Con cada ubicación del chofer: cerca del pasajero marca "Llegué" solo;
     al alejarse del punto ya con el pasajero inicia el viaje; cerca del
@@ -818,8 +846,13 @@ async def _check_trip_proximity(driver: Driver, db: Session) -> None:
         meters = _haversine_km(*here, float(trip.origin_lat), float(trip.origin_lng)) * 1000
         if meters <= settings.ARRIVING_NOTICE_RADIUS_M:
             await _notify_arriving(driver, trip)
-        if (settings.AUTO_ARRIVE_RADIUS_M and meters <= settings.AUTO_ARRIVE_RADIUS_M
-                and await ride_notifs.claim_once("arrived", trip.trip_id)):
+        arrive = bool(settings.AUTO_ARRIVE_RADIUS_M and meters <= settings.AUTO_ARRIVE_RADIUS_M)
+        if not arrive and settings.WAITING_ARRIVE_RADIUS_M and meters <= settings.WAITING_ARRIVE_RADIUS_M:
+            arrive = _waiting_long_enough(trip.trip_id, here)
+        elif meters > settings.WAITING_ARRIVE_RADIUS_M:
+            _waiting_since.pop(trip.trip_id, None)
+        if arrive and await ride_notifs.claim_once("arrived", trip.trip_id):
+            _waiting_since.pop(trip.trip_id, None)
             await _mark_arrived(driver, trip, db, auto=True)
 
     elif trip.status == TripStatus.DRIVER_ARRIVED and settings.AUTO_START_RADIUS_M and trip.origin_lat:

@@ -243,7 +243,13 @@ Este repo nació de una plantilla SaaS multi-tenant genérica (restaurante/farma
 
 - Los mensajes de estado del bot (`_send_ride_action`) traen botones URL que abren **Google Maps ya navegando** (`maps/dir/?api=1&destination=…&dir_action=navigate`) (un solo botón 🚕 a lo ancho; Waze se quitó 2026-11-11): al aceptar → "🚕 Ruta completa" (pasajero como parada y luego destino); en curso → "🚕 Ir al destino". "🚕 Iniciar viaje" es el botón (callback) del mensaje "Llegaste". Se quitó el enlace a la app web `/conductor/viaje/…` (abría una tercera app).
 - `_check_trip_proximity` corre con cada ubicación de Telegram: viaje `confirmed` a ≤ `AUTO_ARRIVE_RADIUS_M` (120 m) del origen → "Llegué" automático (`_mark_arrived`, mismo aviso WhatsApp al pasajero); viaje `driver_arrived` a > `AUTO_START_RADIUS_M` (200 m) del origen → "Iniciar viaje" automático (`_mark_started`, aviso "started" al pasajero); viaje `in_progress` a ≤ `NEAR_DEST_RADIUS_M` (200 m) del destino → mensaje con botón "Completar" (completar sigue manual: ahí cobra). Nada antes de `PROXIMITY_MIN_AGE_S` (60 s) desde el último cambio de estado. Una sola vez por viaje vía `ride_notifs.claim_once` (Redis SET NX). Radio 0 = desactivado.
-- Tests: `tests/test_trip_proximity.py` (10).
+- **(2026-11-16) Menos botones:** "🟢 Llegué al origen" solo sale si el chofer NO comparte ubicación en vivo
+  (`_sharing_live`; sin ella nada se marca solo) o en `/estado` (respaldo). Con ubicación en vivo: Ruta completa + SOS.
+- **"Llegué" por espera:** si el punto del pasajero quedó lejos de donde lo recoge, a ≤ `WAITING_ARRIVE_RADIUS_M` (500 m)
+  y casi quieto (≤ `WAITING_STILL_M` 40 m) durante `WAITING_ARRIVE_S` (120 s) → llegó (`_waiting_long_enough`, en memoria
+  por viaje). Estacionado Telegram casi no manda ubicaciones: `check_waiting_drivers` corre en `_live_location_monitor`
+  (cada 2 min).
+- Tests: `tests/test_trip_proximity.py`.
 
 ## 17. Regalo de FarmaCerca en el primer viaje (2026-11-07)
 - `services/farmacerca_gift.py`: `gift_for(trip, driver)` → `{"amount", "url"}` solo si es el **primer viaje completado**
@@ -358,7 +364,8 @@ el texto visible `👉 Abre directo en Maps: https://taxi.nexoai.lat/r/<código>
 que Telegram abre sin preguntar. `routers/nav_link.py` (`GET /r/{código}`, código = parte hex de `trip_id`; nginx
 `location /r/` → taxi-api) redirige según el estado al tocarlo: aceptado → ruta completa (pasajero como parada);
 llegó/en curso → destino; terminado/desconocido → 404. `nav_link.maps_url` arma también las URLs de los botones.
-Pendiente: confirmar en el celular del chofer que de verdad abre sin preguntar; si no, quitar la línea.
+**QUITADO 2026-11-16** a pedido del dueño: los mensajes ya no traen la línea (basta el botón "Ruta completa").
+`/r/{código}` sigue respondiendo para mensajes viejos.
 
 ## 27. Avisos al pasajero: solo los necesarios (2026-11-11)
 

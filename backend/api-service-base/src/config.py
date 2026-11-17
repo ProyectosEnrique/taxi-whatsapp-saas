@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     ARRIVING_NOTICE_RADIUS_M: int = 150
     NEAR_DEST_RADIUS_M: int = 200
     AUTO_START_RADIUS_M: int = 200      # ya llegó y se aleja esto del origen → viaje iniciado solo
+    # "Llegué" por espera: el punto del pasajero puede quedar lejos de donde de verdad lo recoge.
+    # A ≤ WAITING_ARRIVE_RADIUS_M y casi quieto (≤ WAITING_STILL_M) WAITING_ARRIVE_S → llegó. 0 = apagado.
+    WAITING_ARRIVE_RADIUS_M: int = 500
+    WAITING_STILL_M: int = 40
+    WAITING_ARRIVE_S: int = 120
     # Regalo de FarmaCerca en el primer viaje (ver services/farmacerca_gift.py). Vacío = apagado.
     FARMACERCA_GIFT_URL: str = "https://farmacia.nexoai.lat/r/taxi"
     FARMACERCA_GIFT_AMOUNT: int = 5
