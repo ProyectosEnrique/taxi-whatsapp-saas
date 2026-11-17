@@ -158,6 +158,8 @@ def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> 
             float(args.get("dest_lat", 0)),
             float(args.get("dest_lng", 0)),
         )
+        if session is not None and isinstance(est, dict) and est.get("fare"):
+            session.setdefault("context", {})["last_fare"] = est["fare"]
         return json.dumps(est)
 
     if name == "crear_viaje":
@@ -176,6 +178,12 @@ def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> 
             ride    = data.get("ride", data)
             ride_id = ride.get("ride_id") or ride.get("id") or "desconocido"
             sess.extend_ttl_for_ride(phone)
+            if session is not None:
+                # La historia solo guarda los textos: sin esto el bot olvida qué viaje cancelar
+                ctx = session.setdefault("context", {})
+                ctx["active_ride"] = {"ride_id": ride_id,
+                                      "dest": dest["address"].split(",")[0].strip(),
+                                      "fare": ctx.get("last_fare")}
             return json.dumps({
                 "success":      True,
                 "ride_id":      ride_id,
@@ -197,7 +205,12 @@ def run_tool(name: str, args: dict, phone: str, session: dict | None = None) -> 
         return json.dumps({"error": "No encontré ese viaje."})
 
     if name == "cancelar_viaje":
-        client.cancel_ride(args.get("ride_id", ""))
-        return json.dumps({"success": True, "message": "Viaje cancelado."})
+        ctx = session.setdefault("context", {}) if session is not None else {}
+        ride_id = args.get("ride_id") or (ctx.get("active_ride") or {}).get("ride_id", "")
+        if ride_id and client.cancel_ride(ride_id):
+            ctx.pop("active_ride", None)
+            return json.dumps({"success": True, "message": "Viaje cancelado."})
+        ctx.pop("active_ride", None)
+        return json.dumps({"error": "No hay un viaje activo que cancelar (ya terminó o no existe)."})
 
     return json.dumps({"error": f"Herramienta desconocida: {name}"})

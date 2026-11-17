@@ -146,8 +146,9 @@ class LLMCascade:
         aunque Gemini sí participa en la cascada real)."""
         return bool(self._client or self._fallback)
 
-    def create(self, messages: list, tools: list | None = None, **kwargs):
-        """Intenta Cerebras primero; ante cualquier error cae al siguiente proveedor disponible."""
+    def create(self, messages: list, tools: list | None = None, skip: set | frozenset = frozenset(), **kwargs):
+        """Intenta Cerebras primero; ante cualquier error cae al siguiente proveedor disponible.
+        `skip`: proveedores a no usar (p. ej. el que acaba de responder texto descompuesto)."""
         providers = []
         if self._fallback:
             providers.append((self._fallback, "gpt-oss-120b",            "Cerebras"))
@@ -156,6 +157,7 @@ class LLMCascade:
             providers.append((self._client,   GROQ_MODEL_FAST,           "Groq-fast"))
         if self._gemini:
             providers.append((self._gemini,   GEMINI_MODEL,              "Gemini"))
+        providers = [p for p in providers if p[2] not in skip]
 
         last_exc = RuntimeError("Sin proveedores LLM configurados")
         for i, (client, model, name) in enumerate(providers):

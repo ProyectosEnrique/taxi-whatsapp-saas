@@ -97,15 +97,18 @@ def create_ride(
     return None
 
 
-def cancel_ride(ride_id: str):
+def cancel_ride(ride_id: str) -> bool:
+    """True solo si taxi-api de verdad lo canceló (no existe o ya terminó → False)."""
     try:
         with httpx.Client(timeout=4.0) as c:
-            c.post(
+            resp = c.post(
                 f"{API_BASE}/api/v1/whatsapp/rides/{ride_id}/cancel",
                 headers=_HEADERS,
             )
+            return resp.status_code == 200
     except Exception as e:
-        logger.debug(f"[TaxiAgent] cancel_ride: {e}")
+        logger.warning(f"[TaxiAgent] cancel_ride: {e}")
+    return False
 
 
 def get_ride(ride_id: str) -> Optional[dict]:

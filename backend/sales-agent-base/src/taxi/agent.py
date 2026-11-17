@@ -16,17 +16,50 @@ from . import llm_cascade, prompts, session as sess, taxi_client, tools
 logger = logging.getLogger(__name__)
 
 _GPS_RE = re.compile(r'^\[GPS:([-\d.]+),([-\d.]+)(?::(.+))?\]$')
+# "Cancelar" con un viaje activo no pasa por la IA (2026-11-16: la IA contestó "no se ha creado
+# ningún viaje" y el taxi siguió en camino)
+_CANCEL_RE = re.compile(
+    r"^\s*(cancel[ae]r?|canc[eé]lalo|cancelo|cancela(r)? (el |mi )?(viaje|taxi)|"
+    r"ya no (lo )?(quiero|necesito)( el taxi| el viaje)?)\W*$", re.I)
+_FINISHED = {"completed", "cancelled"}
+# Texto descompuesto del modelo: líneas de puros puntos, "Oops", signos sueltos, mensajes enormes
+_DOTS_LINE_RE = re.compile(r"^[\s.…?¿!*_-]*$")
+
+
+def _looks_broken(text: str) -> bool:
+    if len(text) > 1200 or re.search(r"\boops\b", text, re.I):
+        return True
+    lines = [l for l in text.splitlines() if l.strip()]
+    junk = sum(1 for l in lines if _DOTS_LINE_RE.match(l))
+    return junk >= 3
 
 
 def _ride_confirmation_text(session: dict) -> str:
-    """Mensaje a devolver cuando crear_viaje ya tuvo éxito en una ronda anterior
-    pero una ronda posterior falla — el viaje es real e irreversible, así que el
-    cliente debe recibir la confirmación real, nunca un error genérico que lo
-    lleve a pensar que necesita solicitar el taxi de nuevo (doble viaje real)."""
-    data       = session.get("_ride_data") or {}
-    ride_id    = data.get("ride_id", "—")
-    return (f"¡Listo! Tu viaje *{ride_id}* ya está confirmado. 🚕\n"
-            f"Te aviso en cuanto un conductor lo acepte.")
+    """Confirmación del viaje creado. La arma el código, no la IA: el viaje es real
+    e irreversible y el cliente debe recibir siempre un mensaje claro (un error o un
+    texto descompuesto lo llevaría a pedir el taxi otra vez)."""
+    ride = (session.get("context") or {}).get("active_ride") or {}
+    lines = ["✅ *¡Viaje solicitado!*", ""]
+    if ride.get("dest"):
+        lines.append(f"🔴 Destino: *{ride['dest']}*")
+    if ride.get("fare"):
+        lines.append(f"💰 Tarifa aproximada: *${float(ride['fare']):.0f} MXN*")
+    lines += ["", "🔍 Buscando conductor disponible...",
+              "Te avisaremos cuando un conductor acepte tu viaje.", "",
+              "_Escribe *cancelar* si cambias de opinión._"]
+    return "\n".join(lines)
+
+
+def _active_ride(ctx: dict) -> Optional[dict]:
+    """Viaje que el bot recuerda, si sigue vivo en taxi-api (si ya terminó, lo olvida)."""
+    ride = ctx.get("active_ride")
+    if not ride:
+        return None
+    data = taxi_client.get_ride(ride["ride_id"]) or {}
+    if not data.get("status") or data["status"] in _FINISHED:
+        ctx.pop("active_ride", None)
+        return None
+    return ride
 
 
 class AgentResult:
@@ -78,6 +111,22 @@ class TaxiAgent:
 
         history.append({"role": "user", "content": message})
 
+        ride = _active_ride(ctx)
+        if ride and _CANCEL_RE.match(message):
+            result = json.loads(tools.run_tool("cancelar_viaje", {"ride_id": ride["ride_id"]}, phone, session))
+            logger.info(f"[TaxiAgent] cancelar directo {ride['ride_id']} → {result} [{phone}]")
+            reply = ("❌ Listo, cancelé tu viaje. Si necesitas otro taxi, aquí estoy 🚕" if result.get("success")
+                     else "Tu viaje ya había terminado. ¿Necesitas otro taxi? 🚕")
+            history.append({"role": "assistant", "content": reply})
+            session["history"] = history
+            sess.save(phone, session)
+            return AgentResult(reply)
+
+        system_prompt = prompts.SYSTEM_PROMPT
+        if ride:
+            system_prompt += (f"\n\nVIAJE ACTIVO DE ESTE CLIENTE: {ride['ride_id']} (destino: {ride.get('dest', '')}). "
+                              f"Úsalo en cancelar_viaje y ver_estado_viaje.")
+
         if not self._cascade.has_primary_provider:
             err = "Servicio temporalmente no disponible. Por favor intenta de nuevo."
             history.append({"role": "assistant", "content": err})
@@ -85,7 +134,8 @@ class TaxiAgent:
             sess.save(phone, session)
             return AgentResult(err)
 
-        messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}] + history
+        messages = [{"role": "system", "content": system_prompt}] + history
+        skipped: set = set()   # proveedores que respondieron texto descompuesto
 
         # Bucle de tool calling (máximo 4 rondas)
         for round_num in range(4):
@@ -93,6 +143,7 @@ class TaxiAgent:
                 resp, provider = self._cascade.create(
                     messages,
                     tools=tools.TOOLS,
+                    skip=skipped,
                     max_tokens=600,
                     temperature=0.3,
                 )
@@ -137,7 +188,7 @@ class TaxiAgent:
                     # Historial corrupto — limpiar y reintentar con solo el mensaje actual
                     logger.warning(f"[TaxiAgent] Historial corrupto, limpiando sesión [{phone}]")
                     history = []
-                    messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": message}]
+                    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": message}]
                     session["history"] = []
                     sess.save(phone, session)
                     try:
@@ -216,6 +267,17 @@ class TaxiAgent:
                     })
                     messages.append({"role": "tool", "tool_call_id": tc_id, "name": func_name, "content": result_str})
                     continue  # siguiente ronda para respuesta final limpia
+
+                if session.get("_ride_sent"):
+                    # Viaje creado: la confirmación la arma el código (nunca texto descompuesto)
+                    final_text = _ride_confirmation_text(session)
+                elif _looks_broken(final_text):
+                    logger.warning(f"[TaxiAgent] {provider} respondió texto descompuesto "
+                                   f"({len(final_text)} chars), se pide a otro proveedor [{phone}]")
+                    skipped.add(provider)
+                    if round_num < 3:
+                        continue
+                    final_text = "Perdón, se me trabó el mensaje 🙏 ¿Me lo repites?"
 
                 history.append({"role": "assistant", "content": final_text})
                 session["history"] = history

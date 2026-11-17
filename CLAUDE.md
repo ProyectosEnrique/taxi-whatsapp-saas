@@ -62,6 +62,14 @@ Plataforma SaaS de taxi con atención por WhatsApp:
   - Cerebras model: `gpt-oss-120b` — Cerebras retiró todos los modelos Llama (2026-06-28). Únicos disponibles: `gpt-oss-120b`, `zai-glm-4.7`
   - OpenRouter: `max_retries=0`, `timeout=20s` — evita esperar 60s cuando rate-limited y superar el timeout del gateway
   - `LLMCascade.has_primary_provider` (solo Groq+Cerebras) vs `has_any_provider` (los 4) — el guard de "servicio no disponible" en `agent.py` usa el primero a propósito, así se preservó el comportamiento original
+- **Viaje activo y cancelar (2026-11-16):** la historia solo guarda textos (no resultados de herramientas): el ride_id
+  vivía en el enlace de "Viaje solicitado" y al quitarlo el bot dejó de poder cancelar (dijo "no se ha creado ningún
+  viaje" y el taxi siguió). Ahora `crear_viaje` guarda `context.active_ride` {ride_id, dest, fare}; `agent._active_ride`
+  lo confirma con taxi-api en cada mensaje (terminado → se olvida) y lo agrega al system prompt. "cancelar" con viaje
+  activo (`_CANCEL_RE`) se cancela directo sin IA. `cancelar_viaje`/`taxi_client.cancel_ride` revisan el resultado real.
+- **Texto descompuesto:** Cerebras a veces responde "..."/"Oops" cientos de veces. `_looks_broken` lo detecta y se repite
+  la ronda con el siguiente proveedor (`LLMCascade.create(skip=…)`). "¡Viaje solicitado!" lo arma el código
+  (`_ride_confirmation_text`), nunca la IA.
 - **Recovery:** patrón `_FAILED_GEN_RE` para tool calls XML fallidos de Groq; reset de historial cuando Groq retorna 400 ("tool call validation failed")
 
 ## 5. Variables de entorno críticas (`.env`)
