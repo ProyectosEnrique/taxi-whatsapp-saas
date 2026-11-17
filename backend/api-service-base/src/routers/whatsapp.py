@@ -5,6 +5,7 @@ Protegidos con X-Taxi-Internal-Key.
 import logging
 import math
 import re
+import unicodedata
 import uuid
 
 import httpx
@@ -316,9 +317,14 @@ _STOP_WORDS = {"de", "del", "la", "el", "los", "las", "en", "y", "a",
                "con", "por", "para", "al", "calle", "avenida", "av", "c",
                "col", "colonia", "fracc", "fraccionamiento", "numero", "num"}
 
+def _plain(text: str) -> str:
+    """Minúsculas y sin acentos: en WhatsApp casi nadie escribe "Tecnológico" con acento."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
+
+
 def _query_words(q: str) -> set:
     """Extrae palabras significativas del query (>2 chars, sin stopwords, sin números puros)."""
-    tokens = re.sub(r"[^\w\s]", " ", q.lower()).split()
+    tokens = re.sub(r"[^\w\s]", " ", _plain(q)).split()
     return {t for t in tokens if len(t) > 2 and t not in _STOP_WORDS and not t.isdigit()}
 
 def _result_matches_query(result: dict, query: str) -> bool:
@@ -331,7 +337,7 @@ def _result_matches_query(result: dict, query: str) -> bool:
     if not q_words:
         return True  # query muy corto — aceptar
     # Usar solo name+short_address; el address completo incluye ciudad/pais que daria falsos positivos
-    local_text = (result.get("name", "") + " " + result.get("short_address", "")).lower()
+    local_text = _plain(result.get("name", "") + " " + result.get("short_address", ""))
     matches = sum(1 for w in q_words if w in local_text)
     # Al menos 1 palabra significativa debe coincidir
     return matches > 0

@@ -200,3 +200,11 @@ def test_addresses_are_never_dropped_for_having_no_reviews(client, google):
     ]
     names = [r["name"] for r in _search(client, "Hidalgo", near=SALVATIERRA)]
     assert "Hidalgo 23" in names
+
+
+def test_street_typed_without_accent_is_found(client, google):
+    # Caso real (2026-11-16): Google encontró "Av Tecnológico 145" y el filtro lo tiraba por el acento
+    _, data = google
+    data["places"] = [_place("Av Tecnológico 145", 20.5410, -100.8160, ["street_address"], "10 de Abril")]
+    res = _search(client, "Av. Tecnologico 145 Celaya")
+    assert [r["name"] for r in res] == ["Av Tecnológico 145"]
