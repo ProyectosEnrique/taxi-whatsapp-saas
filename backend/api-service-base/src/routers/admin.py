@@ -4,6 +4,7 @@ Requiere header x-admin-key con el valor de ADMIN_PASSWORD.
 Rutas: /api/v1/admin/*
 """
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -195,6 +196,24 @@ def create_driver(payload: dict, db: Session = Depends(get_db)):
     return {"success": True, "driver": _driver_to_dict(driver)}
 
 
+def _change_driver_phone(db: Session, driver: Driver, new_phone: str) -> None:
+    """El celular es la identificación del chofer: sus viajes y alertas se pasan al
+    número nuevo para no perder el historial. Su Telegram sigue ligado (va por chat_id)."""
+    if not re.fullmatch(r"\+\d{10,15}", new_phone):
+        raise HTTPException(400, "El celular debe ir con lada: +52 y 10 dígitos")
+    if db.query(Driver).filter(Driver.phone == new_phone).first():
+        raise HTTPException(409, "Ese celular ya es de otro chofer")
+    old = driver.phone
+    db.query(Trip).filter(Trip.driver_phone == old).update(
+        {Trip.driver_phone: new_phone}, synchronize_session=False)
+    db.query(Trip).filter(Trip.preferred_driver_phone == old).update(
+        {Trip.preferred_driver_phone: new_phone}, synchronize_session=False)
+    db.query(Incident).filter(Incident.reporter_phone == old).update(
+        {Incident.reporter_phone: new_phone}, synchronize_session=False)
+    driver.phone = new_phone
+    logger.info(f"[Admin] {driver.name} cambió de celular ••••{old[-4:]} → ••••{new_phone[-4:]}")
+
+
 @router.put("/drivers/{phone}")
 def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.phone == phone).first()
@@ -206,6 +225,9 @@ def update_driver(phone: str, payload: dict, db: Session = Depends(get_db)):
             setattr(driver, field, payload[field])
     if "taxi_number" in payload:
         driver.taxi_number = (str(payload["taxi_number"] or "")).strip() or None
+    new_phone = re.sub(r"[\s-]", "", str(payload.get("phone") or ""))
+    if new_phone and new_phone != driver.phone:
+        _change_driver_phone(db, driver, new_phone)
     if "is_active" in payload:
         driver.is_active = payload["is_active"]
     if "password" in payload and payload["password"]:

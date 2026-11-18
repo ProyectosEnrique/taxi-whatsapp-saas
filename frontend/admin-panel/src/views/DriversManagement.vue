@@ -174,7 +174,10 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono *</label>
-              <input v-model="form.phone" required :disabled="!!editingDriver" class="input disabled:bg-gray-100" placeholder="+5215511111111" />
+              <input v-model="form.phone" required class="input" placeholder="+524611234567" />
+              <p v-if="editingDriver && form.phone !== editingDriver.phone" class="text-xs text-amber-600 mt-1">
+                Sus viajes pasan al número nuevo y su Telegram sigue vinculado.
+              </p>
             </div>
           </div>
 
