@@ -435,7 +435,7 @@ QR solo servía para pagarle $3 al chofer por escaneo. Se quita: un solo diseño
 
 ## 31. Tarifa de la base de la Central de Celaya + lugares de su lista (2026-11-24)
 La base dio su lista de precios DÍA/NOCHE desde la Central de Autobuses a ~300 colonias, hoteles y clínicas
-(fotos → `Downloads\TaxiCerca Tarifas Celaya	arifas_central.csv`). Ajuste contra km por calle (OSRM):
+(fotos → `Downloads\TaxiCerca\6 Tarifas Celaya\tarifas_central.csv`). Ajuste contra km por calle (OSRM):
 **día = $30 + $9.50/km, mínima $70, redondeo a $5** (76% a ±$10 de la lista); **noche = día + $10** (suma fija).
 - `fare_config`: `base_fare=30`, `per_km_rate=9.5`, `minimum_fare=70` (puestos por SQL en prod) y columnas nuevas
   `night_surcharge` (10), `night_start_hour` (22), `night_end_hour` (6) — hora de México; inicio > fin cruza la
