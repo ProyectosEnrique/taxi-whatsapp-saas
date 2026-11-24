@@ -97,7 +97,7 @@
               </div>
               <div class="border-t border-gray-300 my-2"></div>
               <div class="flex justify-between font-semibold">
-                <span>Ejemplo (10km, 20min):</span>
+                <span>Ejemplo de día (10 km):</span>
                 <span>${{ calculateExample() }}</span>
               </div>
             </div>
@@ -179,6 +179,35 @@
                   class="input pl-8"
                   @input="markAsChanged"
                 />
+              </div>
+            </div>
+
+            <!-- Noche (suma fija) -->
+            <div class="border-t pt-6">
+              <h3 class="text-base font-semibold text-gray-900 mb-1">Tarifa de noche</h3>
+              <p class="text-sm text-gray-500 mb-4">
+                Se suma al precio de día (lista de la Central: noche = día + $10). Hora de México;
+                si la hora de inicio es mayor que la de fin, cruza la medianoche (22 → 6).
+              </p>
+              <div class="grid grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Se suma</label>
+                  <div class="relative">
+                    <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                    <input v-model.number="config.night.surcharge" type="number" step="5" min="0"
+                           class="input pl-8" @input="markAsChanged" />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Desde (hora)</label>
+                  <input v-model.number="config.night.start_hour" type="number" min="0" max="23"
+                         class="input" @input="markAsChanged" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Hasta (hora)</label>
+                  <input v-model.number="config.night.end_hour" type="number" min="0" max="23"
+                         class="input" @input="markAsChanged" />
+                </div>
               </div>
             </div>
           </div>
@@ -422,6 +451,11 @@ const config = reactive({
   per_km_rate: 8.0,
   per_minute_rate: 2.0,
   minimum_fare: 70.0,
+  night: {
+    surcharge: 10,
+    start_hour: 22,
+    end_hour: 6,
+  },
   surge_pricing: {
     enabled: false,
     peak_hours_multiplier: 1.3,
@@ -445,6 +479,7 @@ function applyConfig(data) {
   config.per_km_rate      = data.per_km_rate
   config.per_minute_rate  = data.per_minute_rate
   config.minimum_fare     = data.minimum_fare
+  Object.assign(config.night,           data.night           || {})
   Object.assign(config.surge_pricing,   data.surge_pricing   || {})
   Object.assign(config.special_charges, data.special_charges || {})
   Object.assign(config.discounts,       data.discounts       || {})
@@ -460,7 +495,9 @@ function markAsChanged() {
 }
 
 function calculateExample() {
-  const fare = config.base_fare + 10 * config.per_km_rate + 20 * config.per_minute_rate
+  // Igual que el servidor: banderazo + km, redondeado a $5, sin bajar de la mínima
+  // (el "por minuto" no se cobra)
+  const fare = 5 * Math.round((config.base_fare + 10 * config.per_km_rate) / 5)
   return Math.max(fare, config.minimum_fare).toFixed(2)
 }
 

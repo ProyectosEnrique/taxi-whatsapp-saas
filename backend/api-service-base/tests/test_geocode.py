@@ -71,8 +71,11 @@ def google(monkeypatch):
 
 @pytest.fixture
 def client():
+    from conftest import _override_get_db
+    from src.database import get_db
     app = FastAPI()
     app.include_router(whatsapp.router)
+    app.dependency_overrides[get_db] = _override_get_db
     return TestClient(app)
 
 

@@ -20,6 +20,7 @@ def _cfg_to_snapshot(cfg: FareConfig) -> dict:
         "surge_enabled", "surge_peak_multiplier", "surge_night_multiplier", "surge_weekend_multiplier",
         "charge_airport_pickup", "charge_airport_dropoff", "charge_extra_passenger",
         "charge_luggage", "discount_frequent_rider", "discount_corporate", "updated_at",
+        "night_surcharge", "night_start_hour", "night_end_hour",
     ]}
 
 
@@ -104,8 +105,28 @@ def route_km_min(olat: float, olng: float, dlat: float, dlng: float) -> tuple[fl
     return km, minutes
 
 
+def _mexico_now() -> datetime:
+    # Hora de México (UTC-6, sin horario de verano desde 2022)
+    return datetime.now(timezone.utc) - timedelta(hours=6)
+
+
+def is_night(cfg) -> bool:
+    """¿Corre la tarifa de noche? Horas de México; inicio > fin cruza la medianoche (22 → 6)."""
+    start = getattr(cfg, "night_start_hour", None)
+    end = getattr(cfg, "night_end_hour", None)
+    if start is None or end is None or start == end:
+        return False
+    hour = _mexico_now().hour
+    return (start <= hour < end) if start < end else (hour >= start or hour < end)
+
+
+def night_surcharge(cfg) -> float:
+    return float(getattr(cfg, "night_surcharge", 0) or 0) if is_night(cfg) else 0.0
+
+
 def calculate_fare(cfg: FareConfig, distance_km: float) -> float:
-    """Tarifa base + por km, aplicando surge si corresponde."""
+    """Banderazo + por km (redondeado a $5, sin bajar de la mínima) + suma fija de noche.
+    El surge (multiplicador) sigue existiendo pero está apagado en la base de Celaya."""
     base      = float(cfg.base_fare)
     per_km    = float(cfg.per_km_rate)
     minimum   = float(cfg.minimum_fare)
@@ -118,7 +139,64 @@ def calculate_fare(cfg: FareConfig, distance_km: float) -> float:
 
     # En taxi se cobra en pesos redondos: al múltiplo de $5 más cercano (77.92 → 80),
     # sin bajar de la mínima
-    return float(max(_round_to_5(raw), minimum))
+    return float(max(_round_to_5(raw), minimum) + night_surcharge(cfg))
+
+
+# ── Lista de precios de la Central (2026-11-24) ──────────────────────────────
+# La base de la Central de Autobuses de Celaya tiene lista DÍA/NOCHE por colonia, hotel o
+# clínica (`local_pois.central_price_*`). Si el viaje sale de la Central o llega a ella y el
+# otro punto es un lugar de la lista, se cobra la lista; si no, la fórmula.
+CENTRAL_RADIUS_M = 400      # "estoy en la Central": el GPS dentro del andén/estacionamiento
+EXACT_PLACE_M = 150         # el destino es ese lugar (se eligió por nombre)
+COLONIA_RADIUS_M = 500      # calle dentro de una colonia de la lista: la colonia más cercana
+
+
+def _meters(lat1, lng1, lat2, lng2) -> float:
+    return _straight_km(float(lat1), float(lng1), float(lat2), float(lng2)) * 1000
+
+
+def central_list_price(db: Session, cfg, olat, olng, dlat, dlng) -> float | None:
+    """Precio de la lista si el viaje es Central ↔ lugar de la lista; None si no aplica."""
+    from .models import LocalPOI
+    if not (olat and olng and dlat and dlng):
+        return None
+    try:
+        pois = db.query(LocalPOI).filter(LocalPOI.is_active == True).filter(  # noqa: E712
+            (LocalPOI.kind == "central") | (LocalPOI.central_price_day.isnot(None))).all()
+    except Exception:
+        return None
+    centrals = [p for p in pois if p.kind == "central"]
+    if not centrals:
+        return None
+
+    def at_central(lat, lng):
+        return any(_meters(lat, lng, c.lat, c.lng) <= CENTRAL_RADIUS_M for c in centrals)
+
+    if at_central(olat, olng):
+        lat, lng = dlat, dlng
+    elif at_central(dlat, dlng):
+        lat, lng = olat, olng
+    else:
+        return None
+    if at_central(lat, lng):
+        return None
+    priced = [(p, _meters(lat, lng, p.lat, p.lng)) for p in pois if p.central_price_day is not None]
+    exact = [x for x in priced if x[1] <= EXACT_PLACE_M]
+    near = exact or [x for x in priced if x[0].kind == "colonia" and x[1] <= COLONIA_RADIUS_M]
+    if not near:
+        return None
+    poi = min(near, key=lambda x: x[1])[0]
+    if is_night(cfg) and poi.central_price_night is not None:
+        return float(poi.central_price_night)
+    if is_night(cfg):
+        return float(poi.central_price_day) + float(getattr(cfg, "night_surcharge", 0) or 0)
+    return float(poi.central_price_day)
+
+
+def trip_fare(db: Session, cfg, olat, olng, dlat, dlng, distance_km: float) -> float:
+    """Tarifa de un viaje: lista de la Central si aplica, si no la fórmula."""
+    listed = central_list_price(db, cfg, olat, olng, dlat, dlng)
+    return listed if listed is not None else calculate_fare(cfg, distance_km)
 
 
 def _round_to_5(amount: float) -> int:
@@ -128,7 +206,7 @@ def _round_to_5(amount: float) -> int:
 def _surge_multiplier(cfg: FareConfig) -> float:
     # Hora de México (UTC-6, sin horario de verano desde 2022). Antes usaba UTC:
     # la "madrugada" empezaba a las 5 pm.
-    now  = datetime.now(timezone.utc) - timedelta(hours=6)
+    now  = _mexico_now()
     hour = now.hour
     dow  = now.weekday()  # 0=lunes … 6=domingo
 
@@ -153,6 +231,11 @@ def fare_config_to_dict(cfg: FareConfig) -> dict:
         "per_km_rate":     float(cfg.per_km_rate),
         "per_minute_rate": float(cfg.per_minute_rate),
         "minimum_fare":    float(cfg.minimum_fare),
+        "night": {
+            "surcharge":  float(getattr(cfg, "night_surcharge", 0) or 0),
+            "start_hour": getattr(cfg, "night_start_hour", None),
+            "end_hour":   getattr(cfg, "night_end_hour", None),
+        },
         "surge_pricing": {
             "enabled":               cfg.surge_enabled,
             "peak_hours_multiplier": float(cfg.surge_peak_multiplier),

@@ -40,6 +40,8 @@
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lugar</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dirección / Referencia</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lista Central (día / noche)</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coordenadas</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agregado por</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
@@ -54,6 +56,11 @@
               </div>
             </td>
             <td class="px-6 py-4 text-sm text-gray-500">{{ poi.address || '—' }}</td>
+            <td class="px-6 py-4 text-sm text-gray-500">{{ poi.kind || 'lugar' }}</td>
+            <td class="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
+              <span v-if="poi.central_price_day != null">${{ poi.central_price_day }} / ${{ poi.central_price_night ?? poi.central_price_day }}</span>
+              <span v-else class="text-gray-300">—</span>
+            </td>
             <td class="px-6 py-4 text-xs text-gray-400 font-mono">
               {{ Number(poi.lat).toFixed(5) }}, {{ Number(poi.lng).toFixed(5) }}
             </td>

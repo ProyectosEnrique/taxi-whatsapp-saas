@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Customer, Driver, Trip, TripRating, TripStatus, PromoCode
 from ..auth import hash_password, verify_password, create_token, get_current_customer
-from ..fare_service import get_fare_config, calculate_fare, route_km_min
+from ..fare_service import get_fare_config, trip_fare, route_km_min
 from ..config import settings
 from ..services import trip_chat
 from ..services.farmacerca_gift import gift_for
@@ -315,7 +315,8 @@ def estimate_fare(payload: dict, current: Customer = Depends(get_current_custome
     except Exception:
         dist, mins = 3.0, 8
     cfg   = get_fare_config(db)
-    fare  = calculate_fare(cfg, dist)
+    fare  = trip_fare(db, cfg, float(origin.get("lat") or 0), _lng(origin),
+                      float(destination.get("lat") or 0), _lng(destination), dist)
     return {"estimate": {"fare": fare, "distance_km": round(dist, 2), "duration_minutes": mins, "currency": "MXN"}}
 
 
@@ -331,7 +332,8 @@ async def request_ride(payload: dict, current: Customer = Depends(get_current_cu
     except Exception:
         dist = 3.0
     cfg  = get_fare_config(db)
-    fare = calculate_fare(cfg, dist)
+    fare = trip_fare(db, cfg, float(origin.get("lat") or 0), float(_lng(origin) or 0),
+                     float(destination.get("lat") or 0), float(_lng(destination) or 0), dist)
     fare, promo_used = _apply_promo(payload.get("promo_code"), fare, db)
 
     trip = Trip(
@@ -440,7 +442,8 @@ def schedule_ride(payload: dict, current: Customer = Depends(get_current_custome
     except Exception:
         dist = 3.0
     cfg  = get_fare_config(db)
-    fare = calculate_fare(cfg, dist)
+    fare = trip_fare(db, cfg, float(origin.get("lat") or 0), float(_lng(origin) or 0),
+                     float(destination.get("lat") or 0), float(_lng(destination) or 0), dist)
 
     # Pre-asignar al conductor preferido del cliente
     preferred = None

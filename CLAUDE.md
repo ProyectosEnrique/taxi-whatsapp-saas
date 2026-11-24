@@ -316,8 +316,7 @@ responde 403 se sigue solo con Geocoding) → Google Geocoding (calle y número)
   (b) Places pide `userRatingCount`: si algún lugar tiene ≥ `PLACES_TRUSTED_REVIEWS` (20) reseñas, se quitan los de 0
   (los domicilios — `_ADDRESS_TYPES` — nunca se quitan). Ojo costo: `userRatingCount` sube la búsqueda al SKU
   "Text Search Enterprise" de Google (menos búsquedas gratis al mes que Pro).
-- La sección "Lugares locales" del panel (`local_pois`) NO se consulta en este endpoint (solo en la búsqueda web,
-  apagada). Pendiente conectarla (decisión del dueño: después).
+- (2026-11-24) Los "Lugares locales" del panel (`local_pois`) SÍ se consultan, antes que Google (ver §31).
 
 ## 21. Arranque solo con viajes al momento (2026-11-09)
 Decisión del dueño para las primeras pruebas reales: **sin viajes programados**. `SCHEDULED_RIDES_ENABLED=False`
@@ -433,3 +432,27 @@ QR solo servía para pagarle $3 al chofer por escaneo. Se quita: un solo diseño
   (script `alta_taxichofer.py`); `FARMACERCA_DRIVER_TRIP_AMOUNT` solo es para el texto de bienvenida.
   En FarmaCerca esos aliados tienen vigencia de 90 días y se usan completos (sin "hasta la mitad"), ver farmacia CLAUDE.md §37.
 - Tests: `tests/test_taxi_qr.py` (7), `tests/test_farmacerca_driver_gift.py` (6), `tests/test_farmacerca_gift.py`.
+
+## 31. Tarifa de la base de la Central de Celaya + lugares de su lista (2026-11-24)
+La base dio su lista de precios DÍA/NOCHE desde la Central de Autobuses a ~300 colonias, hoteles y clínicas
+(fotos → `Downloads\TaxiCerca Tarifas Celaya	arifas_central.csv`). Ajuste contra km por calle (OSRM):
+**día = $30 + $9.50/km, mínima $70, redondeo a $5** (76% a ±$10 de la lista); **noche = día + $10** (suma fija).
+- `fare_config`: `base_fare=30`, `per_km_rate=9.5`, `minimum_fare=70` (puestos por SQL en prod) y columnas nuevas
+  `night_surcharge` (10), `night_start_hour` (22), `night_end_hour` (6) — hora de México; inicio > fin cruza la
+  medianoche. Panel → Tarifas → "Tarifa de noche". Sin horario (o inicio = fin) no se suma nada. El surge sigue igual
+  (apagado); si se prende de noche se sumarían los dos.
+- `fare_service.trip_fare` (lo usan `whatsapp` estimate/create y `customer_rides`): si un extremo está a ≤ 400 m del
+  lugar `kind='central'` y el otro es un lugar con `central_price_day` (a ≤ 150 m de cualquier lugar, o a ≤ 500 m de
+  una colonia: la más cercana) → **precio de la lista** (de noche `central_price_night`); si no, la fórmula.
+- `local_pois` columnas nuevas `kind` (colonia | hotel | clinica | lugar | central), `central_price_day/night`.
+  Cargados 263 lugares + la Central con `added_by='lista-central'` (SQL re-ejecutable: borra y vuelve a meter esos).
+  39 de la lista no se cargaron (Google los ubicó mal o juntos): los tienen que ubicar choferes/panel.
+- **Búsqueda del bot** (`whatsapp._local_poi_results`, antes de Places): nombre igual (sin acentos, sin
+  "colonia/fracc/hotel/de/la…") o nombre de 2+ palabras dentro de la frase ("me llevas al hotel Soleil") si la frase no
+  trae números (con número es una dirección → Google). Solo lugares a ≤ 15 km del pasajero (o del centro de
+  operación): "Centro" pedido desde Salvatierra no es el de Celaya. Colonia → `aproximado` (el bot pide calle una vez);
+  hotel/clínica/lugar → exacto.
+- `POST/DELETE /api/v1/locations/pois` ahora piden `x-admin-key` (antes cualquiera podía agregar o borrar lugares);
+  el panel la manda sola. `GET /pois` devuelve hasta 1000 (antes 50).
+- Tests: `tests/test_tarifas_celaya.py`.
+

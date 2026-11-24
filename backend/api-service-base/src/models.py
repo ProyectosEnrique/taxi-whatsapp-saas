@@ -275,6 +275,12 @@ class FareConfig(Base):
     surge_night_multiplier = Column(Numeric(4, 2), default=1.5)  # 11pm-5am
     surge_weekend_multiplier = Column(Numeric(4, 2), default=1.2)
 
+    # Tarifa de noche de la base (2026-11-24): suma fija, no multiplicador. Lista de la Central de
+    # Celaya: noche = día + $10. Horas de México; inicio > fin = cruza la medianoche (22 → 6).
+    night_surcharge  = Column(Numeric(10, 2), default=10.0)
+    night_start_hour = Column(Integer, default=22)
+    night_end_hour   = Column(Integer, default=6)
+
     # Recargos especiales
     charge_airport_pickup  = Column(Numeric(10, 2), default=30.0)
     charge_airport_dropoff = Column(Numeric(10, 2), default=30.0)
@@ -334,7 +340,13 @@ class LocalPOI(Base):
     address    = Column(String(500))
     lat        = Column(Numeric(10, 7), nullable=False)
     lng        = Column(Numeric(10, 7), nullable=False)
-    added_by   = Column(String(50), default="admin")               # "driver" | "admin"
+    added_by   = Column(String(50), default="admin")               # "driver" | "admin" | "lista-central"
+    # Tipo: colonia | hotel | clinica | lugar | central. Las colonias son un punto aproximado
+    # (el bot pide calle y número); los demás son el lugar exacto.
+    kind       = Column(String(20), default="lugar")
+    # Precio de la lista de la base desde/hacia la Central de Autobuses (vacío = se usa la fórmula)
+    central_price_day   = Column(Numeric(10, 2))
+    central_price_night = Column(Numeric(10, 2))
     is_active  = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

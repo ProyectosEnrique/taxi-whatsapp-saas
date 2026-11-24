@@ -13,9 +13,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Customer, Driver, Trip, TripStatus
+from ..models import Customer, Driver, LocalPOI, Trip, TripStatus
 from ..auth import hash_password
-from ..fare_service import get_fare_config, calculate_fare, route_km_min
+from ..fare_service import get_fare_config, trip_fare, route_km_min
 from ..config import settings
 from ..services import trip_chat
 
@@ -361,11 +361,76 @@ def _keep(results: list, query: str, ref_lat, ref_lng) -> list:
     return unique
 
 
+# ── Lugares locales (panel → "Lugares locales", lista de la Central) (2026-11-24) ──
+# Antes solo los usaba la búsqueda web (apagada). Ahora van primero: "Villas del Bajío",
+# "Hotel Soleil" o "Clínica La Luz" salen del lugar que la base reconoce (y la tarifa de la
+# lista de la Central aplica), sin depender de cómo Google tenga dado de alta el lugar.
+_POI_IGNORE = {"de", "del", "la", "el", "los", "las", "y", "colonia", "col", "fracc",
+               "fraccionamiento", "hotel", "celaya", "gto"}
+POI_MAX_KM = 15.0           # el lugar debe estar cerca del pasajero (o del centro de operación)
+
+
+_POI_ARTICLES = {"de", "del", "la", "el", "los", "las", "y", "celaya", "gto"}
+
+
+def _poi_key(text: str, ignore: set = _POI_IGNORE) -> tuple:
+    return tuple(w for w in re.sub(r"[^\w\s]", " ", _plain(text)).split() if w not in ignore)
+
+
+def _contains(seq: tuple, sub: tuple) -> bool:
+    return any(seq[i:i + len(sub)] == sub for i in range(len(seq) - len(sub) + 1))
+
+
+def _local_poi_results(db: Session, query: str, ref_lat, ref_lng) -> list:
+    """Lugar local que corresponde a lo que escribió el cliente: el nombre igual, o el nombre
+    (de 2+ palabras) dentro del texto si no trae números (con número es una dirección)."""
+    qk = _poi_key(query)
+    qfull = _poi_key(query, _POI_ARTICLES)     # conserva "hotel", "colonia": "al hotel soleil"
+    if not qk:
+        return []
+    has_digits = any(ch.isdigit() for ch in query)
+    try:
+        pois = db.query(LocalPOI).filter(LocalPOI.is_active == True).all()  # noqa: E712
+    except Exception as e:
+        logger.warning(f"[Geocode] Lugares locales no disponibles: {e}")
+        return []
+    best, best_score = [], (0, 0)
+    for p in pois:
+        pk, pfull = _poi_key(p.name), _poi_key(p.name, _POI_ARTICLES)
+        if not pk:
+            continue
+        if pk == qk:
+            score = (2, len(pk))
+        elif not has_digits and len(pk) >= 2 and _contains(qk, pk):
+            score = (1, len(pk))
+        elif not has_digits and len(pfull) >= 2 and _contains(qfull, pfull):
+            score = (1, len(pk))
+        else:
+            continue
+        if ref_lat and ref_lng and _haversine_km(ref_lat, ref_lng, float(p.lat), float(p.lng)) > POI_MAX_KM:
+            continue
+        if score > best_score:
+            best, best_score = [p], score
+        elif score == best_score:
+            best.append(p)
+    out = []
+    for p in best:
+        address = p.address or p.name
+        parts = [x.strip() for x in address.split(",")]
+        colonia = p.name if p.kind == "colonia" else (parts[1] if len(parts) >= 3 else "")
+        ciudad = "Celaya" if "celaya" in _plain(address) else ""
+        # La colonia es un punto aproximado: el bot pide calle y número (o referencia) una vez
+        out.append(_result(p.name, address, float(p.lat), float(p.lng), colonia, ciudad,
+                           "zona" if p.kind == "colonia" else "exacto"))
+    return out
+
+
 @router.get("/geocode")
 async def geocode_address(
     q: str,
     lat: float | None = None,
     lon: float | None = None,
+    db: Session = Depends(get_db),
     _=Depends(_auth),
 ):
     q_google = _clean_query(q)     # Google: sin aliases, entiende lugares por nombre
@@ -378,6 +443,11 @@ async def geocode_address(
     if ref_lat and ref_lon:
         d = settings.CITY_BBOX_DEG or 0.3
         viewbox = f"{ref_lon - d},{ref_lat - d},{ref_lon + d},{ref_lat + d}"
+
+    local = _keep(_local_poi_results(db, q_google, ref_lat, ref_lon), q_google, lat, lon)
+    if local:
+        logger.info(f"[Geocode] Lugar local: '{q_google}' → {local[0]['name']}")
+        return {"results": local}
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -451,7 +521,7 @@ def estimate_fare(payload: dict, db: Session = Depends(get_db), _=Depends(_auth)
     dlat, dlng = float(dest.get("lat") or 0), float(dest.get("lng") or 0)
     distance_km, minutes = route_km_min(olat, olng, dlat, dlng)   # por calle, no línea recta
     cfg = get_fare_config(db)
-    fare = calculate_fare(cfg, distance_km)
+    fare = trip_fare(db, cfg, olat, olng, dlat, dlng, distance_km)   # lista de la Central o fórmula
     return {
         "fare": round(fare, 2),
         "distance_km": round(distance_km, 2),
@@ -479,7 +549,7 @@ async def create_ride(payload: dict, db: Session = Depends(get_db), _=Depends(_a
     dlng = float(dest.get("lng") or 0)
     distance_km, _ = route_km_min(olat, olng, dlat, dlng)   # mismo cálculo que la estimación
     cfg = get_fare_config(db)
-    fare = calculate_fare(cfg, distance_km)
+    fare = trip_fare(db, cfg, olat, olng, dlat, dlng, distance_km)   # lista de la Central o fórmula
 
     # Viaje programado si viene scheduled_at
     scheduled_at_raw = payload.get("scheduled_at")

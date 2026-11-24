@@ -312,6 +312,13 @@ async def lifespan(app: FastAPI):
         ("incidents", "group_id",                         "INTEGER"),
         ("incidents", "acknowledged_by",                  "VARCHAR(150)"),
         ("incidents", "acknowledged_at",                  "TIMESTAMP WITH TIME ZONE"),
+        # Tarifa de noche fija + lista de precios de la Central (2026-11-24)
+        ("fare_config", "night_surcharge",                "NUMERIC(10,2) DEFAULT 10"),
+        ("fare_config", "night_start_hour",               "INTEGER DEFAULT 22"),
+        ("fare_config", "night_end_hour",                 "INTEGER DEFAULT 6"),
+        ("local_pois",  "kind",                           "VARCHAR(20) DEFAULT 'lugar'"),
+        ("local_pois",  "central_price_day",              "NUMERIC(10,2)"),
+        ("local_pois",  "central_price_night",            "NUMERIC(10,2)"),
     ]
     # Tablas nuevas (incidents, fare_config) las crea create_all automáticamente
     # Sembrar fare_config fila única si no existe

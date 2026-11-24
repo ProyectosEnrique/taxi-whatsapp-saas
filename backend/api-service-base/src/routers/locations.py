@@ -21,6 +21,7 @@ from sqlalchemy import func
 from ..database import get_db
 from ..config import settings
 from ..models import Trip, TripStatus, LocalPOI
+from .admin import _admin_auth
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,9 @@ def _poi_fmt(poi: LocalPOI) -> dict:
         "lat":     float(poi.lat),
         "lng":     float(poi.lng),
         "source":  "local",
+        "kind":    poi.kind or "lugar",
+        "central_price_day":   float(poi.central_price_day) if poi.central_price_day is not None else None,
+        "central_price_night": float(poi.central_price_night) if poi.central_price_night is not None else None,
     }
 
 
@@ -284,6 +288,9 @@ class POICreate(BaseModel):
     lat:      float
     lng:      float
     added_by: str = "admin"
+    kind:     str = "lugar"
+    central_price_day:   float | None = None
+    central_price_night: float | None = None
 
 
 @router.get("/pois")
@@ -292,11 +299,11 @@ def list_pois(q: str | None = None, db: Session = Depends(get_db)):
     qs = db.query(LocalPOI).filter(LocalPOI.is_active == True)
     if q:
         qs = qs.filter(func.lower(LocalPOI.name).like(f"%{q.lower()}%"))
-    pois = qs.order_by(LocalPOI.name).limit(50).all()
+    pois = qs.order_by(LocalPOI.name).limit(1000).all()   # la lista de la Central trae ~300
     return {"pois": [_poi_fmt(p) | {"db_id": p.id, "added_by": p.added_by} for p in pois]}
 
 
-@router.post("/pois", status_code=201)
+@router.post("/pois", status_code=201, dependencies=[Depends(_admin_auth)])
 def create_poi(body: POICreate, db: Session = Depends(get_db)):
     """Agregar un lugar local (conductor o admin)."""
     poi = LocalPOI(
@@ -305,6 +312,9 @@ def create_poi(body: POICreate, db: Session = Depends(get_db)):
         lat=body.lat,
         lng=body.lng,
         added_by=body.added_by,
+        kind=body.kind,
+        central_price_day=body.central_price_day,
+        central_price_night=body.central_price_night,
     )
     db.add(poi)
     db.commit()
@@ -313,7 +323,7 @@ def create_poi(body: POICreate, db: Session = Depends(get_db)):
     return _poi_fmt(poi) | {"db_id": poi.id}
 
 
-@router.delete("/pois/{poi_id}", status_code=200)
+@router.delete("/pois/{poi_id}", status_code=200, dependencies=[Depends(_admin_auth)])
 def delete_poi(poi_id: int, db: Session = Depends(get_db)):
     """Desactivar un POI (soft delete)."""
     poi = db.query(LocalPOI).filter(LocalPOI.id == poi_id).first()

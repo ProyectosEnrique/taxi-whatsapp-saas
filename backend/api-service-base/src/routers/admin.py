@@ -288,6 +288,15 @@ def update_fares(payload: dict, db: Session = Depends(get_db)):
     if "per_minute_rate" in payload: cfg.per_minute_rate  = payload["per_minute_rate"]
     if "minimum_fare"    in payload: cfg.minimum_fare     = payload["minimum_fare"]
 
+    night = payload.get("night", {})
+    if "surcharge"  in night: cfg.night_surcharge  = night["surcharge"]
+    for key, attr in (("start_hour", "night_start_hour"), ("end_hour", "night_end_hour")):
+        if key in night:
+            hour = int(night[key])
+            if not 0 <= hour <= 23:
+                raise HTTPException(400, "La hora debe estar entre 0 y 23")
+            setattr(cfg, attr, hour)
+
     surge = payload.get("surge_pricing", {})
     if "enabled"               in surge: cfg.surge_enabled           = surge["enabled"]
     if "peak_hours_multiplier" in surge: cfg.surge_peak_multiplier   = surge["peak_hours_multiplier"]
