@@ -87,3 +87,13 @@ def test_edit_without_changing_phone_still_works(client, db_session):
     assert r.status_code == 200
     db_session.expire_all()
     assert db_session.query(Driver).one().name == "Pedro López"
+
+
+def test_alta_sin_contrasena_no_queda_1234(client, db_session):
+    from src.auth import verify_password
+    from src.models import Driver
+    r = client.post("/api/v1/admin/drivers", json={"name": "Chofer Nuevo", "phone": "+524610000002"},
+                    headers=H)
+    assert r.status_code == 200
+    d = db_session.query(Driver).filter(Driver.phone == "+524610000002").first()
+    assert not verify_password("1234", d.password_hash)

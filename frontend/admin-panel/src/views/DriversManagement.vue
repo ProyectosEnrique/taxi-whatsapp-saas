@@ -182,8 +182,8 @@
           </div>
 
           <div v-if="!editingDriver">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input v-model="form.password" type="password" class="input" placeholder="1234" />
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña (opcional)</label>
+            <input v-model="form.password" type="password" class="input" placeholder="Vacío = una al azar (el chofer trabaja por Telegram)" />
           </div>
           <div v-else>
             <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña (vacío = sin cambio)</label>
@@ -264,7 +264,7 @@ function statusClass(s) {
 function openAdd() {
   editingDriver.value = null
   formError.value = ''
-  form.value = { name: '', phone: '', password: '1234', taxi_number: '', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_year: null }
+  form.value = { name: '', phone: '', password: '', taxi_number: '', vehicle_brand: '', vehicle_model: '', vehicle_plates: '', vehicle_year: null }
   showModal.value = true
 }
 

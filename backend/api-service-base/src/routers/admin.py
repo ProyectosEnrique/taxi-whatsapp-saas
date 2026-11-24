@@ -4,6 +4,7 @@ Requiere header x-admin-key con el valor de ADMIN_PASSWORD.
 Rutas: /api/v1/admin/*
 """
 import logging
+import secrets
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -163,7 +164,9 @@ def list_drivers(db: Session = Depends(get_db)):
 def create_driver(payload: dict, db: Session = Depends(get_db)):
     phone    = (payload.get("phone") or "").strip()
     name     = (payload.get("name") or "").strip()
-    password = payload.get("password") or "1234"
+    # Sin contraseña → una al azar: el chofer trabaja por Telegram y con "1234" cualquiera
+    # que supiera su celular podía entrar a su cuenta en la app web
+    password = payload.get("password") or secrets.token_urlsafe(12)
     if not phone or not name:
         raise HTTPException(400, "phone y name requeridos")
     if db.query(Driver).filter(Driver.phone == phone).first():
